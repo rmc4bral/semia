@@ -41,6 +41,29 @@ async function api(action, body) {
   return j;
 }
 
+// Subida con porcentaje real (XMLHttpRequest)
+function apiUpload(action, body, onProgress) {
+  return new Promise((res, rej) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', `api.php?action=${action}`); x.withCredentials = true;
+    x.setRequestHeader('Content-Type', 'application/json');
+    x.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)); };
+    x.onerror = () => rej(new Error('Sin conexión con el servidor. Revisá tu internet y reintentá.'));
+    x.ontimeout = () => rej(new Error('El servidor tardó demasiado. Reintentá con una imagen más liviana.'));
+    x.timeout = 300000;
+    x.onload = () => {
+      let j; try { j = JSON.parse(x.responseText); } catch {
+        return rej(new Error(x.status === 413 || x.status === 200 || x.status === 400
+          ? 'El servidor rechazó el archivo por tamaño. En hPanel → Avanzado → Configuración de PHP subí post_max_size y upload_max_filesize a 64M.'
+          : `Respuesta inválida del servidor (${x.status})`));
+      }
+      if (x.status >= 400 || j.ok === false) return rej(new Error(j.error || `Error ${x.status}`));
+      res(j);
+    };
+    x.send(JSON.stringify(body));
+  });
+}
+
 export async function detectMode() {
   if (location.protocol === 'file:') return 'local';
   try {
@@ -153,16 +176,16 @@ export function createStore(mode) {
       return (await api('saveGeoref', { georef })).state;
     },
     /* ---------- Mapas propios (ortomosaicos / imágenes) ---------- */
-    async uploadMap(map, dataUrl, me) {
+    async uploadMap(map, dataUrl, me, onProgress) {
       if (local) {
         if (!isAdmin(me)) throw new Error('Solo el administrador puede subir mapas');
         const id = 'm' + Date.now().toString(36);
-        await idbPut('map-' + id, dataUrl);
+        await idbPut('map-' + id, dataUrl); onProgress && onProgress(100);
         const d = localLoad(); d.maps = d.maps || [];
         d.maps.push({ ...map, id, src: `idb:map-${id}`, creadoPor: me.user, creadoEn: new Date().toISOString() });
         localSave(d); return { state: publicState(d), id };
       }
-      const j = await api('uploadMap', { map, data: dataUrl });
+      const j = await apiUpload('uploadMap', { map, data: dataUrl }, onProgress);
       return { state: j.state, id: j.id };
     },
     async saveMap(map, me) {

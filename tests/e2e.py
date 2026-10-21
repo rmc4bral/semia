@@ -31,6 +31,7 @@ tifffile.imwrite(TIF, arr, photometric='rgb', extrasamples=['unassalpha'], tile=
 EXP = [to_ll.transform(X0 + i * PX, Y0 - j * PX)[::-1] for i, j in [(0, 0), (TW, 0), (TW, TH), (0, TH)]]
 from PIL import Image as _I
 PNG = TMP / 'croquis.png'; _I.new('RGB', (600, 400), (120, 160, 90)).save(PNG)
+PDF = TMP / 'plano.pdf'; _I.new('RGB', (900, 600), (200, 190, 150)).save(PDF, 'PDF', resolution=100)
 def mdist(a, b): return np.hypot((a[0] - b[0]) * 111320, (a[1] - b[1]) * 111320 * np.cos(np.radians(a[0])))
 
 ok = 0; errs = []
@@ -148,7 +149,8 @@ with sync_playwright() as p:
         moved_from = lot16['poly'][0]; moved_to = L16['poly'][0]
         check(L16.get('poly0') == lot16['poly'] and moved_to != moved_from, f'{tag}: forma ajustada guardada con original de respaldo')
         neigh = [l for l in data['lots'] if l['num'] != 16 and any(abs(q[0]-moved_from[0]) < .6 and abs(q[1]-moved_from[1]) < .6 for q in l['poly'])]
-        check(neigh and all(any(abs(q[0]-moved_to[0]) < .01 and abs(q[1]-moved_to[1]) < .01 for q in next(x for x in st2['lots'] if x['num'] == n['num'])['poly']) for n in neigh), f'{tag}: lote vecino acompaña ({[n["num"] for n in neigh]})')
+        check(neigh and all(next(x for x in st2['lots'] if x['num'] == n['num'])['poly'] == n['poly'] for n in neigh), f'{tag}: lotes vecinos NO se mueven ({[n["num"] for n in neigh]})')
+        check([l['num'] for l in st2['lots'] if l.get('poly0')] == [16], f'{tag}: solo el lote 16 quedó ajustado')
         def onb(q, poly):
             best = 9e9
             for a, c in zip(poly, poly[1:] + poly[:1]):
@@ -182,13 +184,16 @@ with sync_playwright() as p:
             cols = page.evaluate("""() => { const g=s=>getComputedStyle(document.querySelector(s)).backgroundColor; return [g('body'), g('.topbar'), g('.nav'), g('.card')]; }""")
             check(cols[0] == cols[1] == cols[2], f'{tag} {th}: barra, menú y fondo con el mismo tono {cols}')
         # mapas propios: GeoTIFF georreferenciado
-        page.set_input_files('input[accept*=".tif"]', str(TIF)); page.wait_for_selector('.map-prev img', timeout=60000)
-        check('UTM 21S' in page.inner_text('.modal .loc-box'), f'{tag}: detecta UTM 21S')
-        check(page.input_value('.modal input[inputmode=numeric]') == '20/10/2026', f'{tag}: toma la fecha del GeoTIFF')
-        page.fill('.modal .field:has-text("Nombre") input', 'Vuelo octubre'); page.click('.modal-foot .btn-primary'); page.wait_for_selector('.modal', state='detached', timeout=30000)
+        page.click('.nav button:has-text("Mapas")'); page.wait_for_selector('.dropzone')
+        page.set_input_files('.maps-screen input[type=file]', str(TIF)); page.wait_for_selector('.pbar'); page.wait_for_selector('.map-prev img', timeout=60000)
+        check(page.get_attribute('.pbar', 'aria-valuenow') == '100', f'{tag}: barra de proceso completa al convertir')
+        check('UTM 21S' in page.inner_text('.maps-screen .loc-box'), f'{tag}: detecta UTM 21S')
+        check(page.input_value('.maps-screen input[inputmode=numeric]') == '20/10/2026', f'{tag}: toma la fecha del GeoTIFF')
+        page.fill('.maps-screen .field:has-text("Nombre") input', 'Vuelo octubre'); page.click('.maps-screen button:has-text("Subir mapa") >> nth=-1'); page.wait_for_selector('.job', state='detached', timeout=30000)
         st3 = page.request.get(URL + '/api.php?action=state').json()['state']
         err_m = max(mdist(a, b) for a, b in zip(st3['maps'][0]['corners'], EXP))
         check(len(st3['maps']) == 1 and err_m < 1, f'{tag}: esquinas del GeoTIFF exactas (error {err_m:.3f} m)')
+        check(page.locator('.map-row').count() == 1, f'{tag}: el mapa figura en «Mapas cargados»')
         page.click('.map-row button[aria-label^="Ver"]'); page.wait_for_selector('.warp-img', state='attached'); page.wait_for_timeout(500)
         check('matrix3d' in page.get_attribute('.warp-img', 'style'), f'{tag}: mapa proyectado sobre el satélite')
         layout_checks(page, tag + ' satélite con capas')
@@ -197,9 +202,9 @@ with sync_playwright() as p:
         pick('Solo satélite'); check(page.locator('.warp-img').count() == 0, f'{tag}: filtro solo satélite')
         pick('Todos los mapas'); check(page.locator('.warp-img').count() == 1, f'{tag}: filtro todos')
         # imagen común: se ubica arrastrando esquinas
-        page.click('.nav button:has-text("Ajustes")'); page.set_input_files('input[accept*=".tif"]', str(PNG)); page.wait_for_selector('.map-prev img')
-        check('sin coordenadas' in page.inner_text('.modal .loc-box'), f'{tag}: imagen sin coordenadas')
-        page.click('.modal-foot .btn-primary'); page.wait_for_selector('.edit-bar'); page.wait_for_timeout(500)
+        page.click('.nav button:has-text("Mapas")'); page.set_input_files('.maps-screen input[type=file]', str(PNG)); page.wait_for_selector('.map-prev img')
+        check('sin coordenadas' in page.inner_text('.maps-screen .loc-box').lower(), f'{tag}: imagen sin coordenadas')
+        page.click('.maps-screen button:has-text("Subir mapa") >> nth=-1'); page.wait_for_selector('.edit-bar'); page.wait_for_timeout(500)
         check(page.locator('.map-corner').count() == 4 and page.locator('.map-center').count() == 1, f'{tag}: manijas de esquinas y centro')
         before_c = next(m for m in page.request.get(URL + '/api.php?action=state').json()['state']['maps'] if m['nombre'] == 'croquis')['corners']
         hb = page.locator('.map-corner').nth(1).bounding_box(); cx, cy = hb['x'] + hb['width'] / 2, hb['y'] + hb['height'] / 2
@@ -207,7 +212,13 @@ with sync_playwright() as p:
         page.click('.edit-bar button:has-text("Guardar")'); page.wait_for_selector('.edit-bar', state='detached')
         after_c = next(m for m in page.request.get(URL + '/api.php?action=state').json()['state']['maps'] if m['nombre'] == 'croquis')['corners']
         check(after_c[1] != before_c[1] and after_c[0] == before_c[0], f'{tag}: esquina NE reubicada a mano')
-        pick('Todos los mapas (2)'); check(page.locator('.warp-img').count() == 2, f'{tag}: todos = 2 mapas')
+        # PDF: se convierte a imagen y se sube
+        page.click('.nav button:has-text("Mapas")'); page.set_input_files('.maps-screen input[type=file]', str(PDF)); page.wait_for_selector('.map-prev img', timeout=60000)
+        check('sin coordenadas' in page.inner_text('.maps-screen .loc-box').lower() and '1 de 1' not in page.inner_text('.maps-screen .loc-box'), f'{tag}: PDF convertido a imagen')
+        page.click('.maps-screen button:has-text("Subir mapa") >> nth=-1'); page.wait_for_selector('.edit-bar'); page.wait_for_timeout(400)
+        page.click('.edit-bar button:has-text("Guardar")'); page.wait_for_selector('.edit-bar', state='detached')
+        check(len(page.request.get(URL + '/api.php?action=state').json()['state']['maps']) == 3, f'{tag}: 3 mapas con el PDF')
+        pick('Todos los mapas (3)'); check(page.locator('.warp-img').count() == 3, f'{tag}: todos = 3 mapas')
         pick('Vuelo octubre'); check(page.locator('.warp-img').count() == 1, f'{tag}: un solo mapa')
         page.click('.seg button:has-text("Plano 3D")')
         page.click('.nav button:has-text("Mapa")'); page.wait_for_selector('.map3d-svg'); layout_checks(page, tag + ' mapa final')

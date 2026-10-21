@@ -68,26 +68,28 @@ data.lots.forEach(l => { const c = G.lotCorners(l); ok(new Set(c.map(x => x.labe
 const mig = G.migrateGeoref({ points: [{ key: 'NO', map: data.outline[0], lat: 1, lng: 2 }] }, data.lots);
 ok(mig.points[0].lote === 21 && mig.points[0].vi === 0 && mig.points[0].lat === 1, 'migra puntos antiguos');
 
-// 8. Edición de forma: vértice compartido entre lotes 15/16/17/18
+// 8. Edición de forma: cada lote por separado (sin mover vecinos)
 const st = JSON.parse(JSON.stringify(data));
 let g = S.cloneGeom(st);
 const l15 = g.lots.find(l => l.num === 15), shared = l15.poly[1];
-const before = g.lots.filter(l => l.poly.some(q => G.dist(q, shared) < 0.6)).map(l => l.num);
-ok(before.length >= 2, `vértice compartido por lotes ${before}`);
+const before = g.lots.filter(l => l.num !== 15 && l.poly.some(q => G.dist(q, shared) < 0.6)).map(l => l.num);
+ok(before.length >= 1, `el vértice es compartido con los lotes ${before}`);
 const to = [shared[0] + 3, shared[1] - 2];
-g = S.moveVertex(g, shared, to);
-ok(before.every(num => g.lots.find(l => l.num === num).poly.some(q => G.dist(q, to) < 1e-6)), 'los lotes vecinos se mueven juntos');
-ok(g.lots.find(l => l.num === 15).subs.some(s => s.poly.some(q => G.dist(q, to) < 1e-6)), 'las subdivisiones acompañan');
+const polysBefore = JSON.stringify(g.lots.filter(l => l.num !== 15).map(l => l.poly));
+g = S.moveVertex(g, 15, shared, to);
+ok(G.dist(g.lots.find(l => l.num === 15).poly[1], to) < 1e-6, 'el lote 15 mueve su vértice');
+ok(JSON.stringify(g.lots.filter(l => l.num !== 15).map(l => l.poly)) === polysBefore, 'los lotes vecinos NO se mueven');
+ok(JSON.stringify(g.outline) === JSON.stringify(data.outline), 'el contorno no cambia');
+ok(g.lots.find(l => l.num === 15).subs.every(s => s.poly.every(q => G.dist(q, shared) > 0.6)), 'las subdivisiones del mismo lote acompañan');
 const n16 = g.lots.find(l => l.num === 16).poly.length;
 const ins = S.insertVertex(g, 16, 0); g = ins.geom;
 ok(g.lots.find(l => l.num === 16).poly.length === n16 + 1, 'agrega vértice');
-const neigh = g.lots.filter(l => l.num !== 16 && l.poly.some(q => G.dist(q, ins.point) < 1e-6)).map(l => l.num);
-ok(neigh.length >= 1, `el lote vecino también recibe el vértice (${neigh})`);
-const rem = S.removeVertex(g, ins.point); ok(!rem.error && rem.geom.lots.find(l => l.num === 16).poly.length === n16, 'quita vértice');
-ok(S.removeVertex(S.cloneGeom({ lots: [{ num: 10, poly: [[0, 0], [1, 0], [0, 1]], subs: [] }], outline: [[5, 5], [6, 5], [5, 6], [6, 6]] }), [0, 0]).error, 'no deja lotes con menos de 3 vértices');
+ok(g.lots.filter(l => l.num !== 16).every((l, i) => l.poly.length === data.lots.find(x => x.num === l.num).poly.length), 'los vecinos no reciben el vértice');
+const rem = S.removeVertex(g, 16, ins.point); ok(!rem.error && rem.geom.lots.find(l => l.num === 16).poly.length === n16, 'quita vértice');
+ok(S.removeVertex(S.cloneGeom({ lots: [{ num: 10, poly: [[0, 0], [1, 0], [0, 1]], subs: [] }], outline: [[5, 5], [6, 5], [5, 6], [6, 6]] }), 10, [0, 0]).error, 'no deja lotes con menos de 3 vértices');
 st.silos = [{ id: 'RB15001', lote: 15, map: shared, t: 0, ang: 0 }];
 const ch = S.buildShapeChange(st, g, geo);
-ok(ch.lots.length >= 2 && ch.silos.length === 1 && G.snapToBorder(ch.silos[0].map, g.lots.find(l => l.num === 15).poly).dist < 0.01, 'silos reubicados sobre el nuevo borde');
+ok(ch.lots.length === 2 && ch.silos.length === 1 && G.snapToBorder(ch.silos[0].map, g.lots.find(l => l.num === 15).poly).dist < 0.01, 'solo se guardan los lotes editados y los silos se reubican sobre el nuevo borde');
 ok(ch.lots.every(l => G.pointInPoly(l.label, l.poly)), 'etiquetas recalculadas dentro del lote');
 const r = S.restoreLot(g, { ...data.lots.find(l => l.num === 15), poly0: data.lots.find(l => l.num === 15).poly });
 ok(G.dist(r.lots.find(l => l.num === 15).poly[1], shared) < 1e-6, 'restablece la forma original');

@@ -2,13 +2,13 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client';
 import { Logo, Icon, Button, Field, TextInput, Segmented, Select, ToastProvider, useToast, fmtNum } from './ui.jsx';
 import { detectMode, createStore, resolvePhoto } from './store.js';
-import { fmtFecha } from './maplayers.js';
+import { fmtFecha, parseFecha, readMapFile, defaultCorners } from './maplayers.js';
 import { buildGeo, locateLot, controlPoints } from './geo.js';
 import { cloneGeom, moveVertex, insertVertex, removeVertex, restoreLot, buildShapeChange, isLocked } from './shapes.js';
 import Map3D from './Map3D.jsx';
 import SatMap from './SatMap.jsx';
-import { SiloModal, LotModal, UploadMapModal, EditMapModal } from './modals.jsx';
-import { Kpis, LotPanel, RecentPanel, SilosScreen, LotsScreen, SettingsScreen } from './screens.jsx';
+import { SiloModal, LotModal, EditMapModal } from './modals.jsx';
+import { Kpis, LotPanel, RecentPanel, SilosScreen, LotsScreen, SettingsScreen, MapsScreen } from './screens.jsx';
 
 const pref = {
   get(k, d) { try { return localStorage.getItem('semia.' + k) || d; } catch { return d; } },
@@ -97,7 +97,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
   const [mapOpacity, setMapOpacityRaw] = useState(+pref.get('mapOpacity', '1'));
   const setMapOpacity = v => { setMapOpacityRaw(v); pref.set('mapOpacity', String(v)); };
   const [mapUrls, setMapUrls] = useState({});
-  const [mapUpload, setMapUpload] = useState(null), [mapEditMeta, setMapEditMeta] = useState(null), [mapEdit, setMapEdit] = useState(null);
+  const [mapJob, setMapJob] = useState(null), [mapEditMeta, setMapEditMeta] = useState(null), [mapEdit, setMapEdit] = useState(null);
   const { fix, err: gpsErr } = useGps(true);
   const geo = useMemo(() => buildGeo(state.georef), [state.georef]);
   const gpsMap = useMemo(() => (geo && fix ? geo.toMap(fix.lat, fix.lng) : null), [geo, fix]);
@@ -118,6 +118,39 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
     if (geo) { const ll = state.outline.map(p => geo.toLatLng(p)); return [ll.reduce((a, p) => a + p[0], 0) / ll.length, ll.reduce((a, p) => a + p[1], 0) / ll.length]; }
     return fix ? [fix.lat, fix.lng] : null;
   }, [geo, fix, state.outline]);
+  /* ---------- Subida de mapas (continúa aunque cambies de pestaña) ---------- */
+  const jobAlive = useRef(0);
+  async function startMapJob(file) {
+    const jid = ++jobAlive.current;
+    const mine = fn => setMapJob(j => (j && j.jid === jid ? fn(j) : j));
+    setMapJob({ jid, file, stage: 'convert', pct: 2, step: 'Preparando…', nombre: file.name.replace(/\.[^.]+$/, '').slice(0, 80), fecha: '', res: null });
+    try {
+      const res = await readMapFile(file, (step, pct) => mine(j => ({ ...j, step, pct })));
+      const iso = res.fecha || new Date(file.lastModified || Date.now()).toISOString().slice(0, 10);
+      mine(j => ({ ...j, stage: 'ready', pct: 100, res, fecha: j.fecha || fmtFecha(iso) }));
+    } catch (e) { mine(j => ({ ...j, stage: 'error', error: e.message || 'No se pudo leer el archivo' })); }
+  }
+  function cancelMapJob() { jobAlive.current++; setMapJob(null); }
+  async function sendMapJob() {
+    const j = mapJob; if (!j || j.stage !== 'ready') return;
+    const fecha = parseFecha(j.fecha);
+    if (!j.nombre.trim()) return toast('Poné un nombre al mapa', 'error');
+    if (j.fecha && !fecha) return toast('Fecha inválida (dd/mm/aaaa)', 'error');
+    const res = j.res; let corners = res.corners;
+    if (!corners) {
+      if (!defaultCenter) return toast('Para ubicar una imagen sin coordenadas, cargá los puntos de control o activá el GPS', 'error');
+      corners = defaultCorners(defaultCenter, res.w, res.h);
+    }
+    const jid = j.jid; setMapJob({ ...j, stage: 'upload', pct: 0 });
+    try {
+      const out = await store.uploadMap({ nombre: j.nombre.trim(), fecha, corners, w: res.w, h: res.h, crs: res.crs, original: res.original }, res.dataUrl, me,
+        p => setMapJob(x => (x && x.jid === jid ? { ...x, pct: p } : x)));
+      if (jobAlive.current !== jid) { setState(out.state); return; }
+      setState(out.state); setMapJob(null); setMapFilter(out.id);
+      toast(`Mapa «${j.nombre.trim()}» subido`, 'ok');
+      if (!res.corners) { const m = out.state.maps.find(x => x.id === out.id); setTab('mapa'); setView('sat'); setMapEdit({ id: out.id, corners: m.corners.map(c => [...c]), orig: m.corners }); }
+    } catch (e) { setMapJob(x => (x && x.jid === jid ? { ...x, stage: 'error', error: e.message } : x)); toast(e.message, 'error'); }
+  }
   function startMapEdit(id) {
     const m = maps.find(x => x.id === id); if (!m) return;
     setShape(null); setPick(null); setMoving(null); setSelSilo(null);
@@ -171,16 +204,16 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
     if (!geo) { toast('Primero cargá al menos 4 puntos de control en Ajustes', 'error'); setTab('ajustes'); return; }
     setLotEdit(null); setDraft(null); setSelSilo(null); setMoving(null); setPick(null);
     setTab('mapa'); setView('sat'); setSelLot(num);
-    setShape({ lot: num, geom: cloneGeom(state), hist: [], sel: null, locked: controlPoints(state.georef).map(p => p.map) });
+    setShape({ lot: num, geom: cloneGeom(state), hist: [], sel: null, locked: controlPoints(state.georef).filter(p => p.lote === num).map(p => p.map) });
   }
   const pushGeom = (g, extra = {}) => setShape(sh => ({ ...sh, geom: g, hist: [...sh.hist.slice(-40), sh.geom], ...extra }));
   function onVertexMove(from, to) {
     if (isLocked(from, shape.locked)) return;
-    pushGeom(moveVertex(shape.geom, from, to), { sel: to });
+    pushGeom(moveVertex(shape.geom, shape.lot, from, to), { sel: to });
   }
   function onInsertVertex(num, i) { const r = insertVertex(shape.geom, num, i); pushGeom(r.geom, { sel: r.point }); }
   function onRemoveVertex() {
-    const r = removeVertex(shape.geom, shape.sel);
+    const r = removeVertex(shape.geom, shape.lot, shape.sel);
     if (r.error) return toast(r.error, 'error');
     pushGeom(r.geom, { sel: null });
   }
@@ -211,7 +244,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
 
   const tabs = [
     { k: 'mapa', label: 'Mapa', icon: 'map' }, { k: 'silos', label: 'Silos', icon: 'silo' },
-    { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'ajustes', label: 'Ajustes', icon: 'gear' },
+    { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'mapas', label: 'Mapas', icon: 'layers' }, { k: 'ajustes', label: 'Ajustes', icon: 'gear' },
   ];
   const lot = lots.find(l => l.num === selLot);
   const gpsLabel = gpsErr ? gpsErr : fix ? `GPS ±${fmtNum(fix.acc)} m` : 'Buscando GPS…';
@@ -231,6 +264,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
         {tabs.map(t => (
           <button type="button" key={t.k} className={tab === t.k ? 'is-on' : ''} onClick={() => { setTab(t.k); setPick(null); if (t.k !== 'mapa') { setShape(null); setMapEdit(null); } }}>
             <Icon name={t.icon} size={20} /><span>{t.label}</span>
+            {t.k === 'mapas' && mapJob && (mapJob.stage === 'convert' || mapJob.stage === 'upload') && <i className="nav-pct">{Math.round(mapJob.pct)}%</i>}
           </button>
         ))}
         <div className="nav-foot"><button type="button" onClick={onLogout}><Icon name="logout" size={20} /><span>Salir</span></button></div>
@@ -266,7 +300,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
                 )}
                 {shape && (
                   <div className="map-banner edit-bar">
-                    <div className="edit-bar-txt"><Icon name="edit" size={18} /><span><b>Ajustando lote {shape.lot}</b> · arrastrá los vértices; <b>+</b> agrega uno. Los vértices compartidos mueven también al lote vecino.{shape.locked.length ? ' Los puntos GPS quedan fijos.' : ''}</span></div>
+                    <div className="edit-bar-txt"><Icon name="edit" size={18} /><span><b>Ajustando lote {shape.lot}</b> · arrastrá los vértices; <b>+</b> agrega uno. Cada lote se ajusta por separado: los vecinos no se mueven.{shape.locked.length ? ' Los puntos GPS quedan fijos.' : ''}</span></div>
                     <div className="edit-bar-act">
                       <Button size="sm" variant="ghost" icon="rotl" disabled={!shape.hist.length} onClick={() => setShape(sh => ({ ...sh, geom: sh.hist[sh.hist.length - 1], hist: sh.hist.slice(0, -1), sel: null }))}>Deshacer</Button>
                       <Button size="sm" variant="ghost" icon="trash" disabled={!shape.sel} onClick={onRemoveVertex}>Quitar vértice</Button>
@@ -301,16 +335,16 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
         )}
         {tab === 'silos' && <SilosScreen state={state} onOpenSilo={openSilo} onExportCsv={exportCsv} />}
         {tab === 'lotes' && <LotsScreen state={state} onEditLot={setLotEdit} onShowLot={n => { setSelLot(n); setSelSilo(null); setTab('mapa'); }} />}
-        {tab === 'ajustes' && <SettingsScreen state={state} me={me} store={store} geo={geo} gps={fix} captureFix={captureFix} theme={theme} setTheme={setTheme} onState={setState} onLogout={onLogout} mode={store.mode}
-          onUploadMapFile={setMapUpload} onShowMap={id => { setMapFilter(id); setTab('mapa'); setView('sat'); }} onAdjustMap={startMapEdit} onEditMap={setMapEditMeta} />}
+        {tab === 'mapas' && <MapsScreen state={state} me={me} job={mapJob} onPick={startMapJob} onCancel={cancelMapJob} onSend={sendMapJob}
+          onJobChange={patch => setMapJob(j => (j ? { ...j, ...patch } : j))}
+          onShowMap={id => { setMapFilter(id); setTab('mapa'); setView('sat'); }} onAdjustMap={startMapEdit} onEditMap={setMapEditMeta} />}
+        {tab === 'ajustes' && <SettingsScreen state={state} me={me} store={store} geo={geo} gps={fix} captureFix={captureFix} theme={theme} setTheme={setTheme} onState={setState} onLogout={onLogout} mode={store.mode} />}
       </main>
 
       {draft && <SiloModal draft={draft} state={state} me={me} geo={geo} store={store} onClose={() => setDraft(null)}
         onSaved={(st, id) => { setState(st); setDraft(null); setSelSilo(id); if (id) { const s = st.silos.find(x => x.id === id); if (s) setSelLot(s.lote); } }}
         onRelocate={form => { setDraft(null); setTab('mapa'); if (view === 'sat' && !geo) setView('3d'); setPick({ purpose: 'relocate', form: { kg: form.kg, grano: form.grano, obs: form.obs, fotoData: form.fotoData } }); }}
         onStartMove={startMove} />}
-      {mapUpload && <UploadMapModal file={mapUpload} me={me} store={store} defaultCenter={defaultCenter} onClose={() => setMapUpload(null)}
-        onDone={(st, id, needsPlacement) => { setState(st); setMapUpload(null); setMapFilter(id); if (needsPlacement) { const m = st.maps.find(x => x.id === id); setTab('mapa'); setView('sat'); setMapEdit({ id, corners: m.corners.map(c => [...c]), orig: m.corners }); } }} />}
       {mapEditMeta && maps.find(m => m.id === mapEditMeta) && <EditMapModal map={maps.find(m => m.id === mapEditMeta)} me={me} store={store} onClose={() => setMapEditMeta(null)} onSaved={st => { setState(st); setMapEditMeta(null); }} />}
       {lotEdit != null && lots.find(l => l.num === lotEdit) && <LotModal lot={lots.find(l => l.num === lotEdit)} state={state} me={me} geo={geo} store={store} onClose={() => setLotEdit(null)} onShape={startShape}
         onSaved={(st, num) => { setState(st); setLotEdit(null); setSelLot(num); }} />}

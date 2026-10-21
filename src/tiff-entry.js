@@ -3,7 +3,7 @@ import { fromBlob } from 'geotiff';
 import { toLatLng, crsName } from './proj.js';
 
 async function readGeoTiff(file, { maxDim = 4096, onStep = () => {} } = {}) {
-  onStep('Leyendo encabezado del GeoTIFF…');
+  onStep('Leyendo encabezado del GeoTIFF…', 8);
   const tiff = await fromBlob(file);
   const img = await tiff.getImage();
   const W = img.getWidth(), H = img.getHeight();
@@ -17,11 +17,11 @@ async function readGeoTiff(file, { maxDim = 4096, onStep = () => {} } = {}) {
   const corners = [px(0, 0), px(W, 0), px(W, H), px(0, H)]; // NO, NE, SE, SO de la imagen
 
   const k = Math.min(1, maxDim / Math.max(W, H)), tw = Math.max(1, Math.round(W * k)), th = Math.max(1, Math.round(H * k));
-  onStep(`Reduciendo imagen ${W}×${H} → ${tw}×${th}…`);
+  onStep(`Reduciendo imagen ${W}×${H} → ${tw}×${th}…`, 25);
   const spp = img.getSamplesPerPixel(), bits = img.getBitsPerSample();
   const nodata = img.getGDALNoData();
   const ras = await tiff.readRasters({ width: tw, height: th, interleave: true, resampleMethod: 'bilinear' });
-  onStep('Preparando imagen…');
+  onStep('Preparando imagen…', 70);
   const out = new Uint8ClampedArray(tw * th * 4);
   const isFloat = img.getSampleFormat() === 3, n = tw * th;
   if (spp >= 3) {
@@ -45,6 +45,7 @@ async function readGeoTiff(file, { maxDim = 4096, onStep = () => {} } = {}) {
       out[i * 4] = out[i * 4 + 1] = out[i * 4 + 2] = g; out[i * 4 + 3] = ok ? 255 : 0;
     }
   }
+  onStep('Comprimiendo imagen…', 88);
   const cv = document.createElement('canvas'); cv.width = tw; cv.height = th;
   cv.getContext('2d').putImageData(new ImageData(out, tw, th), 0, 0);
   let dataUrl = cv.toDataURL('image/webp', 0.86);

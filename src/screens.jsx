@@ -1,9 +1,9 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Button, Field, TextInput, Select, Segmented, Icon, useToast, fmtKg, fmtNum, fmtDate } from './ui.jsx';
+import { fmtFecha } from './maplayers.js';
 import { areaHa, lotCorners, migrateGeoref, pointKey } from './geo.js';
 import { PhotoView, GRANOS } from './modals.jsx';
 
-const fmtFechaCorta = iso => { if (!iso) return 'sin fecha'; const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
 const sumKg = arr => arr.reduce((a, s) => a + (+s.kg || 0), 0);
 const fmtT = kg => (kg >= 1000 ? `${fmtNum(kg / 1000, kg < 100000 ? 1 : 0)} t` : `${fmtKg(kg)} kg`);
 
@@ -147,7 +147,7 @@ function LotMini({ lot, vi, n }) {
 }
 
 /* ---------- Pantalla Ajustes ---------- */
-export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, setTheme, onState, onLogout, mode, onUploadMapFile, onShowMap, onAdjustMap, onEditMap }) {
+export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, setTheme, onState, onLogout, mode }) {
   const toast = useToast();
   const isAdmin = me.rol === 'admin';
   const [pts, setPts] = useState(() => migrateGeoref(state.georef, state.lots).points.map(p => ({ ...p, lat: p.lat ?? '', lng: p.lng ?? '' })));
@@ -156,8 +156,7 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
   const [nu, setNu] = useState({ user: '', nombre: '', pass: '', rol: 'operador' });
   const [myPass, setMyPass] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
-  const imp = useRef(null), mapIn = useRef(null);
-  const maps = [...(state.maps || [])].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
+  const imp = useRef(null);
   const lotOpts = state.lots.map(l => ({ value: l.num, label: `Lote ${l.num}`, meta: `${l.ha} ha` }));
   const cornersOf = num => { const l = state.lots.find(x => x.num === num); return l ? lotCorners(l) : []; };
   const resid = Object.fromEntries((geo?.residuals || []).map(r => [r.key, r.m]));
@@ -254,25 +253,6 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
         </section>
 
         <section className="card set-sec">
-          <div className="panel-head"><h3><Icon name="layers" size={18} /> Mapas propios</h3><span className="badge">{maps.length}</span></div>
-          <p className="muted small">Subí ortomosaicos del dron (GeoTIFF en WGS84, UTM o POSGAR: se ubican solos) o imágenes JPG/PNG que ubicás arrastrando sus esquinas. En Satélite elegís ver uno, todos o ninguno.</p>
-          <div className="user-list">
-            {maps.map(m => (
-              <div className="user-row map-row" key={m.id}>
-                <span className="avatar"><Icon name="layers" size={16} /></span>
-                <span className="grow"><b>{m.nombre}</b><span className="muted small"> · {fmtFechaCorta(m.fecha)} · {m.crs || 'ubicado a mano'}</span></span>
-                <Button size="sm" variant="ghost" icon="eye" onClick={() => onShowMap(m.id)} aria-label={`Ver ${m.nombre}`} />
-                {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => onAdjustMap(m.id)} aria-label={`Ajustar posición de ${m.nombre}`} />}
-                {isAdmin && <Button size="sm" variant="ghost" icon="edit" onClick={() => onEditMap(m.id)} aria-label={`Editar ${m.nombre}`} />}
-              </div>
-            ))}
-            {!maps.length && <p className="muted small">Todavía no hay mapas propios.</p>}
-          </div>
-          {isAdmin && <div className="row end"><Button variant="primary" icon="upload" onClick={() => mapIn.current.click()}>Subir mapa</Button></div>}
-          <input ref={mapIn} type="file" accept=".tif,.tiff,image/tiff,image/jpeg,image/png,image/webp" hidden onChange={e => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) onUploadMapFile(fl); }} />
-        </section>
-
-        <section className="card set-sec">
           <div className="panel-head"><h3><Icon name="map" size={18} /> Estancia</h3></div>
           <div className="form-grid">
             <Field label="Nombre"><TextInput value={est.nombre} onChange={v => setEst(x => ({ ...x, nombre: v }))} disabled={!isAdmin} /></Field>
@@ -324,6 +304,90 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
             {confirmReset && <><span className="small">¿Borrar todo lo guardado en este dispositivo?</span><Button onClick={() => setConfirmReset(false)}>No</Button><Button variant="danger" onClick={() => { store.resetLocal(); location.reload(); }}>Sí, borrar</Button></>}
           </div>
           <div className="row end"><Button variant="ghost" icon="logout" onClick={onLogout}>Cerrar sesión</Button></div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Mapas propios: subida con barra de proceso ---------- */
+const STAGES = [['convert', 'Convertir'], ['ready', 'Revisar'], ['upload', 'Subir']];
+export function MapsScreen({ state, me, job, onPick, onJobChange, onCancel, onSend, onShowMap, onAdjustMap, onEditMap }) {
+  const isAdmin = me.rol === 'admin';
+  const inp = useRef(null);
+  const maps = [...(state.maps || [])].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
+  const busy = job && (job.stage === 'convert' || job.stage === 'upload');
+  const idx = job ? Math.max(0, STAGES.findIndex(s => s[0] === job.stage)) : -1;
+  const sizeMb = job?.res ? (job.res.dataUrl.length * 0.75) / 1048576 : 0;
+  return (
+    <div className="screen maps-screen">
+      <div className="screen-head"><div><h1>Mapas</h1><p className="muted">{maps.length} {maps.length === 1 ? 'mapa propio' : 'mapas propios'} · GeoTIFF, PDF o imagen</p></div></div>
+      <div className="maps-grid">
+        {isAdmin && (
+          <section className="card set-sec">
+            <div className="panel-head"><h3><Icon name="upload" size={18} /> Subir mapa</h3></div>
+            <p className="muted small">Formatos: <b>GeoTIFF</b> (WGS84, UTM o POSGAR: se ubica solo), <b>PDF</b>, <b>JPG</b>, <b>PNG</b> o <b>WebP</b>. Los PDF e imágenes se ubican después arrastrando sus esquinas sobre el satélite. Podés seguir usando la app mientras se procesa.</p>
+            {!job && (
+              <button type="button" className="dropzone" onClick={() => inp.current.click()}>
+                <Icon name="upload" size={26} /><b>Elegir archivo</b><span className="muted small">TIF · PDF · JPG · PNG · WebP</span>
+              </button>
+            )}
+            <input ref={inp} type="file" accept=".tif,.tiff,.pdf,application/pdf,image/tiff,image/jpeg,image/png,image/webp" hidden onChange={e => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) onPick(fl); }} />
+            {job && (
+              <div className="job">
+                <div className="job-head"><Icon name="layers" size={18} /><b className="grow">{job.file.name}</b><span className="muted small">{fmtNum(job.file.size / 1048576, 1)} MB</span></div>
+                <ol className="steps">
+                  {STAGES.map((s, i) => <li key={s[0]} className={i < idx ? 'is-done' : i === idx ? (job.stage === 'error' ? 'is-err' : 'is-on') : ''}><i>{i < idx ? '✓' : i + 1}</i><span>{s[1]}</span></li>)}
+                </ol>
+                {job.stage !== 'error' && (
+                  <>
+                    <div className="pbar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(job.pct)}><div className="pbar-fill" style={{ width: `${Math.max(2, job.pct)}%` }} /></div>
+                    <div className="pbar-txt"><span className="row gap-s">{busy && <span className="spinner sm" />}{job.stage === 'upload' ? `Subiendo al servidor… ${Math.round(job.pct)} %` : job.stage === 'convert' ? `${job.step} · ${Math.round(job.pct)} %` : 'Lista para subir'}</span></div>
+                  </>
+                )}
+                {job.stage === 'error' && <div className="form-err"><Icon name="alert" size={16} />{job.error}</div>}
+                {job.stage !== 'error' && (
+                  <div className="form-grid">
+                    <Field label="Nombre"><TextInput value={job.nombre} onChange={v => onJobChange({ nombre: v })} placeholder="Ej: Vuelo lote 16" disabled={job.stage === 'upload'} /></Field>
+                    <Field label="Fecha del vuelo / imagen" hint="dd/mm/aaaa"><TextInput value={job.fecha} onChange={v => onJobChange({ fecha: v.replace(/[^\d/]/g, '').slice(0, 10) })} inputMode="numeric" placeholder="21/10/2026" disabled={job.stage === 'upload'} /></Field>
+                  </div>
+                )}
+                {job.res && job.stage !== 'error' && (
+                  <>
+                    <div className="map-prev"><img src={job.res.dataUrl} alt="Vista previa del mapa" /></div>
+                    <div className="loc-box">
+                      <Icon name={job.res.corners ? 'gps' : 'move'} size={18} />
+                      <div className="loc-txt">
+                        {job.res.corners ? <span>Georreferenciado · {job.res.crs} · se ubica solo en el satélite</span>
+                          : <span>Sin coordenadas: después de subirlo lo ubicás arrastrando sus esquinas sobre el satélite</span>}
+                        <span className="muted small">{job.res.original[0]}×{job.res.original[1]}{job.res.pages > 1 ? ` · página 1 de ${job.res.pages}` : ''} → {job.res.w}×{job.res.h} px · {fmtNum(sizeMb, 1)} MB</span>
+                      </div>
+                    </div>
+                  </>
+                )}
+                <div className="row end gap-s">
+                  <Button onClick={onCancel} disabled={job.stage === 'upload'}>{job.stage === 'error' ? 'Cerrar' : 'Cancelar'}</Button>
+                  {job.stage === 'ready' && <Button variant="primary" icon="upload" onClick={onSend}>Subir mapa</Button>}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+        <section className="card set-sec">
+          <div className="panel-head"><h3><Icon name="layers" size={18} /> Mapas cargados</h3><span className="badge">{maps.length}</span></div>
+          <div className="user-list">
+            {maps.map(m => (
+              <div className="user-row map-row" key={m.id}>
+                <span className="avatar"><Icon name="layers" size={16} /></span>
+                <span className="grow"><b>{m.nombre}</b><span className="muted small"> · {fmtFecha(m.fecha)} · {m.crs || 'ubicado a mano'}</span></span>
+                <Button size="sm" variant="ghost" icon="eye" onClick={() => onShowMap(m.id)} aria-label={`Ver ${m.nombre}`} />
+                {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => onAdjustMap(m.id)} aria-label={`Ajustar posición de ${m.nombre}`} />}
+                {isAdmin && <Button size="sm" variant="ghost" icon="edit" onClick={() => onEditMap(m.id)} aria-label={`Editar ${m.nombre}`} />}
+              </div>
+            ))}
+            {!maps.length && <p className="muted small">Todavía no hay mapas propios.</p>}
+          </div>
+          <p className="muted small">En la pestaña Mapa → Satélite elegís ver uno, todos o ninguno.</p>
         </section>
       </div>
     </div>

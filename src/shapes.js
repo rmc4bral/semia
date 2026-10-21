@@ -1,5 +1,5 @@
 // SemIA · edición manual de la forma de los lotes
-// Los vértices compartidos (mismas coordenadas) entre lotes, subdivisiones y contorno se mueven juntos.
+// Cada lote se ajusta por separado (hay caminos y cortinas entre lotes): no se mueven los vecinos.
 import { dist, snapToBorder, poleLabel } from './geo.js';
 
 export const EPS = 0.6; // unidades del plano (≈ 6–7 m)
@@ -11,73 +11,65 @@ export function cloneGeom(state) {
   };
 }
 
-// Todas las referencias a un vértice en la misma posición
-function refsAt(geom, pt) {
-  const out = [];
-  geom.lots.forEach(l => {
-    l.poly.forEach((q, i) => dist(q, pt) < EPS && out.push(q));
-    l.subs.forEach(s => s.poly.forEach(q => dist(q, pt) < EPS && out.push(q)));
-  });
-  geom.outline.forEach(q => dist(q, pt) < EPS && out.push(q));
-  return out;
-}
 const copy = g => ({ lots: g.lots.map(l => ({ ...l, poly: l.poly.map(p => [...p]), subs: l.subs.map(s => ({ ...s, poly: s.poly.map(p => [...p]) })) })), outline: g.outline.map(p => [...p]) });
+const r2 = v => Math.round(v * 100) / 100;
 
 export const isLocked = (pt, locked) => locked.some(q => dist(q, pt) < EPS);
 
-export function moveVertex(geom, from, to) {
+// Cada lote se edita por separado: los vecinos y el contorno no se tocan.
+// Solo acompañan al vértice las subdivisiones del MISMO lote que lo comparten.
+function idxNear(poly, pt) {
+  let bi = -1, bd = EPS;
+  poly.forEach((q, i) => { const d = dist(q, pt); if (d < bd) { bd = d; bi = i; } });
+  return bi;
+}
+
+export function moveVertex(geom, lotNum, from, to) {
   const g = copy(geom);
-  refsAt(g, from).forEach(q => { q[0] = Math.round(to[0] * 100) / 100; q[1] = Math.round(to[1] * 100) / 100; });
+  const lot = g.lots.find(l => l.num === lotNum);
+  const i = idxNear(lot.poly, from);
+  if (i < 0) return g;
+  const old = [...lot.poly[i]];
+  lot.poly[i] = [r2(to[0]), r2(to[1])];
+  lot.subs.forEach(s => s.poly.forEach(q => { if (dist(q, old) < EPS) { q[0] = r2(to[0]); q[1] = r2(to[1]); } }));
   return g;
 }
 
-// Inserta el punto medio del tramo i del lote (y en todo polígono que comparta ese tramo)
+// Inserta el punto medio del tramo i del lote (y en sus propias subdivisiones si comparten ese tramo)
 export function insertVertex(geom, lotNum, i) {
   const g = copy(geom);
   const lot = g.lots.find(l => l.num === lotNum);
   const a = lot.poly[i], b = lot.poly[(i + 1) % lot.poly.length];
-  const m = [Math.round(((a[0] + b[0]) / 2) * 100) / 100, Math.round(((a[1] + b[1]) / 2) * 100) / 100];
-  // se divide todo tramo (de lotes, subdivisiones o contorno) que pase por el punto medio
-  const fix = poly => {
+  const m = [r2((a[0] + b[0]) / 2), r2((a[1] + b[1]) / 2)];
+  lot.poly.splice(i + 1, 0, m);
+  lot.subs.forEach(sub => {
+    const poly = sub.poly;
     for (let k = 0; k < poly.length; k++) {
       const p = poly[k], q = poly[(k + 1) % poly.length];
-      if (dist(m, p) > EPS && dist(m, q) > EPS && onSegment(m, p, q)) { poly.splice(k + 1, 0, [...m]); return; }
+      if (dist(m, p) > EPS && dist(m, q) > EPS && snapToBorder(m, [p, q]).dist < EPS * 0.5) { poly.splice(k + 1, 0, [...m]); break; }
     }
-  };
-  g.lots.forEach(l => { fix(l.poly); l.subs.forEach(s => fix(s.poly)); });
-  fix(g.outline);
+  });
   return { geom: g, point: m };
 }
-function onSegment(p, a, b) {
-  const s = snapToBorder(p, [a, b]);
-  return s.dist < EPS * 0.5;
-}
 
-// Quita un vértice de todos los polígonos que lo usan (cada uno debe conservar 3 o más)
-export function removeVertex(geom, pt) {
+// Quita un vértice del lote (debe conservar 3 o más)
+export function removeVertex(geom, lotNum, pt) {
   const g = copy(geom);
-  const polys = [];
-  g.lots.forEach(l => { polys.push(l.poly); l.subs.forEach(s => polys.push(s.poly)); });
-  polys.push(g.outline);
-  for (const poly of polys) {
-    const i = poly.findIndex(q => dist(q, pt) < EPS);
-    if (i >= 0 && poly.length <= 3) return { error: 'Un lote no puede quedar con menos de 3 vértices' };
-  }
-  polys.forEach(poly => { const i = poly.findIndex(q => dist(q, pt) < EPS); if (i >= 0) poly.splice(i, 1); });
+  const lot = g.lots.find(l => l.num === lotNum);
+  const i = idxNear(lot.poly, pt);
+  if (i < 0) return { geom: g };
+  if (lot.poly.length <= 3) return { error: 'Un lote no puede quedar con menos de 3 vértices' };
+  const old = lot.poly[i];
+  lot.poly.splice(i, 1);
+  lot.subs.forEach(s => { const k = s.poly.findIndex(q => dist(q, old) < EPS); if (k >= 0 && s.poly.length > 3) s.poly.splice(k, 1); });
   return { geom: g };
 }
 
 export function restoreLot(geom, lot) {
   if (!lot.poly0) return geom;
-  let g = copy(geom);
-  const cur = g.lots.find(l => l.num === lot.num);
-  // cada vértice actual vuelve a su posición original si tiene par en el original (mismo índice)
-  if (cur.poly.length === lot.poly0.length) {
-    cur.poly.forEach((p, i) => { g = moveVertex(g, g.lots.find(l => l.num === lot.num).poly[i], lot.poly0[i]); });
-  } else {
-    const c = g.lots.find(l => l.num === lot.num); c.poly = lot.poly0.map(p => [...p]);
-  }
+  const g = copy(geom);
   const c = g.lots.find(l => l.num === lot.num);
+  c.poly = lot.poly0.map(p => [...p]);
   (lot.subs || []).forEach(s => { if (s.poly0) { const cs = c.subs.find(x => x.id === s.id); if (cs) cs.poly = s.poly0.map(p => [...p]); } });
   return g;
 }

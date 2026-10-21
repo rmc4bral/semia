@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Button, Field, TextInput, TextArea, Select, Icon, useToast, fmtKg, fmtDate, fmtNum, parseNum } from './ui.jsx';
 import { nextSiloId, snapToBorder, areaHa, pointInPoly } from './geo.js';
 import { resolvePhoto } from './store.js';
-import { loadTiffLib, readPlainImage, isTiff, defaultCorners, fmtFecha, parseFecha } from './maplayers.js';
+import { fmtFecha, parseFecha } from './maplayers.js';
 
 export const GRANOS = ['Soja', 'Maíz', 'Trigo', 'Girasol', 'Sorgo', 'Cebada', 'Otro'];
 
@@ -205,69 +205,6 @@ export function LotModal({ lot, state, me, geo, store, onClose, onSaved, onShape
       </div>
       {!isAdmin && <p className="muted small">Solo el administrador puede modificar los datos del lote.</p>}
       {isAdmin && <p className="muted small">«Ajustar forma» abre el lote sobre la imagen satelital para mover sus vértices y corregir desfasajes.{lot.poly0 ? ' Este lote ya tiene la forma ajustada.' : ''}</p>}
-    </Modal>
-  );
-}
-
-/* ---------- Subir mapa propio (ortomosaico GeoTIFF o imagen) ---------- */
-export function UploadMapModal({ file, me, store, defaultCenter, onClose, onDone }) {
-  const toast = useToast();
-  const [step, setStep] = useState('Preparando…');
-  const [res, setRes] = useState(null), [err, setErr] = useState(null);
-  const [f, setF] = useState({ nombre: file.name.replace(/\.[^.]+$/, '').slice(0, 80), fecha: '' });
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let on = true;
-    (async () => {
-      try {
-        const r = isTiff(file) ? await (await loadTiffLib()).readGeoTiff(file, { onStep: t => on && setStep(t) }) : await readPlainImage(file);
-        if (!on) return;
-        const iso = r.fecha || new Date(file.lastModified || Date.now()).toISOString().slice(0, 10);
-        setF(x => ({ ...x, fecha: fmtFecha(iso) })); setRes(r);
-      } catch (e) { if (on) setErr(e.message || 'No se pudo leer el archivo'); }
-    })();
-    return () => { on = false; };
-  }, [file]);
-
-  const sizeMb = res ? (res.dataUrl.length * 0.75) / 1048576 : 0;
-  async function save() {
-    const fecha = parseFecha(f.fecha);
-    if (!f.nombre.trim()) return toast('Poné un nombre al mapa', 'error');
-    if (f.fecha && !fecha) return toast('Fecha inválida (dd/mm/aaaa)', 'error');
-    let corners = res.corners;
-    if (!corners) {
-      if (!defaultCenter) return toast('Para ubicar una imagen sin coordenadas, cargá los puntos de control o activá el GPS', 'error');
-      corners = defaultCorners(defaultCenter, res.w, res.h);
-    }
-    setBusy(true);
-    try {
-      const out = await store.uploadMap({ nombre: f.nombre.trim(), fecha, corners, w: res.w, h: res.h, crs: res.crs, original: res.original }, res.dataUrl, me);
-      toast(`Mapa «${f.nombre.trim()}» subido`, 'ok');
-      onDone(out.state, out.id, !res.corners);
-    } catch (e) { toast(e.message, 'error'); } finally { setBusy(false); }
-  }
-  return (
-    <Modal title="Subir mapa" subtitle={file.name} onClose={onClose}
-      footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" icon="upload" onClick={save} disabled={!res || busy}>{busy ? 'Subiendo…' : 'Guardar mapa'}</Button></>}>
-      {!res && !err && <div className="proc"><span className="spinner" />{step}</div>}
-      {err && <div className="form-err"><Icon name="alert" size={16} />{err}</div>}
-      {res && (
-        <>
-          <div className="map-prev"><img src={res.dataUrl} alt="Vista previa del mapa" /></div>
-          <div className="form-grid">
-            <Field label="Nombre"><TextInput value={f.nombre} onChange={v => setF(x => ({ ...x, nombre: v }))} placeholder="Ej: Vuelo lote 16" /></Field>
-            <Field label="Fecha del vuelo / imagen" hint="dd/mm/aaaa"><TextInput value={f.fecha} onChange={v => setF(x => ({ ...x, fecha: v.replace(/[^\d/]/g, '').slice(0, 10) }))} inputMode="numeric" placeholder="21/10/2026" /></Field>
-          </div>
-          <div className="loc-box">
-            <Icon name={res.corners ? 'gps' : 'move'} size={18} />
-            <div className="loc-txt">
-              {res.corners ? <span>Georreferenciado · {res.crs} · se ubica solo en el satélite</span>
-                : <span>Imagen sin coordenadas: después de subirla la ubicás arrastrando sus esquinas sobre el satélite</span>}
-              <span className="muted small">{res.original[0]}×{res.original[1]} px{res.original[0] !== res.w ? ` → ${res.w}×${res.h} px` : ''} · {fmtNum(sizeMb, 1)} MB</span>
-            </div>
-          </div>
-        </>
-      )}
     </Modal>
   );
 }

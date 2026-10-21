@@ -27,21 +27,34 @@ export const WarpLayer = L.Layer.extend({
   },
 });
 
-// Carga diferida del lector de GeoTIFF (tiff.js), para no agrandar la app
-let tiffLib = null;
-export function loadTiffLib() {
-  if (window.SemiaTiff) return Promise.resolve(window.SemiaTiff);
-  if (tiffLib) return tiffLib;
-  tiffLib = new Promise((res, rej) => {
-    const s = document.createElement('script'); s.src = 'tiff.js';
-    s.onload = () => (window.SemiaTiff ? res(window.SemiaTiff) : rej(new Error('No se pudo cargar el lector de GeoTIFF')));
-    s.onerror = () => { tiffLib = null; rej(new Error('No se pudo cargar el lector de GeoTIFF')); };
+// Carga diferida de lectores (tiff.js, pdf.js), para no agrandar la app
+const libs = {};
+function loadLib(src, global, nombre) {
+  if (window[global]) return Promise.resolve(window[global]);
+  if (libs[src]) return libs[src];
+  libs[src] = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = src;
+    s.onload = () => (window[global] ? res(window[global]) : rej(new Error(`No se pudo cargar el lector de ${nombre}`)));
+    s.onerror = () => { delete libs[src]; rej(new Error(`No se pudo cargar el lector de ${nombre}`)); };
     document.head.appendChild(s);
   });
-  return tiffLib;
+  return libs[src];
 }
+export const loadTiffLib = () => loadLib('tiff.js', 'SemiaTiff', 'GeoTIFF');
+export const loadPdfLib = () => loadLib('pdf.js', 'SemiaPdf', 'PDF');
 
 export const isTiff = f => /\.tiff?$/i.test(f.name) || f.type === 'image/tiff';
+export const isPdf = f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
+
+// Lee cualquier archivo soportado → { dataUrl, w, h, corners|null, crs, fecha, original }
+export async function readMapFile(file, onStep = () => {}) {
+  if (isPdf(file)) return (await loadPdfLib()).readPdf(file, { onStep });
+  if (isTiff(file)) return (await loadTiffLib()).readGeoTiff(file, { onStep });
+  onStep('Leyendo imagen…', 20);
+  const r = await readPlainImage(file);
+  onStep('Listo', 90);
+  return r;
+}
 
 // Imagen común (JPG/PNG/WebP), reducida; se ubica luego arrastrando sus esquinas
 export function readPlainImage(file, maxDim = 4096) {

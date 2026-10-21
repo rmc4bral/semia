@@ -9,6 +9,7 @@ SemIA/
 ├─ public_html/          ← ESTO es lo que se sube a Hostinger
 │  ├─ index.html         página única
 │  ├─ script.js          app React compilada (no editar a mano: se genera desde src/)
+│  ├─ tiff.js, pdf.js, pdf.worker.js   lectores de GeoTIFF y PDF (se cargan solo al subir un mapa)
 │  ├─ style.css          estilos (paleta #183630 · #E3DAC9 · #E5C690, radio 6px)
 │  ├─ api.php            API: login, silos, lotes, georreferencia, fotos, usuarios
 │  ├─ data.seed.json     plantilla inicial; api.php crea data.json la primera vez
@@ -50,8 +51,8 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 - **Plano 3D:** pasar el cursor (o tocar) un lote lo eleva. Arrastrar = mover; rueda / pellizco = zoom; botón derecho o dos dedos = girar; botón 2D/3D.
 - **Tuerca sobre el lote:** edita número, hectáreas, subdivisiones, nombre y observaciones (también desde la pestaña Lotes).
 - **Puntos de control (Ajustes):** elegir cualquier lote y su esquina por orientación (N, NE, E, SE, S, SO, O, NO), pararse ahí y tocar el ícono de ubicación. Con 4 puntos el plano se ubica sobre el **mapa satelital**; se pueden cargar hasta 12 y el ajuste por mínimos cuadrados informa el desvío en metros de cada punto (en rojo si supera 15 m).
-- **Ajustar forma (admin):** con el lote seleccionado en *Satélite* → *Ajustar forma*. Se arrastran los vértices, *+* agrega uno, *Quitar vértice*, *Deshacer* y *Original*. Los vértices compartidos mueven también al lote vecino; los puntos de control GPS quedan fijos; los silos del lote se reubican sobre el nuevo borde.
-- **Mapas propios (Ajustes → Mapas propios):** subir ortomosaicos del dron en GeoTIFF (WGS84, UTM o POSGAR fajas 1–7: se ubican solos por sus coordenadas) o imágenes JPG/PNG que se ubican arrastrando sus 4 esquinas sobre el satélite. Se reducen en el navegador a 4096 px antes de subir. En *Satélite* el filtro **Mapa a mostrar** permite ver todos (el más nuevo arriba), uno solo o solo el satélite, con opacidad 50/75/100 %.
+- **Ajustar forma (admin):** con el lote seleccionado en *Satélite* → *Ajustar forma*. Se arrastran los vértices, *+* agrega uno, *Quitar vértice*, *Deshacer* y *Original*. **Cada lote se ajusta por separado** (hay caminos y cortinas entre lotes): los vecinos no se mueven; los puntos de control GPS del lote quedan fijos; los silos del lote se reubican sobre el nuevo borde.
+- **Mapas (pestaña aparte):** subir ortomosaicos del dron en **GeoTIFF** (WGS84, UTM o POSGAR fajas 1–7: se ubican solos por sus coordenadas), **PDF** (primera página) o imágenes JPG/PNG/WebP, que se ubican arrastrando sus 4 esquinas sobre el satélite. Tiene barra de proceso (convertir → revisar → subir con porcentaje real) y sigue en segundo plano si cambiás de pestaña. Se reducen en el navegador a 4096 px antes de subir. En *Satélite* el filtro **Mapa a mostrar** permite ver todos (el más nuevo arriba), uno solo o solo el satélite, con opacidad 50/75/100 %.
 - **Botón +:** toma tu ubicación en tiempo real, detecta el lote y ubica el silo sobre su **borde**. Se abre la ficha con ID automático, Kg, grano, observación y foto. Sin GPS o sin georreferencia, se marca tocando el borde del lote.
 - **ID:** `RB16001` = RB (estancia) + 16 (lote) + 001 (bolsa). La sigla se cambia en Ajustes.
 - **Recorrido:** los silos de cada lote se unen en el orden de carga siguiendo el borde (línea punteada).

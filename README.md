@@ -33,7 +33,7 @@ php -S localhost:8000
 ```
 Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el navegador solo da ubicación en `https` o `localhost`).
 
-**Usuario:** `rodma` · **Contraseña:** `rmaldonado` (administrador).
+**Usuario administrador:** `rodma` (la contraseña inicial se cambia en Ajustes → Usuarios al primer ingreso).
 
 ## Subir a Hostinger
 

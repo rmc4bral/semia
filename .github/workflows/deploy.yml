@@ -34,6 +34,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Normalizar carpeta de destino
+        id: dir
+        env:
+          D: ${{ secrets.FTP_DIR }}
+        run: |
+          D="$(printf '%s' "$D" | tr -d '[:space:]')"
+          [ -z "$D" ] && D="/public_html/"
+          case "$D" in */) ;; *) D="$D/";; esac
+          echo "dir=$D" >> "$GITHUB_OUTPUT"
       - name: Subir a Hostinger (sin tocar datos ni fotos)
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -42,7 +51,7 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ${{ vars.FTP_PROTOCOL || 'ftps' }}
           local-dir: ./public_html/
-          server-dir: ${{ secrets.FTP_DIR }}
+          server-dir: ${{ steps.dir.outputs.dir }}
           exclude: |
             **/.git*
             **/.git*/**

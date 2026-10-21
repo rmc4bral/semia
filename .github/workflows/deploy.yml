@@ -30,6 +30,8 @@ jobs:
           bash tests/api.test.sh http://127.0.0.1:8000
 
   publicar:
+    # Hostinger despliega por su integración Git; el FTP queda opcional (variable USAR_FTP=1)
+    if: ${{ vars.USAR_FTP == '1' }}
     needs: probar
     runs-on: ubuntu-latest
     steps:

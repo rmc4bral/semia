@@ -212,17 +212,65 @@ switch ($action) {
 
   case 'saveGeoref': {
     requireAdmin(); $g = body()['georef'] ?? null;
-    if (!is_array($g) || !is_array($g['points'] ?? null) || count($g['points']) !== 4) fail('Se requieren 4 puntos');
+    if (!is_array($g) || !is_array($g['points'] ?? null)) fail('Datos incompletos');
+    if (count($g['points']) < 4 || count($g['points']) > 12) fail('Se requieren entre 4 y 12 puntos de control');
     $state = withData(function (&$d) use ($g) {
-      $anchors = []; foreach ($d['anchors'] as $a) $anchors[$a['key']] = $a;
-      $pts = [];
+      $pts = []; $keys = [];
       foreach ($g['points'] as $p) {
-        $k = (string)($p['key'] ?? ''); if (!isset($anchors[$k])) fail('Esquina desconocida');
+        $lote = (int)($p['lote'] ?? 0); $vi = (int)($p['vi'] ?? -1); $lot = null;
+        foreach ($d['lots'] as $l) if ((int)$l['num'] === $lote) $lot = $l;
+        if (!$lot || $vi < 0 || $vi >= count($lot['poly'])) fail('Esquina de lote inválida');
+        $key = "L{$lote}-{$vi}";
+        if (isset($keys[$key])) fail('Hay dos puntos en la misma esquina'); $keys[$key] = 1;
         $lat = num($p['lat'] ?? null); $lng = num($p['lng'] ?? null);
         if (($lat !== null && abs($lat) > 90) || ($lng !== null && abs($lng) > 180)) fail('Coordenadas fuera de rango');
-        $pts[] = ['key' => $k, 'label' => $anchors[$k]['label'], 'map' => $anchors[$k]['map'], 'lat' => $lat, 'lng' => $lng, 'acc' => num($p['acc'] ?? null), 'at' => str($p['at'] ?? '', 40) ?: null];
+        $pts[] = ['key' => $key, 'lote' => $lote, 'vi' => $vi, 'label' => str($p['label'] ?? "Lote $lote", 60), 'map' => $lot['poly'][$vi],
+          'lat' => $lat, 'lng' => $lng, 'acc' => num($p['acc'] ?? null), 'at' => str($p['at'] ?? '', 40) ?: null];
       }
       $d['georef'] = ['points' => $pts];
+      return publicState($d);
+    }, true);
+    out(['ok' => true, 'state' => $state]);
+  }
+
+  case 'saveShapes': {
+    requireAdmin(); $c = body()['change'] ?? null;
+    if (!is_array($c)) fail('Datos incompletos');
+    $polyOk = function ($poly) {
+      if (!is_array($poly) || count($poly) < 3 || count($poly) > 400) return false;
+      foreach ($poly as $p) if (!is_array($p) || count($p) !== 2 || num($p[0]) === null || num($p[1]) === null || abs($p[0]) > 5000 || abs($p[1]) > 5000) return false;
+      return true;
+    };
+    $clean = fn($poly) => array_map(fn($p) => [round((float)$p[0], 2), round((float)$p[1], 2)], $poly);
+    $state = withData(function (&$d) use ($c, $polyOk, $clean) {
+      foreach (($c['lots'] ?? []) as $nl) {
+        if (!$polyOk($nl['poly'] ?? null)) fail('Forma de lote inválida');
+        $idx = null; foreach ($d['lots'] as $i => $l) if ((int)$l['num'] === (int)($nl['num'] ?? -1)) $idx = $i;
+        if ($idx === null) fail('Lote inexistente');
+        $l = &$d['lots'][$idx];
+        if (!isset($l['poly0'])) $l['poly0'] = $l['poly'];
+        $l['poly'] = $clean($nl['poly']);
+        if (is_array($nl['label'] ?? null) && count($nl['label']) === 2) $l['label'] = $clean([$nl['label']])[0];
+        foreach (($nl['subs'] ?? []) as $ns) foreach ($l['subs'] as $k => $sub) if ($sub['id'] === ($ns['id'] ?? null)) {
+          if (!$polyOk($ns['poly'] ?? null)) fail('Forma de subdivisión inválida');
+          if (!isset($l['subs'][$k]['poly0'])) $l['subs'][$k]['poly0'] = $sub['poly'];
+          $l['subs'][$k]['poly'] = $clean($ns['poly']);
+          if (is_array($ns['label'] ?? null) && count($ns['label']) === 2) $l['subs'][$k]['label'] = $clean([$ns['label']])[0];
+        }
+        unset($l);
+      }
+      if (isset($c['outline']) && $c['outline'] !== null) { if (!$polyOk($c['outline'])) fail('Contorno inválido'); $d['outline'] = $clean($c['outline']); }
+      foreach (($c['silos'] ?? []) as $u) foreach ($d['silos'] as $k => $s) if ($s['id'] === ($u['id'] ?? null)) {
+        if (!is_array($u['map'] ?? null) || count($u['map']) !== 2) fail('Ubicación de silo inválida');
+        $d['silos'][$k]['map'] = $clean([$u['map']])[0]; $d['silos'][$k]['t'] = num($u['t'] ?? null); $d['silos'][$k]['ang'] = num($u['ang'] ?? null);
+        $d['silos'][$k]['latlng'] = is_array($u['latlng'] ?? null) ? array_map('floatval', array_slice($u['latlng'], 0, 2)) : ($s['latlng'] ?? null);
+      }
+      // los puntos de control conservan su vértice aunque cambie la numeración
+      foreach (($d['georef']['points'] ?? []) as $k => $p) {
+        if (!isset($p['lote'], $p['map'])) continue;
+        foreach ($d['lots'] as $l) if ((int)$l['num'] === (int)$p['lote'])
+          foreach ($l['poly'] as $vi => $q) if (abs($q[0] - $p['map'][0]) < 0.6 && abs($q[1] - $p['map'][1]) < 0.6) { $d['georef']['points'][$k]['vi'] = $vi; $d['georef']['points'][$k]['key'] = "L{$p['lote']}-{$vi}"; }
+      }
       return publicState($d);
     }, true);
     out(['ok' => true, 'state' => $state]);

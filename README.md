@@ -49,7 +49,8 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 
 - **Plano 3D:** pasar el cursor (o tocar) un lote lo eleva. Arrastrar = mover; rueda / pellizco = zoom; botón derecho o dos dedos = girar; botón 2D/3D.
 - **Tuerca sobre el lote:** edita número, hectáreas, subdivisiones, nombre y observaciones (también desde la pestaña Lotes).
-- **Georreferencia (Ajustes):** parado en cada una de las 4 esquinas del campo, tocar el ícono de ubicación. Con los 4 puntos el plano se ubica sobre el **mapa satelital** (botón *Satélite* en la pantalla principal) y se calcula la superficie real de cada lote.
+- **Puntos de control (Ajustes):** elegir cualquier lote y su esquina por orientación (N, NE, E, SE, S, SO, O, NO), pararse ahí y tocar el ícono de ubicación. Con 4 puntos el plano se ubica sobre el **mapa satelital**; se pueden cargar hasta 12 y el ajuste por mínimos cuadrados informa el desvío en metros de cada punto (en rojo si supera 15 m).
+- **Ajustar forma (admin):** con el lote seleccionado en *Satélite* → *Ajustar forma*. Se arrastran los vértices, *+* agrega uno, *Quitar vértice*, *Deshacer* y *Original*. Los vértices compartidos mueven también al lote vecino; los puntos de control GPS quedan fijos; los silos del lote se reubican sobre el nuevo borde.
 - **Botón +:** toma tu ubicación en tiempo real, detecta el lote y ubica el silo sobre su **borde**. Se abre la ficha con ID automático, Kg, grano, observación y foto. Sin GPS o sin georreferencia, se marca tocando el borde del lote.
 - **ID:** `RB16001` = RB (estancia) + 16 (lote) + 001 (bolsa). La sigla se cambia en Ajustes.
 - **Recorrido:** los silos de cada lote se unen en el orden de carga siguiendo el borde (línea punteada).

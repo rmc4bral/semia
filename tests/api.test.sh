@@ -20,14 +20,22 @@ U=$(curl -s -b $A "${J[@]}" -d "{\"id\":\"RB16001\",\"data\":\"data:image/jpeg;b
 chk foto-falsa "$(curl -s -b $A "${J[@]}" -d '{"id":"RB1","data":"data:image/jpeg;base64,PD9waHAgZWNobyAxOw=="}' $B/api.php?action=upload)" 'no permitido'
 chk lote "$(curl -s -b $A "${J[@]}" -d '{"lot":{"_origNum":16,"num":16,"ha":460,"nombre":"Molino","subs":[]}}' $B/api.php?action=saveLot)" '"nombre":"Molino"'
 chk lote-con-silos "$(curl -s -b $A "${J[@]}" -d '{"lot":{"_origNum":16,"num":30,"ha":460}}' $B/api.php?action=saveLot)" 'tiene silos'
-GEO='{"georef":{"points":[{"key":"NO","lat":-35.9,"lng":-60.42},{"key":"NE","lat":-35.9025,"lng":-60.33},{"key":"SE","lat":-35.995,"lng":-60.333},{"key":"SO","lat":-35.992,"lng":-60.425}]}}'
-chk georef "$(curl -s -b $A "${J[@]}" -d "$GEO" $B/api.php?action=saveGeoref)" '"lat":-35.9025'
+GEO='{"georef":{"points":[{"lote":21,"vi":0,"lat":-35.9,"lng":-60.42},{"lote":24,"vi":2,"lat":-35.9025,"lng":-60.33},{"lote":6,"vi":2,"lat":-35.995,"lng":-60.333},{"lote":1,"vi":4,"lat":-35.992,"lng":-60.425},{"lote":16,"vi":0,"lat":-35.95,"lng":-60.36}]}}'
+chk georef "$(curl -s -b $A "${J[@]}" -d "$GEO" $B/api.php?action=saveGeoref)" '"key":"L16-0"'
+chk georef-pocos "$(curl -s -b $A "${J[@]}" -d '{"georef":{"points":[{"lote":1,"vi":0}]}}' $B/api.php?action=saveGeoref)" 'entre 4 y 12'
+chk georef-esquina-mala "$(curl -s -b $A "${J[@]}" -d '{"georef":{"points":[{"lote":1,"vi":99},{"lote":2,"vi":0},{"lote":3,"vi":0},{"lote":4,"vi":0}]}}' $B/api.php?action=saveGeoref)" 'inválida'
+SH='{"change":{"lots":[{"num":16,"poly":[[548,407],[740,410],[740,610.4],[545,599.9]],"label":[640,505],"subs":[]}],"outline":null,"silos":[{"id":"RB16001","map":[548,450],"t":40,"ang":1.5}]}}'
+R=$(curl -s -b $A "${J[@]}" -d "$SH" $B/api.php?action=saveShapes)
+chk forma "$R" '"poly0":\[\[551.7,407\]'
+chk forma-silo "$R" '"map":\[548,450\]'
+chk forma-invalida "$(curl -s -b $A "${J[@]}" -d '{"change":{"lots":[{"num":16,"poly":[[1,1]]}]}}' $B/api.php?action=saveShapes)" 'inválida'
 chk usuario "$(curl -s -b $A "${J[@]}" -d '{"u":{"user":"peon","nombre":"Peón","pass":"campo123","rol":"operador"}}' $B/api.php?action=saveUser)" '"user":"peon"'
 curl -s -c $O "${J[@]}" -d '{"user":"peon","pass":"campo123"}' $B/api.php?action=login >/dev/null
 chk op-no-borra "$(curl -s -b $O "${J[@]}" -d '{"id":"RB16001"}' $B/api.php?action=deleteSilo)" 'Solo el administrador'
 chk op-no-mueve "$(curl -s -b $O "${J[@]}" -d '{"prevId":"RB16001","silo":{"id":"RB16001","lote":16,"kg":1,"map":[1,1]}}' $B/api.php?action=saveSilo)" 'permiso'
 chk op-alta "$(curl -s -b $O "${J[@]}" -d '{"silo":{"lote":3,"kg":5000,"map":[300,800],"t":1,"ang":0}}' $B/api.php?action=saveSilo)" '"creadoPor":"peon"'
 chk op-no-georef "$(curl -s -b $O "${J[@]}" -d "$GEO" $B/api.php?action=saveGeoref)" 'Solo el administrador'
+chk op-no-forma "$(curl -s -b $O "${J[@]}" -d "$SH" $B/api.php?action=saveShapes)" 'Solo el administrador'
 chk borrar "$(curl -s -b $A "${J[@]}" -d '{"id":"RB05001"}' $B/api.php?action=deleteSilo)" '"ok":true'
 code=$(curl -s -o /dev/null -w '%{http_code}' $B/api.php?action=nada); chk accion-desconocida "$code" 404
 echo "api: $pass OK, $fail fallas"; [ $fail -eq 0 ]

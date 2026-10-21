@@ -124,17 +124,101 @@ export function invert3(m) {
   ];
 }
 
-// Georreferencia: devuelve transformaciones o null si faltan puntos
+// Homografía por mínimos cuadrados (4 o más puntos), con normalización de Hartley
+function normT(pts) {
+  const n = pts.length, cx = pts.reduce((a, p) => a + p[0], 0) / n, cy = pts.reduce((a, p) => a + p[1], 0) / n;
+  const d = pts.reduce((a, p) => a + Math.hypot(p[0] - cx, p[1] - cy), 0) / n || 1, k = Math.SQRT2 / d;
+  return [[k, 0, -k * cx], [0, k, -k * cy], [0, 0, 1]];
+}
+const mul3 = (A, B) => A.map((r, i) => B[0].map((_, j) => r[0] * B[0][j] + r[1] * B[1][j] + r[2] * B[2][j]));
+export function homographyLSQ(src, dst) {
+  if (src.length < 4) return null;
+  const Ts = normT(src), Td = normT(dst);
+  const s = src.map(p => applyH(Ts, p)), d = dst.map(p => applyH(Td, p));
+  const N = Array.from({ length: 8 }, () => Array(8).fill(0)), v = Array(8).fill(0);
+  const add = (row, b) => { for (let i = 0; i < 8; i++) { v[i] += row[i] * b; for (let j = 0; j < 8; j++) N[i][j] += row[i] * row[j]; } };
+  s.forEach(([x, y], i) => {
+    const [u, w] = d[i];
+    add([x, y, 1, 0, 0, 0, -u * x, -u * y], u);
+    add([0, 0, 0, x, y, 1, -w * x, -w * y], w);
+  });
+  const h = solve(N, v); if (!h) return null;
+  const Hn = [[h[0], h[1], h[2]], [h[3], h[4], h[5]], [h[6], h[7], 1]];
+  const Tdi = invert3(Td); if (!Tdi) return null;
+  const H = mul3(mul3(Tdi, Hn), Ts);
+  return H.map(r => r.map(x => x / H[2][2]));
+}
+
+// Georreferencia: devuelve transformaciones o null si faltan puntos (mínimo 4)
+export function controlPoints(georef) {
+  return (georef?.points || []).filter(p => p.map && p.lat !== null && p.lng !== null && p.lat !== '' && p.lng !== '' && isFinite(p.lat) && isFinite(p.lng));
+}
 export function buildGeo(georef) {
-  const pts = (georef?.points || []).filter(p => isFinite(p.lat) && isFinite(p.lng) && p.lat !== null && p.lng !== null);
+  const pts = controlPoints(georef);
   if (pts.length < 4) return null;
-  const src = pts.map(p => p.map), dst = pts.map(p => [p.lng, p.lat]);
-  const H = homography(src, dst); if (!H) return null;
+  const src = pts.map(p => p.map), dst = pts.map(p => [+p.lng, +p.lat]);
+  const H = pts.length === 4 ? homography(src, dst) : homographyLSQ(src, dst);
+  if (!H) return null;
   const Hi = invert3(H); if (!Hi) return null;
-  return {
+  const geo = {
     toLatLng: p => { const [lng, lat] = applyH(H, p); return [lat, lng]; },
     toMap: (lat, lng) => applyH(Hi, [lng, lat]),
+    count: pts.length,
   };
+  // desvío de cada punto (metros) entre lo medido y lo que ubica el ajuste
+  geo.residuals = pts.map(p => ({ key: p.key, m: metersBetween([+p.lat, +p.lng], geo.toLatLng(p.map)) }));
+  return isFinite(geo.toLatLng(src[0])[0]) ? geo : null;
+}
+
+/* ---------- Esquinas de lotes con orientación (N, NE, E, SE, S, SO, O, NO) ---------- */
+const SECT = ['E', 'NE', 'N', 'NO', 'O', 'SO', 'S', 'SE'];
+export function sectorOf(dx, dy) { // y del mapa crece hacia el sur
+  const a = Math.atan2(-dy, dx), k = Math.round(a / (Math.PI / 4));
+  return SECT[(k + 8) % 8];
+}
+export function lotCorners(lot) {
+  const c = centroid(lot.poly);
+  const list = lot.poly.map((p, i) => ({ vi: i, map: p, sector: sectorOf(p[0] - c[0], p[1] - c[1]), ang: Math.atan2(-(p[1] - c[1]), p[0] - c[0]) }));
+  const order = SECT;
+  const groups = {};
+  list.forEach(v => (groups[v.sector] = groups[v.sector] || []).push(v));
+  Object.values(groups).forEach(g => {
+    if (g.length < 2) { g[0].label = g[0].sector; return; }
+    g.sort((a, b) => b.ang - a.ang).forEach((v, i) => { v.label = `${v.sector} ${i + 1}`; });
+  });
+  return list.sort((a, b) => order.indexOf(a.sector) - order.indexOf(b.sector) || a.label.localeCompare(b.label));
+}
+export const pointKey = (lote, vi) => `L${lote}-${vi}`;
+
+// Convierte puntos antiguos (esquinas fijas) al formato lote + vértice
+export function migrateGeoref(georef, lots) {
+  return {
+    points: (georef?.points || []).map(p => {
+      if (p.lote) return p;
+      for (const l of lots) {
+        const vi = l.poly.findIndex(q => p.map && dist(q, p.map) < 0.6);
+        if (vi >= 0) {
+          const c = lotCorners(l).find(x => x.vi === vi);
+          return { ...p, key: pointKey(l.num, vi), lote: l.num, vi, label: `Lote ${l.num} · ${c.label}` };
+        }
+      }
+      return p;
+    }),
+  };
+}
+
+// Punto interior más alejado de los bordes (para etiquetas)
+export function poleLabel(poly) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  poly.forEach(([x, y]) => { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); });
+  let best = null; const n = 40;
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+    const p = [x0 + ((x1 - x0) * (i + 0.5)) / n, y0 + ((y1 - y0) * (j + 0.5)) / n];
+    if (!pointInPoly(p, poly)) continue;
+    const d = snapToBorder(p, poly).dist;
+    if (!best || d > best.d) best = { d, p };
+  }
+  return best ? best.p.map(v => Math.round(v * 10) / 10) : centroid(poly);
 }
 
 // Área real (ha) de un polígono del mapa usando la georreferencia

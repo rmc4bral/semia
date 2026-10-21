@@ -159,7 +159,7 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
 }
 
 /* ---------- Configuración de lote ---------- */
-export function LotModal({ lot, state, me, geo, store, onClose, onSaved }) {
+export function LotModal({ lot, state, me, geo, store, onClose, onSaved, onShape }) {
   const toast = useToast();
   const isAdmin = me.rol === 'admin';
   const [f, setF] = useState(() => ({ num: String(lot.num), nombre: lot.nombre || '', ha: String(lot.ha), obs: lot.obs || '', subs: (lot.subs || []).map(s => ({ ...s, ha: String(s.ha) })) }));
@@ -185,7 +185,7 @@ export function LotModal({ lot, state, me, geo, store, onClose, onSaved }) {
 
   return (
     <Modal title={`Lote ${lot.num}`} subtitle={lot.nombre || 'Configuración del lote'} onClose={onClose}
-      footer={<><Button onClick={onClose}>{isAdmin ? 'Cancelar' : 'Cerrar'}</Button>{isAdmin && <Button variant="primary" icon="check" onClick={save} disabled={busy}>Guardar</Button>}</>}>
+      footer={<>{isAdmin && onShape && <Button variant="ghost" icon="edit" className="foot-left" onClick={() => onShape(lot.num)}>Ajustar forma</Button>}<Button onClick={onClose}>{isAdmin ? 'Cancelar' : 'Cerrar'}</Button>{isAdmin && <Button variant="primary" icon="check" onClick={save} disabled={busy}>Guardar</Button>}</>}>
       <div className="stat-row">
         <div><span className="muted small">Silobolsas</span><b>{silos.length}</b></div>
         <div><span className="muted small">Kg almacenados</span><b>{fmtKg(kg)}</b></div>
@@ -203,6 +203,7 @@ export function LotModal({ lot, state, me, geo, store, onClose, onSaved }) {
         <Field label="Observaciones" className="span-2"><TextArea value={f.obs} onChange={v => setF(x => ({ ...x, obs: v }))} rows={2} disabled={!isAdmin} /></Field>
       </div>
       {!isAdmin && <p className="muted small">Solo el administrador puede modificar los datos del lote.</p>}
+      {isAdmin && <p className="muted small">«Ajustar forma» abre el lote sobre la imagen satelital para mover sus vértices y corregir desfasajes.{lot.poly0 ? ' Este lote ya tiene la forma ajustada.' : ''}</p>}
     </Modal>
   );
 }

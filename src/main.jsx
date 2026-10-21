@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client';
 import { Logo, Icon, Button, Field, TextInput, Segmented, ToastProvider, useToast, fmtNum } from './ui.jsx';
 import { detectMode, createStore } from './store.js';
-import { buildGeo, locateLot } from './geo.js';
+import { buildGeo, locateLot, controlPoints } from './geo.js';
+import { cloneGeom, moveVertex, insertVertex, removeVertex, restoreLot, buildShapeChange, isLocked } from './shapes.js';
 import Map3D from './Map3D.jsx';
 import SatMap from './SatMap.jsx';
 import { SiloModal, LotModal } from './modals.jsx';
@@ -20,25 +21,31 @@ function useGps(enabled) {
     if (!enabled) return;
     if (!('geolocation' in navigator)) { setErr('Este dispositivo no tiene GPS disponible'); return; }
     const id = navigator.geolocation.watchPosition(
-      p => { setFix({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, ts: Date.now() }); setErr(null); },
+      p => { const f = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, ts: Date.now() }; lastLiveFix = f; setFix(f); setErr(null); },
       e => setErr(e.code === 1 ? 'Permiso de ubicación denegado' : 'Sin señal GPS'),
       { enableHighAccuracy: true, maximumAge: 4000, timeout: 25000 });
     return () => navigator.geolocation.clearWatch(id);
   }, [enabled]);
   return { fix, err };
 }
+// Toma un punto: mejor precisión durante unos segundos (usa también la última lectura en vivo si es reciente)
+let lastLiveFix = null;
 function captureFix(ms = 7000) {
   return new Promise((res, rej) => {
     if (!('geolocation' in navigator)) return rej(new Error('GPS no disponible en este dispositivo'));
-    let best = null;
-    const done = () => { navigator.geolocation.clearWatch(id); clearTimeout(tm); best ? res(best) : rej(new Error('No se obtuvo señal GPS. Reintentá al aire libre.')); };
-    const id = navigator.geolocation.watchPosition(p => {
+    let best = lastLiveFix && Date.now() - lastLiveFix.ts < 15000 ? { ...lastLiveFix } : null, over = false;
+    const take = p => {
       const f = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy };
       if (!best || f.acc < best.acc) best = f;
       if (f.acc <= 3) done();
-    }, e => { if (e.code === 1) { navigator.geolocation.clearWatch(id); clearTimeout(tm); rej(new Error('Permiso de ubicación denegado')); } },
-    { enableHighAccuracy: true, maximumAge: 0, timeout: ms });
-    const tm = setTimeout(done, ms);
+    };
+    const fail = e => { if (e.code === 1) { finish(); rej(new Error('Permiso de ubicación denegado')); } };
+    const opts = { enableHighAccuracy: true, maximumAge: 0, timeout: ms };
+    const id = navigator.geolocation.watchPosition(take, fail, opts);
+    navigator.geolocation.getCurrentPosition(take, fail, opts);
+    const tm = setTimeout(() => done(), ms);
+    function finish() { if (over) return false; over = true; navigator.geolocation.clearWatch(id); clearTimeout(tm); return true; }
+    function done() { if (!finish()) return; best ? res(best) : rej(new Error('No se obtuvo señal GPS. Reintentá al aire libre.')); }
   });
 }
 
@@ -78,10 +85,11 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
   const isAdmin = me.rol === 'admin';
   const [tab, setTab] = useState('mapa');
   const [view, setViewRaw] = useState(pref.get('view', '3d'));
-  const setView = v => { setViewRaw(v); pref.set('view', v); };
+  const setView = v => { setViewRaw(v); pref.set('view', v); if (v !== 'sat') setShape(null); };
   const [selLot, setSelLot] = useState(null), [selSilo, setSelSilo] = useState(null);
   const [pick, setPick] = useState(null), [moving, setMoving] = useState(null);
   const [draft, setDraft] = useState(null), [lotEdit, setLotEdit] = useState(null);
+  const [shape, setShape] = useState(null); // { lot, geom, hist, sel, locked }
   const { fix, err: gpsErr } = useGps(true);
   const geo = useMemo(() => buildGeo(state.georef), [state.georef]);
   const gpsMap = useMemo(() => (geo && fix ? geo.toMap(fix.lat, fix.lng) : null), [geo, fix]);
@@ -124,6 +132,39 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
       setState(st); toast(`Ubicación de ${s.id} corregida`, 'ok'); setMoving(null);
     } catch (e) { toast(e.message, 'error'); }
   }
+  /* ---------- Ajuste manual de forma ---------- */
+  function startShape(num) {
+    if (!geo) { toast('Primero cargá al menos 4 puntos de control en Ajustes', 'error'); setTab('ajustes'); return; }
+    setLotEdit(null); setDraft(null); setSelSilo(null); setMoving(null); setPick(null);
+    setTab('mapa'); setView('sat'); setSelLot(num);
+    setShape({ lot: num, geom: cloneGeom(state), hist: [], sel: null, locked: controlPoints(state.georef).map(p => p.map) });
+  }
+  const pushGeom = (g, extra = {}) => setShape(sh => ({ ...sh, geom: g, hist: [...sh.hist.slice(-40), sh.geom], ...extra }));
+  function onVertexMove(from, to) {
+    if (isLocked(from, shape.locked)) return;
+    pushGeom(moveVertex(shape.geom, from, to), { sel: to });
+  }
+  function onInsertVertex(num, i) { const r = insertVertex(shape.geom, num, i); pushGeom(r.geom, { sel: r.point }); }
+  function onRemoveVertex() {
+    const r = removeVertex(shape.geom, shape.sel);
+    if (r.error) return toast(r.error, 'error');
+    pushGeom(r.geom, { sel: null });
+  }
+  function onRestoreShape() {
+    const lot = lots.find(l => l.num === shape.lot);
+    if (!lot.poly0) return toast('Este lote conserva su forma original', 'info');
+    pushGeom(restoreLot(shape.geom, lot), { sel: null });
+  }
+  async function saveShape() {
+    const change = buildShapeChange(state, shape.geom, geo);
+    if (!change.lots.length && !change.outline) { setShape(null); return; }
+    try {
+      setState(await store.saveShapes(change, me));
+      toast(`Forma guardada (${change.lots.length} lote${change.lots.length === 1 ? '' : 's'}${change.silos.length ? `, ${change.silos.length} silos reubicados en el borde` : ''})`, 'ok');
+      setShape(null);
+    } catch (e) { toast(e.message, 'error'); }
+  }
+
   function exportCsv() {
     const head = ['ID', 'Lote', 'Kg', 'Grano', 'Observacion', 'Latitud', 'Longitud', 'Precision_m', 'Origen', 'Registrado_por', 'Fecha'];
     const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -154,7 +195,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
 
       <nav className="nav">
         {tabs.map(t => (
-          <button type="button" key={t.k} className={tab === t.k ? 'is-on' : ''} onClick={() => { setTab(t.k); setPick(null); }}>
+          <button type="button" key={t.k} className={tab === t.k ? 'is-on' : ''} onClick={() => { setTab(t.k); setPick(null); if (t.k !== 'mapa') setShape(null); }}>
             <Icon name={t.icon} size={20} /><span>{t.label}</span>
           </button>
         ))}
@@ -167,26 +208,39 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
             <Kpis state={state} />
             <div className="dash-body">
               <div className="card map-card">
-                <div className="map-top">
+                {!shape && <div className="map-top">
                   <Segmented size="sm" value={view} onChange={setView} options={[{ value: '3d', label: 'Plano 3D', icon: 'cube' }, { value: 'sat', label: 'Satélite', icon: 'sat' }]} />
-                </div>
+                </div>}
                 {view === '3d' ? (
                   <Map3D data={state} silos={state.silos} selectedLot={selLot} onSelectLot={setSelLot} selectedSilo={selSilo} onSelectSilo={setSelSilo}
                     pickMode={!!pick} onPick={onPick} moving={moving} onMoveDraft={sn => setMoving(m => ({ ...m, map: sn.point, t: sn.t, ang: sn.angle }))}
                     gpsMap={gpsMap} isAdmin={isAdmin} onEditLot={setLotEdit} onOpenSilo={openSilo} onStartMove={startMove} />
                 ) : (
                   <SatMap data={state} silos={state.silos} geo={geo} selectedLot={selLot} onSelectLot={setSelLot} selectedSilo={selSilo}
-                    onSelectSilo={id => { setSelSilo(id); }} pickMode={!!pick} onPick={onPick} gps={fix} onNeedGeoref={() => setTab('ajustes')} />
+                    onSelectSilo={id => { setSelSilo(id); }} pickMode={!!pick} onPick={onPick} gps={fix} onNeedGeoref={() => setTab('ajustes')}
+                    editing={shape} onVertexMove={onVertexMove} onInsertVertex={onInsertVertex} onSelectVertex={pt => setShape(sh => ({ ...sh, sel: pt }))} />
+                )}
+                {shape && (
+                  <div className="map-banner edit-bar">
+                    <div className="edit-bar-txt"><Icon name="edit" size={18} /><span><b>Ajustando lote {shape.lot}</b> · arrastrá los vértices; <b>+</b> agrega uno. Los vértices compartidos mueven también al lote vecino.{shape.locked.length ? ' Los puntos GPS quedan fijos.' : ''}</span></div>
+                    <div className="edit-bar-act">
+                      <Button size="sm" variant="ghost" icon="rotl" disabled={!shape.hist.length} onClick={() => setShape(sh => ({ ...sh, geom: sh.hist[sh.hist.length - 1], hist: sh.hist.slice(0, -1), sel: null }))}>Deshacer</Button>
+                      <Button size="sm" variant="ghost" icon="trash" disabled={!shape.sel} onClick={onRemoveVertex}>Quitar vértice</Button>
+                      <Button size="sm" variant="ghost" onClick={onRestoreShape}>Original</Button>
+                      <Button size="sm" onClick={() => setShape(null)}>Cancelar</Button>
+                      <Button size="sm" variant="primary" icon="check" onClick={saveShape}>Guardar</Button>
+                    </div>
+                  </div>
                 )}
                 {pick && <div className="map-banner"><Icon name="pin" size={18} /><span>Tocá el borde del lote donde está el silo</span><Button size="sm" onClick={() => setPick(null)}>Cancelar</Button></div>}
                 {moving && <div className="map-banner"><Icon name="move" size={18} /><span>Arrastrá <b className="mono">{moving.id}</b> por el borde del lote {moving.lote}</span><Button size="sm" onClick={() => setMoving(null)}>Cancelar</Button><Button size="sm" variant="primary" onClick={saveMove}>Guardar</Button></div>}
-                {view === 'sat' && selSilo && !moving && (() => { const s = state.silos.find(x => x.id === selSilo); return s ? (
+                {view === 'sat' && selSilo && !moving && !shape && (() => { const s = state.silos.find(x => x.id === selSilo); return s ? (
                   <div className="lot-bar"><div className="lot-bar-main"><b className="mono">{s.id}</b><span className="muted">{fmtNum(s.kg)} kg · lote {s.lote}</span></div><Button size="sm" onClick={() => openSilo(s.id)}>Detalle</Button></div>) : null; })()}
-                {lot && !moving && !pick && !(view === 'sat' && selSilo) && <div className="only-mobile"><LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} compact /></div>}
-                {!moving && !pick && <button type="button" className="fab" onClick={onAdd} aria-label="Agregar silobolsa"><Icon name="plus" size={26} /></button>}
+                {lot && !moving && !pick && !shape && !(view === 'sat' && selSilo) && <div className="only-mobile"><LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onShape={isAdmin && view === 'sat' && geo ? startShape : null} compact /></div>}
+                {!moving && !pick && !shape && <button type="button" className="fab" onClick={onAdd} aria-label="Agregar silobolsa"><Icon name="plus" size={26} /></button>}
               </div>
               <aside className="side-panel">
-                {lot ? <LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onSelectSilo={id => setSelSilo(id)} /> : <RecentPanel state={state} onSelectSilo={id => { const s = state.silos.find(x => x.id === id); if (s) { setSelLot(s.lote); setSelSilo(id); } }} />}
+                {lot ? <LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onShape={isAdmin ? startShape : null} onSelectSilo={id => setSelSilo(id)} /> : <RecentPanel state={state} onSelectSilo={id => { const s = state.silos.find(x => x.id === id); if (s) { setSelLot(s.lote); setSelSilo(id); } }} />}
               </aside>
             </div>
           </div>
@@ -200,7 +254,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
         onSaved={(st, id) => { setState(st); setDraft(null); setSelSilo(id); if (id) { const s = st.silos.find(x => x.id === id); if (s) setSelLot(s.lote); } }}
         onRelocate={form => { setDraft(null); setTab('mapa'); if (view === 'sat' && !geo) setView('3d'); setPick({ purpose: 'relocate', form: { kg: form.kg, grano: form.grano, obs: form.obs, fotoData: form.fotoData } }); }}
         onStartMove={startMove} />}
-      {lotEdit != null && lots.find(l => l.num === lotEdit) && <LotModal lot={lots.find(l => l.num === lotEdit)} state={state} me={me} geo={geo} store={store} onClose={() => setLotEdit(null)}
+      {lotEdit != null && lots.find(l => l.num === lotEdit) && <LotModal lot={lots.find(l => l.num === lotEdit)} state={state} me={me} geo={geo} store={store} onClose={() => setLotEdit(null)} onShape={startShape}
         onSaved={(st, num) => { setState(st); setLotEdit(null); setSelLot(num); }} />}
     </div>
   );

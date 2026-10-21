@@ -1651,53 +1651,13 @@
    ]
   ]
  },
- "anchors": [
-  {
-   "key": "NO",
-   "label": "Esquina NO (lote 21)",
-   "map": [
-    10,
-    5
-   ]
-  },
-  {
-   "key": "NE1",
-   "label": "Inicio ochava NE (lote 24)",
-   "map": [
-    693,
-    17
-   ]
-  },
-  {
-   "key": "NE",
-   "label": "Esquina NE (lote 24, ochava)",
-   "map": [
-    740,
-    50
-   ]
-  },
-  {
-   "key": "SE",
-   "label": "Esquina SE (lote 6)",
-   "map": [
-    740,
-    898
-   ]
-  },
-  {
-   "key": "SO",
-   "label": "Esquina SO (lote 1)",
-   "map": [
-    2,
-    893
-   ]
-  }
- ],
  "georef": {
   "points": [
    {
-    "key": "NO",
-    "label": "Esquina NO (lote 21)",
+    "key": "L21-0",
+    "lote": 21,
+    "vi": 0,
+    "label": "Lote 21 · NO",
     "map": [
      10,
      5
@@ -1708,8 +1668,10 @@
     "at": null
    },
    {
-    "key": "NE",
-    "label": "Esquina NE (lote 24, ochava)",
+    "key": "L24-2",
+    "lote": 24,
+    "vi": 2,
+    "label": "Lote 24 · E",
     "map": [
      740,
      50
@@ -1720,8 +1682,10 @@
     "at": null
    },
    {
-    "key": "SE",
-    "label": "Esquina SE (lote 6)",
+    "key": "L6-2",
+    "lote": 6,
+    "vi": 2,
+    "label": "Lote 6 · SE",
     "map": [
      740,
      898
@@ -1732,8 +1696,10 @@
     "at": null
    },
    {
-    "key": "SO",
-    "label": "Esquina SO (lote 1)",
+    "key": "L1-4",
+    "lote": 1,
+    "vi": 4,
+    "label": "Lote 1 · SO",
     "map": [
      2,
      893
@@ -1751,7 +1717,7 @@
    "user": "rodma",
    "nombre": "R. Maldonado",
    "rol": "admin",
-   "hash": "$2y$10$9Aksko5DO7POrDySLFxsaemWIJOI49RkS.69IhSofWnugGRNR2NHG"
+   "hash": "$2y$10$wE8mR6BlzwA1icQFcj424OHuN.dDFMttA46qX7s7hBEDm3XPohLji"
   }
  ]
 }

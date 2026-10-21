@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Button, Field, TextInput, Select, Segmented, Icon, useToast, fmtKg, fmtNum, fmtDate } from './ui.jsx';
-import { areaHa } from './geo.js';
+import { areaHa, lotCorners, migrateGeoref, pointKey } from './geo.js';
 import { PhotoView, GRANOS } from './modals.jsx';
 
 const sumKg = arr => arr.reduce((a, s) => a + (+s.kg || 0), 0);
@@ -23,7 +23,7 @@ export function Kpis({ state }) {
   );
 }
 
-export function LotPanel({ lot, state, geo, onEdit, onSelectSilo, compact }) {
+export function LotPanel({ lot, state, geo, onEdit, onShape, onSelectSilo, compact }) {
   if (!lot) return null;
   const silos = state.silos.filter(s => s.lote === lot.num);
   const kg = sumKg(silos);
@@ -32,13 +32,14 @@ export function LotPanel({ lot, state, geo, onEdit, onSelectSilo, compact }) {
     return (
       <div className="lot-bar">
         <div className="lot-bar-main"><b>Lote {lot.num}</b><span className="muted">{lot.ha} ha · {silos.length} silo{silos.length === 1 ? '' : 's'} · {fmtT(kg)}</span></div>
+        {onShape && <Button size="sm" variant="ghost" icon="edit" onClick={() => onShape(lot.num)}>Ajustar</Button>}
         <Button variant="ghost" icon="gear" onClick={() => onEdit(lot.num)} aria-label="Configurar lote" />
       </div>
     );
   }
   return (
     <section className="panel-sec">
-      <div className="panel-head"><h3>Lote {lot.num}{lot.nombre ? <span className="muted"> · {lot.nombre}</span> : null}</h3><Button size="sm" variant="ghost" icon="gear" onClick={() => onEdit(lot.num)}>Configurar</Button></div>
+      <div className="panel-head"><h3>Lote {lot.num}{lot.nombre ? <span className="muted"> · {lot.nombre}</span> : null}</h3><div className="row gap-s">{onShape && <Button size="sm" variant="ghost" icon="edit" onClick={() => onShape(lot.num)}>Ajustar forma</Button>}<Button size="sm" variant="ghost" icon="gear" onClick={() => onEdit(lot.num)}>Configurar</Button></div></div>
       <div className="stat-row">
         <div><span className="muted small">Hectáreas</span><b>{lot.ha}</b></div>
         <div><span className="muted small">Silos</span><b>{silos.length}</b></div>
@@ -128,18 +129,48 @@ export function LotsScreen({ state, onEditLot, onShowLot }) {
   );
 }
 
+/* Mini plano del lote con la esquina elegida */
+function LotMini({ lot, vi, n }) {
+  if (!lot) return <span className="geo-n">{n}</span>;
+  const xs = lot.poly.map(p => p[0]), ys = lot.poly.map(p => p[1]);
+  const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0 || 1, h = Math.max(...ys) - y0 || 1, k = 34 / Math.max(w, h);
+  const P = p => [7 + (p[0] - x0) * k + (34 - w * k) / 2, 7 + (p[1] - y0) * k + (34 - h * k) / 2];
+  const v = lot.poly[vi] ? P(lot.poly[vi]) : null;
+  return (
+    <svg className="geo-mini" width="48" height="48" viewBox="0 0 48 48" aria-label={`Punto ${n}`}>
+      <polygon points={lot.poly.map(p => P(p).join(',')).join(' ')} />
+      {v && <circle cx={v[0]} cy={v[1]} r="4.5" />}
+      <text x="41" y="10">N</text><text x="5" y="10" className="geo-mini-n">{n}</text>
+    </svg>
+  );
+}
+
 /* ---------- Pantalla Ajustes ---------- */
 export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, setTheme, onState, onLogout, mode }) {
   const toast = useToast();
   const isAdmin = me.rol === 'admin';
-  const [pts, setPts] = useState(() => state.georef.points.map(p => ({ ...p, lat: p.lat ?? '', lng: p.lng ?? '' })));
+  const [pts, setPts] = useState(() => migrateGeoref(state.georef, state.lots).points.map(p => ({ ...p, lat: p.lat ?? '', lng: p.lng ?? '' })));
   const [taking, setTaking] = useState(null);
   const [est, setEst] = useState({ nombre: state.estancia.nombre, sigla: state.estancia.sigla });
   const [nu, setNu] = useState({ user: '', nombre: '', pass: '', rol: 'operador' });
   const [myPass, setMyPass] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
   const imp = useRef(null);
-  const anchorOpts = state.anchors.map(a => ({ value: a.key, label: a.label }));
+  const lotOpts = state.lots.map(l => ({ value: l.num, label: `Lote ${l.num}`, meta: `${l.ha} ha` }));
+  const cornersOf = num => { const l = state.lots.find(x => x.num === num); return l ? lotCorners(l) : []; };
+  const resid = Object.fromEntries((geo?.residuals || []).map(r => [r.key, r.m]));
+  const setPt = (i, patch) => setPts(a => a.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const choose = (i, lote, vi) => {
+    const cs = cornersOf(lote), c = cs.find(x => x.vi === vi) || cs[0];
+    setPt(i, { lote, vi: c.vi, key: pointKey(lote, c.vi), map: c.map, label: `Lote ${lote} · ${c.label}` });
+  };
+  const addPt = () => {
+    const used = new Set(pts.map(p => p.key));
+    for (const l of state.lots) for (const c of lotCorners(l)) {
+      const k = pointKey(l.num, c.vi);
+      if (!used.has(k)) { setPts(a => [...a, { key: k, lote: l.num, vi: c.vi, map: c.map, label: `Lote ${l.num} · ${c.label}`, lat: '', lng: '', acc: null, at: null }]); return; }
+    }
+  };
 
   const declared = state.lots.reduce((a, l) => a + l.ha, 0);
   const measured = geo ? state.lots.reduce((a, l) => a + areaHa(l.poly, geo), 0) : null;
@@ -154,15 +185,15 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
   }
   async function saveGeo() {
     const out = pts.map(p => {
-      const a = state.anchors.find(x => x.key === p.key);
       const lat = p.lat === '' ? null : Number(String(p.lat).replace(',', '.')), lng = p.lng === '' ? null : Number(String(p.lng).replace(',', '.'));
-      return { ...p, label: a?.label || p.label, map: a?.map || p.map, lat, lng };
+      return { key: p.key, lote: p.lote, vi: p.vi, label: p.label, map: p.map, lat, lng, acc: p.acc ?? null, at: p.at ?? null };
     });
+    if (out.some(p => !p.lote)) return toast('Elegí lote y esquina en todos los puntos', 'error');
     if (out.some(p => (p.lat !== null && !(Math.abs(p.lat) <= 90)) || (p.lng !== null && !(Math.abs(p.lng) <= 180)))) return toast('Coordenadas fuera de rango', 'error');
-    if (new Set(out.map(p => p.key)).size < 4) return toast('Cada punto debe corresponder a una esquina distinta', 'error');
+    if (new Set(out.map(p => p.key)).size < out.length) return toast('Hay dos puntos en la misma esquina', 'error');
     try { onState(await store.saveGeoref({ points: out }, me)); toast('Georreferencia guardada', 'ok'); } catch (e) { toast(e.message, 'error'); }
   }
-  const clearPt = i => setPts(a => a.map((p, j) => (j === i ? { ...p, lat: '', lng: '', acc: null, at: null } : p)));
+  const clearPt = i => setPt(i, { lat: '', lng: '', acc: null, at: null });
   const done = pts.filter(p => p.lat !== '' && p.lng !== '').length;
 
   async function run(fn, ok) { try { onState(await fn()); if (ok) toast(ok, 'ok'); return true; } catch (e) { toast(e.message, 'error'); return false; } }
@@ -182,26 +213,37 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
       <div className="screen-head"><div><h1>Ajustes</h1><p className="muted">{me.nombre} · {me.rol === 'admin' ? 'Administrador' : 'Operador'} · {mode === 'local' ? 'Modo local' : 'Servidor'}</p></div></div>
       <div className="settings">
         <section className="card set-sec">
-          <div className="panel-head"><h3><Icon name="gps" size={18} /> Georreferencia del mapa</h3><span className={`badge ${geo ? 'badge-ok' : ''}`}>{geo ? 'Activa' : `${done}/4 puntos`}</span></div>
-          <p className="muted small">Parate en cada esquina del campo y tocá el ícono de ubicación. Se promedia la mejor lectura durante unos segundos. Con los 4 puntos guardados se ubica el plano sobre el mapa satelital.</p>
+          <div className="panel-head"><h3><Icon name="gps" size={18} /> Puntos de control</h3><span className={`badge ${geo ? 'badge-ok' : ''}`}>{geo ? `Activa · ${geo.count} puntos` : `${done}/4 mínimo`}</span></div>
+          <p className="muted small">Elegí cualquier lote y su esquina (N, NE, E, SE, S, SO, O, NO), parate en ese punto y tocá el ícono de ubicación. Con 4 puntos el plano se ubica sobre el satélite; con más puntos el ajuste es más preciso y se informa el desvío de cada uno.</p>
           <div className="geo-pts">
-            {pts.map((p, i) => (
-              <div className="geo-pt" key={i}>
-                <div className="geo-pt-head"><span className="geo-n">{i + 1}</span>
-                  <Field label="Esquina del plano" className="grow"><Select value={p.key} options={anchorOpts} onChange={v => setPts(a => a.map((x, j) => (j === i ? { ...x, key: v } : x)))} disabled={!isAdmin} /></Field>
-                </div>
-                <div className="geo-pt-row">
-                  <Field label="Latitud"><TextInput value={p.lat} onChange={v => setPts(a => a.map((x, j) => (j === i ? { ...x, lat: v } : x)))} inputMode="text" placeholder="-36.1234567" disabled={!isAdmin} /></Field>
-                  <Field label="Longitud"><TextInput value={p.lng} onChange={v => setPts(a => a.map((x, j) => (j === i ? { ...x, lng: v } : x)))} inputMode="text" placeholder="-60.1234567" disabled={!isAdmin} /></Field>
-                  <div className="geo-act">
-                    <Button variant="primary" icon="gps" onClick={() => take(i)} disabled={!isAdmin || taking !== null} aria-label={`Usar mi ubicación para el punto ${i + 1}`}>{taking === i ? 'Tomando…' : null}</Button>
-                    {(p.lat !== '' || p.lng !== '') && isAdmin && <Button variant="ghost" icon="close" onClick={() => clearPt(i)} aria-label="Borrar punto" />}
+            {pts.map((p, i) => {
+              const lot = state.lots.find(l => l.num === p.lote);
+              const cs = cornersOf(p.lote);
+              return (
+                <div className="geo-pt" key={i}>
+                  <div className="geo-pt-head">
+                    <LotMini lot={lot} vi={p.vi} n={i + 1} />
+                    <Field label="Lote" className="grow"><Select value={p.lote} options={lotOpts} onChange={v => choose(i, v, 0)} disabled={!isAdmin} /></Field>
+                    <Field label="Esquina" className="grow"><Select value={p.vi} options={cs.map(c => ({ value: c.vi, label: c.label }))} onChange={v => choose(i, p.lote, v)} disabled={!isAdmin} /></Field>
+                  </div>
+                  <div className="geo-pt-row">
+                    <Field label="Latitud"><TextInput value={p.lat} onChange={v => setPt(i, { lat: v })} inputMode="text" placeholder="-36.1234567" disabled={!isAdmin} /></Field>
+                    <Field label="Longitud"><TextInput value={p.lng} onChange={v => setPt(i, { lng: v })} inputMode="text" placeholder="-60.1234567" disabled={!isAdmin} /></Field>
+                    <div className="geo-act">
+                      <Button variant="primary" icon="gps" onClick={() => take(i)} disabled={!isAdmin || taking !== null} aria-label={`Usar mi ubicación para el punto ${i + 1}`}>{taking === i ? 'Tomando…' : null}</Button>
+                      {isAdmin && (p.lat !== '' || p.lng !== '') && <Button variant="ghost" icon="close" onClick={() => clearPt(i)} aria-label="Borrar coordenadas" />}
+                      {isAdmin && pts.length > 4 && <Button variant="ghost" icon="trash" onClick={() => setPts(a => a.filter((_, j) => j !== i))} aria-label="Quitar punto" />}
+                    </div>
+                  </div>
+                  <div className="geo-meta muted small">
+                    {p.acc != null && <span>GPS ±{p.acc} m · {fmtDate(p.at)}</span>}
+                    {resid[p.key] != null && geo.count > 4 && <span className={resid[p.key] > 15 ? 'warn' : ''}>Desvío del ajuste: {fmtNum(resid[p.key], 1)} m</span>}
                   </div>
                 </div>
-                {p.acc != null && <span className="muted small">Precisión ±{p.acc} m · {fmtDate(p.at)}</span>}
-              </div>
-            ))}
+              );
+            })}
           </div>
+          {isAdmin && pts.length < 12 && <Button icon="plus" onClick={addPt}>Agregar punto de control</Button>}
           {measured && <p className="small">Superficie calculada: <b>{fmtNum(measured)} ha</b> · declarada {fmtNum(declared)} ha ({measured >= declared ? '+' : ''}{fmtNum(((measured - declared) / declared) * 100, 1)} %)</p>}
           <div className="row end gap-s">
             {gps && <span className="muted small grow">Tu GPS: ±{Math.round(gps.acc)} m</span>}

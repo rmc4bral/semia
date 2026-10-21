@@ -65,6 +65,23 @@ function localSave(d) {
 const publicState = d => { const o = clone(d); o.users = (o.users || []).map(({ sha, hash, ...u }) => u); return o; };
 const isAdmin = me => me && me.rol === 'admin';
 
+// Misma lógica que api.php → saveShapes (modo local)
+function applyShapes(d, change) {
+  const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.6;
+  (change.lots || []).forEach(nl => {
+    const l = d.lots.find(x => x.num === nl.num); if (!l) return;
+    if (!l.poly0) l.poly0 = l.poly;
+    l.poly = nl.poly; l.label = nl.label;
+    (nl.subs || []).forEach(ns => { const s = l.subs.find(x => x.id === ns.id); if (s) { if (!s.poly0) s.poly0 = s.poly; s.poly = ns.poly; s.label = ns.label; } });
+  });
+  if (change.outline) d.outline = change.outline;
+  (change.silos || []).forEach(u => { const s = d.silos.find(x => x.id === u.id); if (s) Object.assign(s, { map: u.map, t: u.t, ang: u.ang, latlng: u.latlng }); });
+  (d.georef?.points || []).forEach(p => {
+    const l = d.lots.find(x => x.num === p.lote); if (!l || !p.map) return;
+    const vi = l.poly.findIndex(q => near(q, p.map)); if (vi >= 0) { p.vi = vi; p.key = `L${p.lote}-${vi}`; }
+  });
+}
+
 export function createStore(mode) {
   const local = mode === 'local';
   return {
@@ -134,6 +151,15 @@ export function createStore(mode) {
         const d = localLoad(); d.georef = georef; localSave(d); return publicState(d);
       }
       return (await api('saveGeoref', { georef })).state;
+    },
+    async saveShapes(change, me) {
+      if (local) {
+        if (!isAdmin(me)) throw new Error('Solo el administrador puede ajustar lotes');
+        const d = localLoad();
+        applyShapes(d, change);
+        localSave(d); return publicState(d);
+      }
+      return (await api('saveShapes', { change })).state;
     },
     async saveEstancia(estancia, me) {
       if (local) {

@@ -7,7 +7,8 @@ shutil.copy(ROOT / 'public_html/data.seed.json', SRV / 'data.json')
 for f in (SRV / 'uploads').glob('*.jpg'): f.unlink()
 data = json.loads((ROOT / 'public_html/data.seed.json').read_text())
 CORN = {'NO': (-35.9, -60.42), 'NE': (-35.9025, -60.33), 'SE': (-35.995, -60.333), 'SO': (-35.992, -60.425)}
-src = [p['map'] for p in data['georef']['points']]; dst = [(CORN[p['key']][1], CORN[p['key']][0]) for p in data['georef']['points']]
+CK = ['NO', 'NE', 'SE', 'SO']
+src = [p['map'] for p in data['georef']['points']]; dst = [(CORN[k][1], CORN[k][0]) for k in CK]
 A = []; b = []
 for (x, y), (u, v) in zip(src, dst):
     A += [[x, y, 1, 0, 0, 0, -u*x, -u*y], [0, 0, 0, x, y, 1, -v*x, -v*y]]; b += [u, v]
@@ -72,7 +73,7 @@ with sync_playwright() as p:
         check(page.inner_text('.modal h2') == 'Lote 16', f'{tag}: tuerca abre configuración del lote')
         page.click('.modal-head button')
         # georreferenciar vía API y ubicar GPS dentro del lote 16
-        r = page.request.post(URL + '/api.php?action=saveGeoref', data=json.dumps({'georef': {'points': [{'key': k, 'lat': v[0], 'lng': v[1]} for k, v in CORN.items() if k in ('NO','NE','SE','SO')]}}), headers={'Content-Type': 'application/json'})
+        r = page.request.post(URL + '/api.php?action=saveGeoref', data=json.dumps({'georef': {'points': [{'lote': p['lote'], 'vi': p['vi'], 'label': p['label'], 'lat': CORN[k][0], 'lng': CORN[k][1]} for p, k in zip(data['georef']['points'], CK)]}}), headers={'Content-Type': 'application/json'})
         check(r.ok, f'{tag}: georreferencia guardada')
         la, lo = latlng(lot16['label']); ctx.set_geolocation({'latitude': la, 'longitude': lo})
         page.reload(); page.wait_for_selector('.map3d-svg'); page.wait_for_timeout(1200)
@@ -112,6 +113,32 @@ with sync_playwright() as p:
         page.click('.seg button:has-text("Satélite")'); page.wait_for_selector('.leaflet-container'); page.wait_for_timeout(500)
         check(page.locator('path.sat-lot').count() == 25, f'{tag}: lotes superpuestos en satélite')
         check(page.locator('.sat-silo').count() == 2, f'{tag}: silos en satélite')
+        # ajuste manual de la forma del lote 16 sobre el satélite
+        btn = '.side-panel button:has-text("Ajustar forma")' if vp[0] > 500 else '.lot-bar button:has-text("Ajustar")'
+        if vp[0] < 500:  # quitar la selección del silo tocando fuera del campo
+            mb = page.locator('.satmap-el').bounding_box(); page.mouse.click(mb['x'] + mb['width'] / 2, mb['y'] + 58); page.wait_for_timeout(300)
+        page.click(btn); page.wait_for_selector('.edit-bar'); page.wait_for_timeout(600)
+        n0 = len(lot16['poly'])
+        check(page.locator('.v-handle').count() == n0 and page.locator('.v-mid').count() == n0, f'{tag}: manijas de vértices y de agregar')
+        page.locator('.v-mid').nth(1).click(); page.wait_for_timeout(200)
+        check(page.locator('.v-handle').count() == n0 + 1, f'{tag}: agrega vértice')
+        page.click('.edit-bar button:has-text("Deshacer")'); page.wait_for_timeout(200)
+        check(page.locator('.v-handle').count() == n0, f'{tag}: deshacer')
+        hb = page.locator('.v-handle').nth(0).bounding_box(); cx, cy = hb['x'] + hb['width'] / 2, hb['y'] + hb['height'] / 2
+        page.mouse.move(cx, cy); page.mouse.down(); page.mouse.move(cx + 25, cy + 18, steps=10); page.mouse.up(); page.wait_for_timeout(300)
+        page.click('.edit-bar button:has-text("Guardar")'); page.wait_for_selector('.edit-bar', state='detached')
+        st2 = page.request.get(URL + '/api.php?action=state').json()['state']
+        L16 = next(l for l in st2['lots'] if l['num'] == 16)
+        moved_from = lot16['poly'][0]; moved_to = L16['poly'][0]
+        check(L16.get('poly0') == lot16['poly'] and moved_to != moved_from, f'{tag}: forma ajustada guardada con original de respaldo')
+        neigh = [l for l in data['lots'] if l['num'] != 16 and any(abs(q[0]-moved_from[0]) < .6 and abs(q[1]-moved_from[1]) < .6 for q in l['poly'])]
+        check(neigh and all(any(abs(q[0]-moved_to[0]) < .01 and abs(q[1]-moved_to[1]) < .01 for q in next(x for x in st2['lots'] if x['num'] == n['num'])['poly']) for n in neigh), f'{tag}: lote vecino acompaña ({[n["num"] for n in neigh]})')
+        def onb(q, poly):
+            best = 9e9
+            for a, c in zip(poly, poly[1:] + poly[:1]):
+                d = np.array(c) - a; k = max(0, min(1, np.dot(np.array(q) - a, d) / np.dot(d, d))); best = min(best, np.linalg.norm(np.array(q) - (np.array(a) + d * k)))
+            return best
+        check(all(onb(s_['map'], L16['poly']) < 0.05 for s_ in st2['silos'] if s_['lote'] == 16), f'{tag}: silos siguen sobre el borde ajustado')
         page.click('.seg button:has-text("Plano 3D")')
         # pantallas
         page.click('.nav button:has-text("Silos")'); page.wait_for_selector('.silo-row')
@@ -119,6 +146,20 @@ with sync_playwright() as p:
         page.click('.nav button:has-text("Lotes")'); check(page.locator('.lot-card').count() == 25, f'{tag}: listado de lotes'); layout_checks(page, tag + ' lotes')
         page.click('.nav button:has-text("Ajustes")'); check(page.locator('.geo-pt').count() == 4, f'{tag}: 4 puntos de georreferencia')
         check('Activa' in page.inner_text('.badge'), f'{tag}: georreferencia activa'); layout_checks(page, tag + ' ajustes')
+        check('Lote 21' in page.locator('.geo-pt').nth(0).inner_text() and 'NO' in page.locator('.geo-pt').nth(0).inner_text(), f'{tag}: punto 1 = lote 21 esquina NO')
+        # quinto punto en cualquier lote, por orientación
+        page.click('button:has-text("Agregar punto de control")'); check(page.locator('.geo-pt').count() == 5, f'{tag}: agrega quinto punto')
+        last = page.locator('.geo-pt').nth(4)
+        last.locator('.select').nth(0).click(); page.click('.select-opt:has-text("Lote 16")')
+        last.locator('.select').nth(1).click(); opts = page.locator('.select-opt').all_inner_texts()
+        check(all(o.split()[0] in ('N','NE','E','SE','S','SO','O','NO') for o in opts), f'{tag}: esquinas por orientación {opts}')
+        page.locator('.select-opt').first.click()
+        vi = next(c for c in range(len(L16['poly'])) if True)
+        ctx.set_geolocation({'latitude': la, 'longitude': lo, 'accuracy': 3})
+        last.locator('.geo-act .btn-primary').click(); page.wait_for_function("() => document.querySelectorAll('.geo-pt')[4].querySelector('input').value !== ''", timeout=12000)
+        page.click('button:has-text("Guardar georreferencia")'); page.wait_for_timeout(500)
+        check('5 puntos' in page.inner_text('.badge'), f'{tag}: ajuste con 5 puntos')
+        check(page.locator('.geo-meta:has-text("Desvío")').count() == 5, f'{tag}: desvío informado por punto')
         # temas: mismas superficies de la paleta
         for th in ('dark', 'light'):
             page.evaluate(f"document.documentElement.dataset.theme='{th}'")

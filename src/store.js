@@ -152,6 +152,36 @@ export function createStore(mode) {
       }
       return (await api('saveGeoref', { georef })).state;
     },
+    /* ---------- Mapas propios (ortomosaicos / imágenes) ---------- */
+    async uploadMap(map, dataUrl, me) {
+      if (local) {
+        if (!isAdmin(me)) throw new Error('Solo el administrador puede subir mapas');
+        const id = 'm' + Date.now().toString(36);
+        await idbPut('map-' + id, dataUrl);
+        const d = localLoad(); d.maps = d.maps || [];
+        d.maps.push({ ...map, id, src: `idb:map-${id}`, creadoPor: me.user, creadoEn: new Date().toISOString() });
+        localSave(d); return { state: publicState(d), id };
+      }
+      const j = await api('uploadMap', { map, data: dataUrl });
+      return { state: j.state, id: j.id };
+    },
+    async saveMap(map, me) {
+      if (local) {
+        if (!isAdmin(me)) throw new Error('Solo el administrador');
+        const d = localLoad(); const i = (d.maps || []).findIndex(m => m.id === map.id);
+        if (i < 0) throw new Error('El mapa ya no existe');
+        d.maps[i] = { ...d.maps[i], nombre: map.nombre, fecha: map.fecha, corners: map.corners }; localSave(d); return publicState(d);
+      }
+      return (await api('saveMap', { map })).state;
+    },
+    async deleteMap(id, me) {
+      if (local) {
+        if (!isAdmin(me)) throw new Error('Solo el administrador');
+        const d = localLoad(); d.maps = (d.maps || []).filter(m => m.id !== id); localSave(d);
+        idbDel('map-' + id).catch(() => {}); return publicState(d);
+      }
+      return (await api('deleteMap', { id })).state;
+    },
     async saveShapes(change, me) {
       if (local) {
         if (!isAdmin(me)) throw new Error('Solo el administrador puede ajustar lotes');

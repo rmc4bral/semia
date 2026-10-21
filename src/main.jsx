@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Logo, Icon, Button, Field, TextInput, Segmented, ToastProvider, useToast, fmtNum } from './ui.jsx';
-import { detectMode, createStore } from './store.js';
+import { Logo, Icon, Button, Field, TextInput, Segmented, Select, ToastProvider, useToast, fmtNum } from './ui.jsx';
+import { detectMode, createStore, resolvePhoto } from './store.js';
+import { fmtFecha } from './maplayers.js';
 import { buildGeo, locateLot, controlPoints } from './geo.js';
 import { cloneGeom, moveVertex, insertVertex, removeVertex, restoreLot, buildShapeChange, isLocked } from './shapes.js';
 import Map3D from './Map3D.jsx';
 import SatMap from './SatMap.jsx';
-import { SiloModal, LotModal } from './modals.jsx';
+import { SiloModal, LotModal, UploadMapModal, EditMapModal } from './modals.jsx';
 import { Kpis, LotPanel, RecentPanel, SilosScreen, LotsScreen, SettingsScreen } from './screens.jsx';
 
 const pref = {
@@ -85,15 +86,48 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
   const isAdmin = me.rol === 'admin';
   const [tab, setTab] = useState('mapa');
   const [view, setViewRaw] = useState(pref.get('view', '3d'));
-  const setView = v => { setViewRaw(v); pref.set('view', v); if (v !== 'sat') setShape(null); };
+  const setView = v => { setViewRaw(v); pref.set('view', v); if (v !== 'sat') { setShape(null); setMapEdit(null); } };
   const [selLot, setSelLot] = useState(null), [selSilo, setSelSilo] = useState(null);
   const [pick, setPick] = useState(null), [moving, setMoving] = useState(null);
   const [draft, setDraft] = useState(null), [lotEdit, setLotEdit] = useState(null);
   const [shape, setShape] = useState(null); // { lot, geom, hist, sel, locked }
+  // mapas propios
+  const [mapFilter, setMapFilterRaw] = useState(pref.get('mapFilter', 'all'));
+  const setMapFilter = v => { setMapFilterRaw(v); pref.set('mapFilter', v); };
+  const [mapOpacity, setMapOpacityRaw] = useState(+pref.get('mapOpacity', '1'));
+  const setMapOpacity = v => { setMapOpacityRaw(v); pref.set('mapOpacity', String(v)); };
+  const [mapUrls, setMapUrls] = useState({});
+  const [mapUpload, setMapUpload] = useState(null), [mapEditMeta, setMapEditMeta] = useState(null), [mapEdit, setMapEdit] = useState(null);
   const { fix, err: gpsErr } = useGps(true);
   const geo = useMemo(() => buildGeo(state.georef), [state.georef]);
   const gpsMap = useMemo(() => (geo && fix ? geo.toMap(fix.lat, fix.lng) : null), [geo, fix]);
   const lots = state.lots;
+  const maps = state.maps || [];
+  useEffect(() => {
+    let on = true;
+    Promise.all(maps.map(async m => [m.id, await resolvePhoto(m.src)])).then(r => on && setMapUrls(Object.fromEntries(r)));
+    return () => { on = false; };
+  }, [maps.map(m => m.id + m.src).join()]); // eslint-disable-line
+  const filterOk = mapFilter === 'all' || mapFilter === 'none' || maps.some(m => m.id === mapFilter);
+  const effFilter = filterOk ? mapFilter : 'all';
+  const overlays = useMemo(() => (effFilter === 'none' ? [] : [...maps]
+    .filter(m => effFilter === 'all' || m.id === effFilter)
+    .sort((a, b) => String(a.fecha || '').localeCompare(String(b.fecha || ''))) // el más nuevo arriba
+    .map(m => ({ id: m.id, url: mapUrls[m.id], corners: m.corners }))), [maps, effFilter, mapUrls]);
+  const defaultCenter = useMemo(() => {
+    if (geo) { const ll = state.outline.map(p => geo.toLatLng(p)); return [ll.reduce((a, p) => a + p[0], 0) / ll.length, ll.reduce((a, p) => a + p[1], 0) / ll.length]; }
+    return fix ? [fix.lat, fix.lng] : null;
+  }, [geo, fix, state.outline]);
+  function startMapEdit(id) {
+    const m = maps.find(x => x.id === id); if (!m) return;
+    setShape(null); setPick(null); setMoving(null); setSelSilo(null);
+    setTab('mapa'); setView('sat'); setMapEdit({ id, corners: m.corners.map(c => [...c]), orig: m.corners });
+  }
+  async function saveMapEdit() {
+    const m = maps.find(x => x.id === mapEdit.id);
+    try { setState(await store.saveMap({ ...m, corners: mapEdit.corners }, me)); toast(`«${m.nombre}» ubicado`, 'ok'); setMapEdit(null); }
+    catch (e) { toast(e.message, 'error'); }
+  }
 
   const openSilo = useCallback(id => {
     const s = state.silos.find(x => x.id === id); if (!s) return;
@@ -195,7 +229,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
 
       <nav className="nav">
         {tabs.map(t => (
-          <button type="button" key={t.k} className={tab === t.k ? 'is-on' : ''} onClick={() => { setTab(t.k); setPick(null); if (t.k !== 'mapa') setShape(null); }}>
+          <button type="button" key={t.k} className={tab === t.k ? 'is-on' : ''} onClick={() => { setTab(t.k); setPick(null); if (t.k !== 'mapa') { setShape(null); setMapEdit(null); } }}>
             <Icon name={t.icon} size={20} /><span>{t.label}</span>
           </button>
         ))}
@@ -208,8 +242,18 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
             <Kpis state={state} />
             <div className="dash-body">
               <div className="card map-card">
-                {!shape && <div className="map-top">
+                {!shape && !mapEdit && <div className="map-top">
                   <Segmented size="sm" value={view} onChange={setView} options={[{ value: '3d', label: 'Plano 3D', icon: 'cube' }, { value: 'sat', label: 'Satélite', icon: 'sat' }]} />
+                  {view === 'sat' && maps.length > 0 && (
+                    <div className="map-layers">
+                      <Field label="Mapa a mostrar" className="map-filter"><Select value={effFilter} onChange={setMapFilter} options={[
+                        { value: 'all', label: `Todos los mapas (${maps.length})` },
+                        ...[...maps].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || ''))).map(m => ({ value: m.id, label: m.nombre, meta: m.fecha ? fmtFecha(m.fecha) : '' })),
+                        { value: 'none', label: 'Solo satélite' },
+                      ]} /></Field>
+                      {effFilter !== 'none' && <Field label="Opacidad" className="map-op"><Segmented size="sm" value={mapOpacity} onChange={setMapOpacity} options={[{ value: 0.5, label: '50%' }, { value: 0.75, label: '75%' }, { value: 1, label: '100%' }]} /></Field>}
+                    </div>
+                  )}
                 </div>}
                 {view === '3d' ? (
                   <Map3D data={state} silos={state.silos} selectedLot={selLot} onSelectLot={setSelLot} selectedSilo={selSilo} onSelectSilo={setSelSilo}
@@ -218,7 +262,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
                 ) : (
                   <SatMap data={state} silos={state.silos} geo={geo} selectedLot={selLot} onSelectLot={setSelLot} selectedSilo={selSilo}
                     onSelectSilo={id => { setSelSilo(id); }} pickMode={!!pick} onPick={onPick} gps={fix} onNeedGeoref={() => setTab('ajustes')}
-                    editing={shape} onVertexMove={onVertexMove} onInsertVertex={onInsertVertex} onSelectVertex={pt => setShape(sh => ({ ...sh, sel: pt }))} />
+                    editing={shape} overlays={mapEdit ? [{ id: mapEdit.id, url: mapUrls[mapEdit.id], corners: mapEdit.corners }] : overlays} overlayOpacity={mapOpacity} mapEdit={mapEdit} onMapCorners={cs => setMapEdit(me_ => ({ ...me_, corners: cs }))} onVertexMove={onVertexMove} onInsertVertex={onInsertVertex} onSelectVertex={pt => setShape(sh => ({ ...sh, sel: pt }))} />
                 )}
                 {shape && (
                   <div className="map-banner edit-bar">
@@ -232,12 +276,22 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
                     </div>
                   </div>
                 )}
+                {mapEdit && (
+                  <div className="map-banner edit-bar">
+                    <div className="edit-bar-txt"><Icon name="move" size={18} /><span><b>Ubicando «{maps.find(m => m.id === mapEdit.id)?.nombre}»</b> · arrastrá las esquinas NO, NE, SE, SO hasta que coincidan con el satélite, o el centro ✥ para moverlo completo.</span></div>
+                    <div className="edit-bar-act">
+                      <Button size="sm" variant="ghost" onClick={() => setMapEdit(m => ({ ...m, corners: m.orig.map(c => [...c]) }))}>Deshacer cambios</Button>
+                      <Button size="sm" onClick={() => setMapEdit(null)}>Cancelar</Button>
+                      <Button size="sm" variant="primary" icon="check" onClick={saveMapEdit}>Guardar</Button>
+                    </div>
+                  </div>
+                )}
                 {pick && <div className="map-banner"><Icon name="pin" size={18} /><span>Tocá el borde del lote donde está el silo</span><Button size="sm" onClick={() => setPick(null)}>Cancelar</Button></div>}
                 {moving && <div className="map-banner"><Icon name="move" size={18} /><span>Arrastrá <b className="mono">{moving.id}</b> por el borde del lote {moving.lote}</span><Button size="sm" onClick={() => setMoving(null)}>Cancelar</Button><Button size="sm" variant="primary" onClick={saveMove}>Guardar</Button></div>}
-                {view === 'sat' && selSilo && !moving && !shape && (() => { const s = state.silos.find(x => x.id === selSilo); return s ? (
+                {view === 'sat' && selSilo && !moving && !shape && !mapEdit && (() => { const s = state.silos.find(x => x.id === selSilo); return s ? (
                   <div className="lot-bar"><div className="lot-bar-main"><b className="mono">{s.id}</b><span className="muted">{fmtNum(s.kg)} kg · lote {s.lote}</span></div><Button size="sm" onClick={() => openSilo(s.id)}>Detalle</Button></div>) : null; })()}
-                {lot && !moving && !pick && !shape && !(view === 'sat' && selSilo) && <div className="only-mobile"><LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onShape={isAdmin && view === 'sat' && geo ? startShape : null} compact /></div>}
-                {!moving && !pick && !shape && <button type="button" className="fab" onClick={onAdd} aria-label="Agregar silobolsa"><Icon name="plus" size={26} /></button>}
+                {lot && !moving && !pick && !shape && !mapEdit && !(view === 'sat' && selSilo) && <div className="only-mobile"><LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onShape={isAdmin && view === 'sat' && geo ? startShape : null} compact /></div>}
+                {!moving && !pick && !shape && !mapEdit && <button type="button" className="fab" onClick={onAdd} aria-label="Agregar silobolsa"><Icon name="plus" size={26} /></button>}
               </div>
               <aside className="side-panel">
                 {lot ? <LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onShape={isAdmin ? startShape : null} onSelectSilo={id => setSelSilo(id)} /> : <RecentPanel state={state} onSelectSilo={id => { const s = state.silos.find(x => x.id === id); if (s) { setSelLot(s.lote); setSelSilo(id); } }} />}
@@ -247,13 +301,17 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
         )}
         {tab === 'silos' && <SilosScreen state={state} onOpenSilo={openSilo} onExportCsv={exportCsv} />}
         {tab === 'lotes' && <LotsScreen state={state} onEditLot={setLotEdit} onShowLot={n => { setSelLot(n); setSelSilo(null); setTab('mapa'); }} />}
-        {tab === 'ajustes' && <SettingsScreen state={state} me={me} store={store} geo={geo} gps={fix} captureFix={captureFix} theme={theme} setTheme={setTheme} onState={setState} onLogout={onLogout} mode={store.mode} />}
+        {tab === 'ajustes' && <SettingsScreen state={state} me={me} store={store} geo={geo} gps={fix} captureFix={captureFix} theme={theme} setTheme={setTheme} onState={setState} onLogout={onLogout} mode={store.mode}
+          onUploadMapFile={setMapUpload} onShowMap={id => { setMapFilter(id); setTab('mapa'); setView('sat'); }} onAdjustMap={startMapEdit} onEditMap={setMapEditMeta} />}
       </main>
 
       {draft && <SiloModal draft={draft} state={state} me={me} geo={geo} store={store} onClose={() => setDraft(null)}
         onSaved={(st, id) => { setState(st); setDraft(null); setSelSilo(id); if (id) { const s = st.silos.find(x => x.id === id); if (s) setSelLot(s.lote); } }}
         onRelocate={form => { setDraft(null); setTab('mapa'); if (view === 'sat' && !geo) setView('3d'); setPick({ purpose: 'relocate', form: { kg: form.kg, grano: form.grano, obs: form.obs, fotoData: form.fotoData } }); }}
         onStartMove={startMove} />}
+      {mapUpload && <UploadMapModal file={mapUpload} me={me} store={store} defaultCenter={defaultCenter} onClose={() => setMapUpload(null)}
+        onDone={(st, id, needsPlacement) => { setState(st); setMapUpload(null); setMapFilter(id); if (needsPlacement) { const m = st.maps.find(x => x.id === id); setTab('mapa'); setView('sat'); setMapEdit({ id, corners: m.corners.map(c => [...c]), orig: m.corners }); } }} />}
+      {mapEditMeta && maps.find(m => m.id === mapEditMeta) && <EditMapModal map={maps.find(m => m.id === mapEditMeta)} me={me} store={store} onClose={() => setMapEditMeta(null)} onSaved={st => { setState(st); setMapEditMeta(null); }} />}
       {lotEdit != null && lots.find(l => l.num === lotEdit) && <LotModal lot={lots.find(l => l.num === lotEdit)} state={state} me={me} geo={geo} store={store} onClose={() => setLotEdit(null)} onShape={startShape}
         onSaved={(st, num) => { setState(st); setLotEdit(null); setSelLot(num); }} />}
     </div>

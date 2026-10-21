@@ -1,12 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import { fmtKg } from './ui.jsx';
+import { WarpLayer } from './maplayers.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, selectedSilo, onSelectSilo, pickMode, onPick, gps, onNeedGeoref, editing, onVertexMove, onInsertVertex, onSelectVertex }) {
+export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, selectedSilo, onSelectSilo, pickMode, onPick, gps, onNeedGeoref, editing, onVertexMove, onInsertVertex, onSelectVertex, overlays = [], overlayOpacity = 1, mapEdit, onMapCorners }) {
   const el = useRef(null), map = useRef(null), layers = useRef({}), fitted = useRef(false), editFit = useRef(null);
-  const cb = useRef({}); cb.current = { onSelectLot, onSelectSilo, onPick, pickMode, geo, selectedLot, editing, onVertexMove, onInsertVertex, onSelectVertex };
+  const cb = useRef({}); cb.current = { onSelectLot, onSelectSilo, onPick, pickMode, geo, selectedLot, editing, onVertexMove, onInsertVertex, onSelectVertex, onMapCorners, mapEdit };
+  const warp = useRef({});
 
   useEffect(() => {
     const m = L.map(el.current, { zoomControl: false, attributionControl: true, center: [-36.5, -60.5], zoom: 6 });
@@ -14,10 +16,11 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
       maxZoom: 19, attribution: 'Imágenes © Esri, Maxar, Earthstar Geographics',
     }).addTo(m);
     L.control.zoom({ position: 'topright' }).addTo(m);
-    layers.current = { lots: L.layerGroup().addTo(m), silos: L.layerGroup().addTo(m), gps: L.layerGroup().addTo(m), edit: L.layerGroup().addTo(m) };
+    const pane = m.createPane('semiaMaps'); pane.style.zIndex = 350; pane.style.pointerEvents = 'none';
+    layers.current = { lots: L.layerGroup().addTo(m), silos: L.layerGroup().addTo(m), gps: L.layerGroup().addTo(m), edit: L.layerGroup().addTo(m), maps: L.layerGroup().addTo(m), mapEdit: L.layerGroup().addTo(m) };
     m.on('click', e => {
       const c = cb.current;
-      if (c.editing) return;
+      if (c.editing || c.mapEdit) return;
       if (c.pickMode && c.geo) c.onPick(c.geo.toMap(e.latlng.lat, e.latlng.lng));
       else { c.onSelectSilo(null); }
     });
@@ -92,6 +95,45 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
     });
   }, [geo, silos, selectedSilo]);
 
+  // Mapas propios (ortomosaicos): debajo de los lotes, encima del satélite
+  useEffect(() => {
+    const g = layers.current.maps; g.clearLayers(); warp.current = {};
+    const list = mapEdit ? overlays.filter(o => o.id === mapEdit.id).map(o => ({ ...o, corners: mapEdit.corners })) : overlays;
+    list.forEach(o => {
+      if (!o.url) return;
+      const ly = new WarpLayer(o.url, o.corners, { opacity: mapEdit ? Math.min(overlayOpacity, 0.8) : overlayOpacity });
+      warp.current[o.id] = ly; g.addLayer(ly);
+    });
+    if (!mapEdit && String(editFit.current).startsWith('map:')) editFit.current = null;
+    if (!geo && !fitted.current && list.length) { map.current.fitBounds(L.latLngBounds(list.flatMap(o => o.corners)), { padding: [20, 20] }); fitted.current = true; }
+    if (mapEdit && list[0] && editFit.current !== 'map:' + mapEdit.id) { map.current.fitBounds(L.latLngBounds(list[0].corners), { padding: [30, 30] }); editFit.current = 'map:' + mapEdit.id; }
+  }, [overlays, overlayOpacity, mapEdit?.id, mapEdit && JSON.stringify(mapEdit.corners)]); // eslint-disable-line
+
+  // Manijas para ubicar un mapa: 4 esquinas y centro
+  useEffect(() => {
+    const g = layers.current.mapEdit; g.clearLayers();
+    if (!mapEdit) return;
+    const ly = () => warp.current[mapEdit.id];
+    let cur = mapEdit.corners.map(c => [...c]);
+    const names = ['NO', 'NE', 'SE', 'SO'];
+    const handles = cur.map((c, i) => {
+      const mk = L.marker(c, { draggable: true, autoPan: true, icon: L.divIcon({ className: 'v-handle map-corner', iconSize: [28, 28], html: `<span>${names[i]}</span>` }), title: `Esquina ${names[i]}` });
+      mk.on('drag', e => { const p = e.target.getLatLng(); cur[i] = [p.lat, p.lng]; ly()?.setCorners(cur); center.setLatLng(mid(cur)); });
+      mk.on('dragend', () => cb.current.onMapCorners(cur.map(c => [...c])));
+      g.addLayer(mk); return mk;
+    });
+    const mid = cs => [cs.reduce((a, c) => a + c[0], 0) / 4, cs.reduce((a, c) => a + c[1], 0) / 4];
+    let start = null;
+    const center = L.marker(mid(cur), { draggable: true, icon: L.divIcon({ className: 'v-handle map-center', iconSize: [34, 34], html: '<span>✥</span>' }), title: 'Mover el mapa completo' });
+    center.on('dragstart', e => { start = { p: e.target.getLatLng(), cs: cur.map(c => [...c]) }; });
+    center.on('drag', e => {
+      const p = e.target.getLatLng(), dLat = p.lat - start.p.lat, dLng = p.lng - start.p.lng;
+      cur = start.cs.map(c => [c[0] + dLat, c[1] + dLng]); ly()?.setCorners(cur); handles.forEach((h, i) => h.setLatLng(cur[i]));
+    });
+    center.on('dragend', () => cb.current.onMapCorners(cur.map(c => [...c])));
+    g.addLayer(center);
+  }, [mapEdit?.id, mapEdit && JSON.stringify(mapEdit.corners)]); // eslint-disable-line
+
   // Ubicación en vivo
   useEffect(() => {
     const g = layers.current.gps; g.clearLayers();
@@ -104,7 +146,7 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
   return (
     <div className={`satmap ${pickMode ? 'is-picking' : ''}`}>
       <div ref={el} className="satmap-el" />
-      {!geo && !editing && (
+      {!geo && !editing && !mapEdit && !overlays.length && (
         <div className="sat-note">
           <b>Mapa sin georreferenciar</b>
           <span>Cargá los 4 puntos de esquina en Ajustes para superponer los lotes sobre la imagen satelital.</span>

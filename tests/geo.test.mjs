@@ -93,3 +93,16 @@ const r = S.restoreLot(g, { ...data.lots.find(l => l.num === 15), poly0: data.lo
 ok(G.dist(r.lots.find(l => l.num === 15).poly[1], shared) < 1e-6, 'restablece la forma original');
 ok(S.isLocked(data.outline[0], [data.outline[0]]), 'punto de control bloqueado');
 console.log(`geo: ${n} comprobaciones OK`);
+
+// 9. Proyecciones de GeoTIFF (comparadas con PROJ/pyproj)
+const { toLatLng } = await import('../src/proj.js');
+const cases = JSON.parse((await import('fs')).readFileSync(new URL('./proj-cases.json', import.meta.url)));
+let worstP = 0;
+let worstP07 = 0;
+cases.forEach(c => { const [la, lo] = toLatLng(c.code, c.x, c.y), d = G.metersBetween([la, lo], [c.lat, c.lng]); if (c.code >= 5343 && c.code <= 5349) worstP07 = Math.max(worstP07, d); else worstP = Math.max(worstP, d); });
+ok(worstP < 0.05, `UTM / POSGAR 98 / 3857 / 4326 con error < 5 cm (máx ${(worstP * 100).toFixed(2)} cm)`);
+ok(worstP07 < 1, `POSGAR 2007 dentro de 1 m (diferencia de marco con WGS84: ${worstP07.toFixed(2)} m)`);
+let threw = false; try { toLatLng(22195, 0, 0); } catch { threw = true; }
+ok(threw, 'sistema no soportado avisa');
+
+console.log(`geo+proj: ${n} comprobaciones OK`);

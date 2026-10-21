@@ -16,6 +16,7 @@ chk lote-1-digito "$(curl -s -b $A "${J[@]}" -d '{"silo":{"id":"x","lote":5,"kg"
 chk kg-invalido "$(curl -s -b $A "${J[@]}" -d '{"silo":{"lote":5,"kg":"abc","map":[1,1]}}' $B/api.php?action=saveSilo)" 'Kg inválido'
 chk mover "$(curl -s -b $A "${J[@]}" -d '{"prevId":"RB16002","silo":{"id":"RB16002","lote":16,"kg":180000,"map":[620,520],"t":30,"ang":0.2}}' $B/api.php?action=saveSilo)" '620'
 IMG=/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAAIAAgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDs6KKK8I7T/9k=  # JPEG 8x8 fijo (sin dependencias)
+CORN='[[-35.9,-60.42],[-35.9025,-60.33],[-35.995,-60.333],[-35.992,-60.425]]'
 U=$(curl -s -b $A "${J[@]}" -d "{\"id\":\"RB16001\",\"data\":\"data:image/jpeg;base64,$IMG\"}" $B/api.php?action=upload); chk foto "$U" 'uploads/RB16001-'
 chk foto-falsa "$(curl -s -b $A "${J[@]}" -d '{"id":"RB1","data":"data:image/jpeg;base64,PD9waHAgZWNobyAxOw=="}' $B/api.php?action=upload)" 'no permitido'
 chk lote "$(curl -s -b $A "${J[@]}" -d '{"lot":{"_origNum":16,"num":16,"ha":460,"nombre":"Molino","subs":[]}}' $B/api.php?action=saveLot)" '"nombre":"Molino"'
@@ -35,7 +36,16 @@ chk op-no-borra "$(curl -s -b $O "${J[@]}" -d '{"id":"RB16001"}' $B/api.php?acti
 chk op-no-mueve "$(curl -s -b $O "${J[@]}" -d '{"prevId":"RB16001","silo":{"id":"RB16001","lote":16,"kg":1,"map":[1,1]}}' $B/api.php?action=saveSilo)" 'permiso'
 chk op-alta "$(curl -s -b $O "${J[@]}" -d '{"silo":{"lote":3,"kg":5000,"map":[300,800],"t":1,"ang":0}}' $B/api.php?action=saveSilo)" '"creadoPor":"peon"'
 chk op-no-georef "$(curl -s -b $O "${J[@]}" -d "$GEO" $B/api.php?action=saveGeoref)" 'Solo el administrador'
+chk op-no-mapa "$(curl -s -b $O "${J[@]}" -d "{\"map\":{\"corners\":$CORN},\"data\":\"data:image/jpeg;base64,$IMG\"}" $B/api.php?action=uploadMap)" 'Solo el administrador'
 chk op-no-forma "$(curl -s -b $O "${J[@]}" -d "$SH" $B/api.php?action=saveShapes)" 'Solo el administrador'
+M=$(curl -s -b $A "${J[@]}" -d "{\"map\":{\"nombre\":\"Vuelo octubre\",\"fecha\":\"2026-10-20\",\"corners\":$CORN,\"crs\":\"UTM 21S\"},\"data\":\"data:image/jpeg;base64,$IMG\"}" $B/api.php?action=uploadMap)
+chk mapa-subir "$M" '"src":"uploads/maps/m'
+MID=$(echo "$M" | grep -o '"id":"m[a-z0-9]*"' | head -1 | cut -d'"' -f4)
+chk mapa-archivo "$(curl -s -o /dev/null -w '%{http_code}' $B/$(echo "$M" | grep -o 'uploads/maps/[a-z0-9]*\.jpg' | head -1))" 200
+chk mapa-editar "$(curl -s -b $A "${J[@]}" -d "{\"map\":{\"id\":\"$MID\",\"nombre\":\"Vuelo 2\",\"fecha\":\"2026-10-21\",\"corners\":[[-35.8,-60.4],[-35.8,-60.3],[-35.9,-60.3],[-35.9,-60.4]]}}" $B/api.php?action=saveMap)" '"nombre":"Vuelo 2"'
+chk mapa-esquinas-malas "$(curl -s -b $A "${J[@]}" -d "{\"map\":{\"id\":\"$MID\",\"corners\":[[1,2]]}}" $B/api.php?action=saveMap)" '4 esquinas'
+chk mapa-no-imagen "$(curl -s -b $A "${J[@]}" -d "{\"map\":{\"corners\":$CORN},\"data\":\"data:image/png;base64,PD9waHAgZWNobyAxOw==\"}" $B/api.php?action=uploadMap)" 'no permitido'
 chk borrar "$(curl -s -b $A "${J[@]}" -d '{"id":"RB05001"}' $B/api.php?action=deleteSilo)" '"ok":true'
+chk mapa-borrar "$(curl -s -b $A "${J[@]}" -d "{\"id\":\"$MID\"}" $B/api.php?action=deleteMap)" '"maps":\[\]'
 code=$(curl -s -o /dev/null -w '%{http_code}' $B/api.php?action=nada); chk accion-desconocida "$code" 404
 echo "api: $pass OK, $fail fallas"; [ $fail -eq 0 ]

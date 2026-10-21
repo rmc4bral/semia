@@ -3,6 +3,7 @@ import { Button, Field, TextInput, Select, Segmented, Icon, useToast, fmtKg, fmt
 import { areaHa, lotCorners, migrateGeoref, pointKey } from './geo.js';
 import { PhotoView, GRANOS } from './modals.jsx';
 
+const fmtFechaCorta = iso => { if (!iso) return 'sin fecha'; const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
 const sumKg = arr => arr.reduce((a, s) => a + (+s.kg || 0), 0);
 const fmtT = kg => (kg >= 1000 ? `${fmtNum(kg / 1000, kg < 100000 ? 1 : 0)} t` : `${fmtKg(kg)} kg`);
 
@@ -146,7 +147,7 @@ function LotMini({ lot, vi, n }) {
 }
 
 /* ---------- Pantalla Ajustes ---------- */
-export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, setTheme, onState, onLogout, mode }) {
+export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, setTheme, onState, onLogout, mode, onUploadMapFile, onShowMap, onAdjustMap, onEditMap }) {
   const toast = useToast();
   const isAdmin = me.rol === 'admin';
   const [pts, setPts] = useState(() => migrateGeoref(state.georef, state.lots).points.map(p => ({ ...p, lat: p.lat ?? '', lng: p.lng ?? '' })));
@@ -155,7 +156,8 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
   const [nu, setNu] = useState({ user: '', nombre: '', pass: '', rol: 'operador' });
   const [myPass, setMyPass] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
-  const imp = useRef(null);
+  const imp = useRef(null), mapIn = useRef(null);
+  const maps = [...(state.maps || [])].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
   const lotOpts = state.lots.map(l => ({ value: l.num, label: `Lote ${l.num}`, meta: `${l.ha} ha` }));
   const cornersOf = num => { const l = state.lots.find(x => x.num === num); return l ? lotCorners(l) : []; };
   const resid = Object.fromEntries((geo?.residuals || []).map(r => [r.key, r.m]));
@@ -249,6 +251,25 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
             {gps && <span className="muted small grow">Tu GPS: ±{Math.round(gps.acc)} m</span>}
             {isAdmin && <Button variant="primary" icon="check" onClick={saveGeo}>Guardar georreferencia</Button>}
           </div>
+        </section>
+
+        <section className="card set-sec">
+          <div className="panel-head"><h3><Icon name="layers" size={18} /> Mapas propios</h3><span className="badge">{maps.length}</span></div>
+          <p className="muted small">Subí ortomosaicos del dron (GeoTIFF en WGS84, UTM o POSGAR: se ubican solos) o imágenes JPG/PNG que ubicás arrastrando sus esquinas. En Satélite elegís ver uno, todos o ninguno.</p>
+          <div className="user-list">
+            {maps.map(m => (
+              <div className="user-row map-row" key={m.id}>
+                <span className="avatar"><Icon name="layers" size={16} /></span>
+                <span className="grow"><b>{m.nombre}</b><span className="muted small"> · {fmtFechaCorta(m.fecha)} · {m.crs || 'ubicado a mano'}</span></span>
+                <Button size="sm" variant="ghost" icon="eye" onClick={() => onShowMap(m.id)} aria-label={`Ver ${m.nombre}`} />
+                {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => onAdjustMap(m.id)} aria-label={`Ajustar posición de ${m.nombre}`} />}
+                {isAdmin && <Button size="sm" variant="ghost" icon="edit" onClick={() => onEditMap(m.id)} aria-label={`Editar ${m.nombre}`} />}
+              </div>
+            ))}
+            {!maps.length && <p className="muted small">Todavía no hay mapas propios.</p>}
+          </div>
+          {isAdmin && <div className="row end"><Button variant="primary" icon="upload" onClick={() => mapIn.current.click()}>Subir mapa</Button></div>}
+          <input ref={mapIn} type="file" accept=".tif,.tiff,image/tiff,image/jpeg,image/png,image/webp" hidden onChange={e => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) onUploadMapFile(fl); }} />
         </section>
 
         <section className="card set-sec">

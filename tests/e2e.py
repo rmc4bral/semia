@@ -17,6 +17,22 @@ def latlng(p):
     w = H[2] @ [p[0], p[1], 1]; return ((H[1] @ [p[0], p[1], 1]) / w, (H[0] @ [p[0], p[1], 1]) / w)
 lot16 = next(l for l in data['lots'] if l['num'] == 16)
 
+# GeoTIFF de prueba en UTM 21S (EPSG:32721) que cubre el campo, y una imagen común
+import pyproj, tifffile
+TMP = pathlib.Path(SRV).parent
+to_utm = pyproj.Transformer.from_crs(4326, 32721, always_xy=True); to_ll = pyproj.Transformer.from_crs(32721, 4326, always_xy=True)
+X0, Y0 = to_utm.transform(-60.43, -35.89); PX = 5.0; TW, TH = 2400, 2200
+arr = np.zeros((TH, TW, 4), np.uint8); yy, xx = np.mgrid[0:TH, 0:TW]
+arr[..., 0] = (xx * 255 // TW); arr[..., 1] = 140; arr[..., 2] = (yy * 255 // TH); arr[..., 3] = 255; arr[:20, :, 3] = 0
+gk = [1, 1, 0, 3, 1024, 0, 1, 1, 1025, 0, 1, 1, 3072, 0, 1, 32721]
+TIF = TMP / 'vuelo_utm21s.tif'
+tifffile.imwrite(TIF, arr, photometric='rgb', extrasamples=['unassalpha'], tile=(256, 256), compression='zlib',
+  extratags=[(33550, 'd', 3, (PX, PX, 0.0), False), (33922, 'd', 6, (0, 0, 0, X0, Y0, 0), False), (34735, 'H', len(gk), gk, False)], datetime='2026:10:20 11:30:00')
+EXP = [to_ll.transform(X0 + i * PX, Y0 - j * PX)[::-1] for i, j in [(0, 0), (TW, 0), (TW, TH), (0, TH)]]
+from PIL import Image as _I
+PNG = TMP / 'croquis.png'; _I.new('RGB', (600, 400), (120, 160, 90)).save(PNG)
+def mdist(a, b): return np.hypot((a[0] - b[0]) * 111320, (a[1] - b[1]) * 111320 * np.cos(np.radians(a[0])))
+
 ok = 0; errs = []
 def check(c, m):
     global ok
@@ -165,6 +181,35 @@ with sync_playwright() as p:
             page.evaluate(f"document.documentElement.dataset.theme='{th}'")
             cols = page.evaluate("""() => { const g=s=>getComputedStyle(document.querySelector(s)).backgroundColor; return [g('body'), g('.topbar'), g('.nav'), g('.card')]; }""")
             check(cols[0] == cols[1] == cols[2], f'{tag} {th}: barra, menú y fondo con el mismo tono {cols}')
+        # mapas propios: GeoTIFF georreferenciado
+        page.set_input_files('input[accept*=".tif"]', str(TIF)); page.wait_for_selector('.map-prev img', timeout=60000)
+        check('UTM 21S' in page.inner_text('.modal .loc-box'), f'{tag}: detecta UTM 21S')
+        check(page.input_value('.modal input[inputmode=numeric]') == '20/10/2026', f'{tag}: toma la fecha del GeoTIFF')
+        page.fill('.modal .field:has-text("Nombre") input', 'Vuelo octubre'); page.click('.modal-foot .btn-primary'); page.wait_for_selector('.modal', state='detached', timeout=30000)
+        st3 = page.request.get(URL + '/api.php?action=state').json()['state']
+        err_m = max(mdist(a, b) for a, b in zip(st3['maps'][0]['corners'], EXP))
+        check(len(st3['maps']) == 1 and err_m < 1, f'{tag}: esquinas del GeoTIFF exactas (error {err_m:.3f} m)')
+        page.click('.map-row button[aria-label^="Ver"]'); page.wait_for_selector('.warp-img', state='attached'); page.wait_for_timeout(500)
+        check('matrix3d' in page.get_attribute('.warp-img', 'style'), f'{tag}: mapa proyectado sobre el satélite')
+        layout_checks(page, tag + ' satélite con capas')
+        def pick(label):
+            page.click('.map-filter .select'); page.click(f'.select-opt:has-text("{label}")'); page.wait_for_timeout(300)
+        pick('Solo satélite'); check(page.locator('.warp-img').count() == 0, f'{tag}: filtro solo satélite')
+        pick('Todos los mapas'); check(page.locator('.warp-img').count() == 1, f'{tag}: filtro todos')
+        # imagen común: se ubica arrastrando esquinas
+        page.click('.nav button:has-text("Ajustes")'); page.set_input_files('input[accept*=".tif"]', str(PNG)); page.wait_for_selector('.map-prev img')
+        check('sin coordenadas' in page.inner_text('.modal .loc-box'), f'{tag}: imagen sin coordenadas')
+        page.click('.modal-foot .btn-primary'); page.wait_for_selector('.edit-bar'); page.wait_for_timeout(500)
+        check(page.locator('.map-corner').count() == 4 and page.locator('.map-center').count() == 1, f'{tag}: manijas de esquinas y centro')
+        before_c = next(m for m in page.request.get(URL + '/api.php?action=state').json()['state']['maps'] if m['nombre'] == 'croquis')['corners']
+        hb = page.locator('.map-corner').nth(1).bounding_box(); cx, cy = hb['x'] + hb['width'] / 2, hb['y'] + hb['height'] / 2
+        page.mouse.move(cx, cy); page.mouse.down(); page.mouse.move(cx + 30, cy + 20, steps=8); page.mouse.up(); page.wait_for_timeout(200)
+        page.click('.edit-bar button:has-text("Guardar")'); page.wait_for_selector('.edit-bar', state='detached')
+        after_c = next(m for m in page.request.get(URL + '/api.php?action=state').json()['state']['maps'] if m['nombre'] == 'croquis')['corners']
+        check(after_c[1] != before_c[1] and after_c[0] == before_c[0], f'{tag}: esquina NE reubicada a mano')
+        pick('Todos los mapas (2)'); check(page.locator('.warp-img').count() == 2, f'{tag}: todos = 2 mapas')
+        pick('Vuelo octubre'); check(page.locator('.warp-img').count() == 1, f'{tag}: un solo mapa')
+        page.click('.seg button:has-text("Plano 3D")')
         page.click('.nav button:has-text("Mapa")'); page.wait_for_selector('.map3d-svg'); layout_checks(page, tag + ' mapa final')
         check(not bucket, f'{tag}: sin errores de consola {bucket[:3]}')
         ctx.close()

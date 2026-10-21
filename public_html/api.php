@@ -9,7 +9,8 @@ const DATA_FILE   = __DIR__ . '/data.json';
 const SEED_FILE   = __DIR__ . '/data.seed.json'; // plantilla inicial (versionada en git)
 const UPLOAD_DIR  = __DIR__ . '/uploads';
 const MAX_PHOTO   = 4 * 1024 * 1024; // 4 MB
-const MAX_BODY    = 8 * 1024 * 1024;
+const MAX_BODY    = 40 * 1024 * 1024;
+const MAX_MAP     = 25 * 1024 * 1024; // imagen de mapa ya reducida en el navegador
 
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -72,6 +73,16 @@ function body(): array {
 }
 function num($v): ?float { return is_numeric($v) ? (float)$v : null; }
 function str($v, int $max = 500): string { return mb_substr(trim((string)($v ?? '')), 0, $max); }
+function cleanCorners($c): array {
+  if (!is_array($c) || count($c) !== 4) fail('Se requieren las 4 esquinas del mapa');
+  $out = [];
+  foreach ($c as $p) {
+    if (!is_array($p) || count($p) !== 2 || num($p[0]) === null || num($p[1]) === null || abs($p[0]) > 90 || abs($p[1]) > 180) fail('Esquinas del mapa inválidas');
+    $out[] = [round((float)$p[0], 7), round((float)$p[1], 7)];
+  }
+  return $out;
+}
+function cleanFecha($f): ?string { return is_string($f) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $f) ? $f : null; }
 function checkCsrf(): void {
   // Las escrituras deben ser JSON del mismo origen
   $ct = $_SERVER['CONTENT_TYPE'] ?? '';
@@ -325,6 +336,54 @@ switch ($action) {
       $d['lots'] = $in['lots']; $d['silos'] = $in['silos'];
       if (isset($in['estancia']['nombre'], $in['estancia']['sigla'])) $d['estancia'] = $in['estancia'];
       if (isset($in['georef']['points'])) $d['georef'] = $in['georef'];
+      return publicState($d);
+    }, true);
+    out(['ok' => true, 'state' => $state]);
+  }
+
+  /* ---------- Mapas propios ---------- */
+  case 'uploadMap': {
+    $me = requireAdmin(); $b = body(); $m = $b['map'] ?? null;
+    if (!is_array($m)) fail('Datos incompletos');
+    if (!preg_match('#^data:image/(jpeg|png|webp);base64,(.+)$#', (string)($b['data'] ?? ''), $mm)) fail('Imagen no válida');
+    $bin = base64_decode($mm[2], true);
+    if ($bin === false || strlen($bin) > MAX_MAP) fail('La imagen del mapa supera 25 MB');
+    $info = @getimagesizefromstring($bin);
+    if (!$info || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_WEBP], true)) fail('Formato de imagen no permitido');
+    $corners = cleanCorners($m['corners'] ?? null);
+    $dir = UPLOAD_DIR . '/maps';
+    if (!is_dir($dir) && !mkdir($dir, 0755, true)) fail('No se pudo crear la carpeta de mapas', 500);
+    $id = 'm' . base_convert((string)time(), 10, 36) . bin2hex(random_bytes(3));
+    $ext = [IMAGETYPE_JPEG => 'jpg', IMAGETYPE_PNG => 'png', IMAGETYPE_WEBP => 'webp'][$info[2]];
+    file_put_contents("$dir/$id.$ext", $bin);
+    $rec = ['id' => $id, 'nombre' => str($m['nombre'] ?? 'Mapa', 80) ?: 'Mapa', 'fecha' => cleanFecha($m['fecha'] ?? null),
+      'src' => "uploads/maps/$id.$ext", 'w' => $info[0], 'h' => $info[1], 'corners' => $corners,
+      'crs' => str($m['crs'] ?? '', 40) ?: null, 'original' => is_array($m['original'] ?? null) ? array_map('intval', array_slice($m['original'], 0, 2)) : null,
+      'peso' => strlen($bin), 'creadoPor' => $me['user'], 'creadoEn' => gmdate('c')];
+    $state = withData(function (&$d) use ($rec) { $d['maps'] = $d['maps'] ?? []; $d['maps'][] = $rec; return publicState($d); }, true);
+    out(['ok' => true, 'id' => $id, 'state' => $state]);
+  }
+
+  case 'saveMap': {
+    requireAdmin(); $m = body()['map'] ?? null;
+    if (!is_array($m)) fail('Datos incompletos');
+    $state = withData(function (&$d) use ($m) {
+      foreach (($d['maps'] ?? []) as $i => $x) if ($x['id'] === ($m['id'] ?? null)) {
+        $d['maps'][$i]['nombre'] = str($m['nombre'] ?? $x['nombre'], 80) ?: $x['nombre'];
+        $d['maps'][$i]['fecha'] = cleanFecha($m['fecha'] ?? null);
+        $d['maps'][$i]['corners'] = cleanCorners($m['corners'] ?? null);
+        return publicState($d);
+      }
+      fail('El mapa ya no existe', 404);
+    }, true);
+    out(['ok' => true, 'state' => $state]);
+  }
+
+  case 'deleteMap': {
+    requireAdmin(); $id = (string)(body()['id'] ?? '');
+    $state = withData(function (&$d) use ($id) {
+      foreach (($d['maps'] ?? []) as $x) if ($x['id'] === $id && preg_match('#^uploads/maps/[a-z0-9]+\.(jpg|png|webp)$#', $x['src'])) @unlink(__DIR__ . '/' . $x['src']);
+      $d['maps'] = array_values(array_filter($d['maps'] ?? [], fn($x) => $x['id'] !== $id));
       return publicState($d);
     }, true);
     out(['ok' => true, 'state' => $state]);

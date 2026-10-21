@@ -51,6 +51,7 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 - **Tuerca sobre el lote:** edita número, hectáreas, subdivisiones, nombre y observaciones (también desde la pestaña Lotes).
 - **Puntos de control (Ajustes):** elegir cualquier lote y su esquina por orientación (N, NE, E, SE, S, SO, O, NO), pararse ahí y tocar el ícono de ubicación. Con 4 puntos el plano se ubica sobre el **mapa satelital**; se pueden cargar hasta 12 y el ajuste por mínimos cuadrados informa el desvío en metros de cada punto (en rojo si supera 15 m).
 - **Ajustar forma (admin):** con el lote seleccionado en *Satélite* → *Ajustar forma*. Se arrastran los vértices, *+* agrega uno, *Quitar vértice*, *Deshacer* y *Original*. Los vértices compartidos mueven también al lote vecino; los puntos de control GPS quedan fijos; los silos del lote se reubican sobre el nuevo borde.
+- **Mapas propios (Ajustes → Mapas propios):** subir ortomosaicos del dron en GeoTIFF (WGS84, UTM o POSGAR fajas 1–7: se ubican solos por sus coordenadas) o imágenes JPG/PNG que se ubican arrastrando sus 4 esquinas sobre el satélite. Se reducen en el navegador a 4096 px antes de subir. En *Satélite* el filtro **Mapa a mostrar** permite ver todos (el más nuevo arriba), uno solo o solo el satélite, con opacidad 50/75/100 %.
 - **Botón +:** toma tu ubicación en tiempo real, detecta el lote y ubica el silo sobre su **borde**. Se abre la ficha con ID automático, Kg, grano, observación y foto. Sin GPS o sin georreferencia, se marca tocando el borde del lote.
 - **ID:** `RB16001` = RB (estancia) + 16 (lote) + 001 (bolsa). La sigla se cambia en Ajustes.
 - **Recorrido:** los silos de cada lote se unen en el orden de carga siguiendo el borde (línea punteada).
@@ -79,6 +80,8 @@ python3 tests/e2e.py http://localhost:8000 public_html   # flujo completo en nav
 `tools/build_data.py` regenera `data.json` desde la geometría **y lo deja vacío de silos**: no usarlo sobre la base de producción.
 
 ## Notas
+
+- Si al subir un mapa grande aparece un error del servidor, subir en hPanel → Avanzado → Configuración de PHP los valores `post_max_size` y `upload_max_filesize` (ej. 64M).
 
 - Los lotes se digitalizaron del PDF (imagen) con detección de líneas; las hectáreas mostradas son las del plano y se pueden ajustar.
 - La imagen satelital (Esri World Imagery) necesita conexión a internet.

@@ -1,0 +1,51 @@
+# SemIA · prueba y publica en Hostinger en cada push a main
+name: Probar y publicar
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: deploy-produccion
+
+jobs:
+  probar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: shivammathur/setup-php@v2
+        with: { php-version: '8.2' }
+      - run: npm ci
+      - run: npm run build
+      - name: El script.js versionado coincide con src/
+        run: git diff --exit-code public_html/script.js public_html/style.css || (echo "Ejecutá npm run build y volvé a subir" && exit 1)
+      - run: node tests/geo.test.mjs
+      - run: php -l public_html/api.php
+      - name: Prueba de la API
+        run: |
+          mkdir -p /tmp/srv && cp -r public_html/. /tmp/srv/
+          (cd /tmp/srv && php -S 127.0.0.1:8000 >/dev/null 2>&1 &) && sleep 1
+          bash tests/api.test.sh http://127.0.0.1:8000
+
+  publicar:
+    needs: probar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Subir a Hostinger (sin tocar datos ni fotos)
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftps
+          local-dir: ./public_html/
+          server-dir: ${{ secrets.FTP_DIR }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            data.json
+            uploads/**
+            backups/**

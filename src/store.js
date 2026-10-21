@@ -1,0 +1,177 @@
+// SemIA · capa de datos: servidor (api.php) o modo local (localStorage + IndexedDB)
+import seed from './seed.json';
+import { sha256 } from './sha256.js';
+
+const LS_KEY = 'semia.data.v1';
+const LS_SESSION = 'semia.session.v1';
+const clone = o => JSON.parse(JSON.stringify(o));
+const safeLS = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } },
+  del(k) { try { localStorage.removeItem(k); } catch { /* */ } },
+};
+
+/* ---------- IndexedDB para fotos en modo local ---------- */
+function idb() {
+  return new Promise((res, rej) => {
+    if (!window.indexedDB) return rej(new Error('Sin IndexedDB'));
+    const r = indexedDB.open('semia-fotos', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('fotos');
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function idbPut(key, val) { const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction('fotos', 'readwrite'); tx.objectStore('fotos').put(val, key); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+async function idbGet(key) { const db = await idb(); return new Promise((res, rej) => { const r = db.transaction('fotos').objectStore('fotos').get(key); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+async function idbDel(key) { const db = await idb(); return new Promise(res => { const tx = db.transaction('fotos', 'readwrite'); tx.objectStore('fotos').delete(key); tx.oncomplete = res; tx.onerror = res; }); }
+
+export async function resolvePhoto(ref) {
+  if (!ref) return null;
+  if (ref.startsWith('idb:')) { try { return (await idbGet(ref.slice(4))) || null; } catch { return null; } }
+  return ref;
+}
+
+/* ---------- API ---------- */
+async function api(action, body) {
+  const opt = body === undefined ? { credentials: 'same-origin' } : {
+    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  };
+  const r = await fetch(`api.php?action=${action}`, opt);
+  let j; try { j = await r.json(); } catch { throw new Error('Respuesta inválida del servidor'); }
+  if (!r.ok || j.ok === false) { const e = new Error(j.error || `Error ${r.status}`); e.status = r.status; throw e; }
+  return j;
+}
+
+export async function detectMode() {
+  if (location.protocol === 'file:') return 'local';
+  try {
+    const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 3500);
+    const r = await fetch('api.php?action=ping', { signal: ctl.signal, credentials: 'same-origin' });
+    clearTimeout(tm);
+    const j = await r.json();
+    return j && j.ok && j.app === 'semia' ? 'server' : 'local';
+  } catch { return 'local'; }
+}
+
+/* ---------- Modo local ---------- */
+function localLoad() {
+  const raw = safeLS.get(LS_KEY);
+  if (raw) { try { return JSON.parse(raw); } catch { /* corrupto: reiniciar */ } }
+  const d = clone(seed); safeLS.set(LS_KEY, JSON.stringify(d)); return d;
+}
+function localSave(d) {
+  d.updatedAt = new Date().toISOString();
+  if (!safeLS.set(LS_KEY, JSON.stringify(d))) throw new Error('No hay espacio en el almacenamiento local');
+}
+const publicState = d => { const o = clone(d); o.users = (o.users || []).map(({ sha, hash, ...u }) => u); return o; };
+const isAdmin = me => me && me.rol === 'admin';
+
+export function createStore(mode) {
+  const local = mode === 'local';
+  return {
+    mode,
+    async session() {
+      if (local) {
+        const u = safeLS.get(LS_SESSION); if (!u) return null;
+        const d = localLoad(); const me = d.users.find(x => x.user === u);
+        return me ? { me: { user: me.user, nombre: me.nombre, rol: me.rol }, state: publicState(d) } : null;
+      }
+      try { const j = await api('session'); return j.me ? { me: j.me, state: j.state } : null; } catch { return null; }
+    },
+    async login(user, pass) {
+      user = (user || '').trim().toLowerCase();
+      if (local) {
+        const d = localLoad(); const u = d.users.find(x => x.user === user);
+        if (!u || u.sha !== sha256(`semia|${user}|${pass}`)) throw new Error('Usuario o contraseña incorrectos');
+        safeLS.set(LS_SESSION, user);
+        return { me: { user: u.user, nombre: u.nombre, rol: u.rol }, state: publicState(d) };
+      }
+      const j = await api('login', { user, pass });
+      return { me: j.me, state: j.state };
+    },
+    async logout() { if (local) safeLS.del(LS_SESSION); else await api('logout', {}).catch(() => {}); },
+    async reload() { if (local) return publicState(localLoad()); return (await api('state')).state; },
+
+    async uploadPhoto(siloId, dataUrl) {
+      if (!dataUrl) return null;
+      if (local) { await idbPut(siloId, dataUrl); return `idb:${siloId}`; }
+      return (await api('upload', { id: siloId, data: dataUrl })).path;
+    },
+    async saveSilo(silo, me, prevId) {
+      if (local) {
+        const d = localLoad();
+        if (prevId && prevId !== silo.id && d.silos.some(s => s.id === silo.id)) throw new Error(`El ID ${silo.id} ya existe`);
+        if (!prevId && d.silos.some(s => s.id === silo.id)) throw new Error(`El ID ${silo.id} ya existe`);
+        const i = d.silos.findIndex(s => s.id === (prevId || silo.id));
+        if (i >= 0) {
+          if (!isAdmin(me) && d.silos[i].creadoPor !== me.user) throw new Error('Sin permiso para editar este silo');
+          d.silos[i] = { ...d.silos[i], ...silo, editadoPor: me.user, editadoEn: new Date().toISOString() };
+        } else d.silos.push({ ...silo, creadoPor: me.user, creadoEn: new Date().toISOString() });
+        localSave(d); return publicState(d);
+      }
+      return (await api('saveSilo', { silo, prevId })).state;
+    },
+    async deleteSilo(id, me) {
+      if (local) {
+        if (!isAdmin(me)) throw new Error('Solo el administrador puede eliminar');
+        const d = localLoad(); d.silos = d.silos.filter(s => s.id !== id); localSave(d);
+        idbDel(id).catch(() => {}); return publicState(d);
+      }
+      return (await api('deleteSilo', { id })).state;
+    },
+    async saveLot(lot, me) {
+      if (local) {
+        if (!isAdmin(me)) throw new Error('Solo el administrador puede editar lotes');
+        const d = localLoad(); const i = d.lots.findIndex(l => l.num === lot._origNum);
+        if (i < 0) throw new Error('Lote inexistente');
+        if (lot.num !== lot._origNum && d.lots.some(l => l.num === lot.num)) throw new Error(`Ya existe el lote ${lot.num}`);
+        const { _origNum, ...clean } = lot; d.lots[i] = { ...d.lots[i], ...clean }; localSave(d); return publicState(d);
+      }
+      return (await api('saveLot', { lot })).state;
+    },
+    async saveGeoref(georef, me) {
+      if (local) {
+        if (!isAdmin(me)) throw new Error('Solo el administrador puede georreferenciar');
+        const d = localLoad(); d.georef = georef; localSave(d); return publicState(d);
+      }
+      return (await api('saveGeoref', { georef })).state;
+    },
+    async saveEstancia(estancia, me) {
+      if (local) {
+        if (!isAdmin(me)) throw new Error('Solo el administrador');
+        const d = localLoad(); d.estancia = { ...d.estancia, ...estancia }; localSave(d); return publicState(d);
+      }
+      return (await api('saveEstancia', { estancia })).state;
+    },
+    async saveUser(u, me) {
+      if (local) {
+        const d = localLoad(); const i = d.users.findIndex(x => x.user === u.user);
+        if (!isAdmin(me) && u.user !== me.user) throw new Error('Sin permiso');
+        const rec = { user: u.user, nombre: u.nombre, rol: isAdmin(me) ? u.rol : (d.users[i]?.rol || 'operador') };
+        if (u.pass) rec.sha = sha256(`semia|${u.user}|${u.pass}`);
+        if (i >= 0) d.users[i] = { ...d.users[i], ...rec };
+        else { if (!u.pass) throw new Error('Indicá una contraseña'); d.users.push(rec); }
+        if (!d.users.some(x => x.rol === 'admin')) throw new Error('Debe quedar al menos un administrador');
+        localSave(d); return publicState(d);
+      }
+      return (await api('saveUser', { u })).state;
+    },
+    async deleteUser(user, me) {
+      if (local) {
+        if (!isAdmin(me) || user === me.user) throw new Error('No se puede eliminar este usuario');
+        const d = localLoad(); d.users = d.users.filter(x => x.user !== user); localSave(d); return publicState(d);
+      }
+      return (await api('deleteUser', { user })).state;
+    },
+    async importData(data, me) {
+      if (!isAdmin(me)) throw new Error('Solo el administrador');
+      if (!data || !Array.isArray(data.lots) || !Array.isArray(data.silos)) throw new Error('Archivo no válido');
+      if (local) {
+        const d = localLoad();
+        const n = { ...d, estancia: data.estancia || d.estancia, lots: data.lots, silos: data.silos, georef: data.georef || d.georef };
+        localSave(n); return publicState(n);
+      }
+      return (await api('import', { data })).state;
+    },
+    resetLocal() { safeLS.del(LS_KEY); },
+  };
+}

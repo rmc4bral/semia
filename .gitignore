@@ -1,0 +1,9 @@
+node_modules/
+# Datos de producción: viven solo en el servidor, nunca en git
+public_html/data.json
+public_html/uploads/*
+!public_html/uploads/.htaccess
+public_html/backups/*
+!public_html/backups/.htaccess
+*.log
+.DS_Store

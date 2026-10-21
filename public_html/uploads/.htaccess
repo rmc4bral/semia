@@ -1,0 +1,8 @@
+# Solo imágenes, nunca ejecutar scripts
+Options -Indexes
+<IfModule mod_php.c>
+  php_flag engine off
+</IfModule>
+<FilesMatch "\.(php|phtml|php\d|phar|pl|py|cgi|sh|html?|js|svg)$">
+  Require all denied
+</FilesMatch>

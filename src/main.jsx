@@ -6,6 +6,7 @@ import { fmtFecha, parseFecha, readMapFile, defaultCorners } from './maplayers.j
 import { buildGeo, locateLot, controlPoints, metersBetween, pointInPoly } from './geo.js';
 import { exportKml } from './kml.js';
 import { GpsCapture } from './capture.jsx';
+import { UpdateButton } from './update.jsx';
 import { cloneGeom, moveVertex, insertVertex, removeVertex, restoreLot, buildShapeChange, isLocked } from './shapes.js';
 import Map3D from './Map3D.jsx';
 import SatMap from './SatMap.jsx';
@@ -427,5 +428,5 @@ function App() {
     onLogout={async () => { await store.logout(); setBoot(b => ({ ...b, me: null, state: null })); }} />;
 }
 
-createRoot(document.getElementById('root')).render(<ToastProvider><App /></ToastProvider>);
+createRoot(document.getElementById('root')).render(<ToastProvider><App /><UpdateButton /></ToastProvider>);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

@@ -295,8 +295,41 @@ with sync_playwright() as p:
     page.fill('.modal input[inputmode=decimal]', '210000'); page.click('.modal-foot .btn-primary'); page.wait_for_selector('.modal', state='detached')
     s_ = page.request.get(URL + '/api.php?action=state').json()['state']['silos'][0]
     check(mdist(s_['latlng2'], (-35.9455, -60.3852)) < 0.5 and 50 < s_['largo'] < 62, f"kml: cola y largo exactos ({s_['largo']} m)")
+    # agregar un segundo KML sin perder lo cargado
+    KML2 = TMP / 'campo2.kml'
+    KML2.write_text(f"""<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+<Placemark><name>Lote 2</name><Polygon><outerBoundaryIs><LinearRing><coordinates>{rect(-35.97, -60.40)}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+<Placemark><name>Lote 5</name><Polygon><outerBoundaryIs><LinearRing><coordinates>{rect(-35.97, -60.39)}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+</Document></kml>""", encoding='utf-8')
+    page.click('.nav button:has-text("Mapas")'); page.wait_for_selector('.kml-file')
+    check(page.locator('.kml-file').count() == 1 and 'Agregar KML' in page.inner_text('.kml-sec .dropzone'), 'kml: listado con 1 KML y botón Agregar')
+    page.set_input_files('.kml-sec input[type=file]', str(KML2)); page.wait_for_selector('.kml-row')
+    check(page.locator('.kml-sec .seg button.is-on').inner_text() == 'Agregar', 'kml: por defecto agrega')
+    check('Ya existe' in page.inner_text('.kml-list') and page.locator('.kml-sec .btn-primary').is_disabled(), 'kml: avisa lote ya existente')
+    page.locator('.kml-row').nth(0).locator('input').fill('4'); page.wait_for_timeout(100)
+    b2 = page.locator('.kml-sec .btn-primary'); check('Agregar 2 lotes' in b2.inner_text(), 'kml: listo para agregar 2 lotes')
+    b2.click(); page.wait_for_selector('.kml-confirm'); b2.click(); page.wait_for_selector('.leaflet-container', timeout=10000); page.wait_for_timeout(400)
+    st = page.request.get(URL + '/api.php?action=state').json()['state']
+    check([l['num'] for l in st['lots']] == [1, 2, 3, 4, 5] and len(st['georef']['kmls']) == 2, f"kml: agregados ({[l['num'] for l in st['lots']]})")
+    check(len(st['silos']) == 1 and st['silos'][0]['largo'] == s_['largo'], 'kml: la bolsa cargada no cambió')
+    page.click('.nav button:has-text("Mapas")'); page.wait_for_selector('.kml-file')
+    check(page.locator('.kml-file').count() == 2 and 'campo2.kml' in page.inner_text('.kml-files'), 'kml: listado de 2 KML cargados')
+    page.locator('.kml-file').nth(1).locator('button').click(); page.locator('.kml-file').nth(1).locator('button:has-text("Quitar")').click(); page.wait_for_timeout(500)
+    st = page.request.get(URL + '/api.php?action=state').json()['state']
+    check([l['num'] for l in st['lots']] == [1, 2, 3] and page.locator('.kml-file').count() == 1, 'kml: quitar un KML borra solo sus lotes')
     page.click('.avatar-btn'); page.wait_for_selector('.settings')
     check('KML' in page.inner_text('.settings') and page.locator('.geo-pt').count() == 0, 'kml: ajustes sin puntos de control')
+    # versión nueva publicada: aparece el botón flotante y recarga
+    check(page.locator('.upd').count() == 0, 'versión: sin aviso cuando está al día')
+    vj = SRV / 'version.json'; orig = vj.read_text()
+    vj.write_text('{"v":"zz-nueva"}'); page.evaluate("document.dispatchEvent(new Event('visibilitychange'))"); page.wait_for_selector('.upd', timeout=8000); page.wait_for_timeout(500)
+    r_ = page.evaluate("()=>{const a=document.querySelector('.upd').getBoundingClientRect(),n=document.querySelector('.nav').getBoundingClientRect();return [a.bottom,n.top,a.left>=0&&a.right<=innerWidth]}")
+    check(r_[0] <= r_[1] and r_[2], f'versión: botón flotante sobre la barra, sin taparla {r_}')
+    check('Nueva versión' in page.inner_text('.upd'), 'versión: muestra «Nueva versión»')
+    vj.write_text(orig)
+    with page.expect_navigation(): page.click('.upd-btn')
+    page.wait_for_selector('.app'); page.wait_for_timeout(500)
+    check(page.locator('.upd').count() == 0, 'versión: tras actualizar desaparece el aviso')
     check(not bucket, f'kml: sin errores de consola {bucket[:3]}')
     ctx.close()
 

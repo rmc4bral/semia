@@ -51,7 +51,8 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 
 ## Cómo se usa
 
-- **Lotes desde KML (Mapas → Lotes desde KML, administrador):** elegí un `.kml` o `.kmz` (Google Earth, QGIS, Pix4Dfields). Cada polígono es un lote: el número se toma del nombre (`Lote 16`, `16 - La Loma`) o de un campo `lote`; las hectáreas, de un campo `ha` o se calculan. Un polígono llamado *Perímetro / Campo / Estancia* se usa como contorno, y las líneas (caminos, cortinas) se dibujan en el plano. Antes de confirmar se ven todos los polígonos, se puede corregir el número o excluir alguno. Al reemplazar, los silos existentes se reubican por sus coordenadas. Con KML no hacen falta puntos de control.
+- **Lotes desde KML (Mapas → Lotes desde KML, administrador):** elegí un `.kml` o `.kmz` (Google Earth, QGIS, Pix4Dfields). Cada polígono es un lote: el número se toma del nombre (`Lote 16`, `16 - La Loma`) o de un campo `lote`; las hectáreas, de un campo `ha` o se calculan. Un polígono llamado *Perímetro / Campo / Estancia* se usa como contorno, y las líneas (caminos, cortinas) se dibujan en el plano. Antes de confirmar se ven todos los polígonos, se puede corregir el número o excluir alguno. El primer KML reemplaza el plano digitalizado; los siguientes se **agregan** (otros campos o sectores) sin tocar lo cargado, y la lista *KML cargados* permite quitar uno con sus lotes. *Reemplazar todo* reubica los silos por sus coordenadas. Con KML no hacen falta puntos de control.
+- **Versión nueva:** cuando se publica una actualización aparece un botón flotante *Nueva versión · Actualizar*.
 - **Nueva silobolsa (botón + de la barra):**
   1. Parate en la **cabecera** de la bolsa y tocá *Marcar cabecera (A)*: se toman lecturas durante 5 segundos y se promedian.
   2. Caminá hasta la **cola** (se ve la distancia en vivo) y tocá *Marcar cola (B)*, o *Solo un punto*.

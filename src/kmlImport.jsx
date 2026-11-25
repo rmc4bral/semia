@@ -1,7 +1,7 @@
 // SemIA · importar lotes desde KML / KMZ (vista previa, numeración y confirmación)
 import React, { useMemo, useRef, useState } from 'react';
-import { Button, Field, TextInput, Icon, useToast, fmtNum, fmtDate } from './ui.jsx';
-import { readKmlFile, parseKml, buildKmlImport } from './kml.js';
+import { Button, Field, TextInput, Segmented, Icon, useToast, fmtNum, fmtDate } from './ui.jsx';
+import { readKmlFile, parseKml, buildKmlImport, buildKmlRemove, kmlList } from './kml.js';
 
 const RAD = Math.PI / 180;
 
@@ -35,9 +35,11 @@ function Preview({ features, rows }) {
 export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
   const toast = useToast();
   const inp = useRef(null);
-  const [job, setJob] = useState(null); // { file, parsed, rows, confirm, busy, err }
+  const [job, setJob] = useState(null); // { file, parsed, rows, mode, confirm, busy, err }
+  const [del, setDel] = useState(null);
   const isKml = state.georef?.mode === 'kml';
-  const g = state.georef?.kml;
+  const list = kmlList(state);
+  const existing = new Set(state.lots.map(l => l.num));
 
   async function pick(file) {
     setJob({ file, busy: true });
@@ -45,10 +47,11 @@ export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
       const parsed = parseKml(await readKmlFile(file));
       const rows = {};
       parsed.features.forEach(f => { rows[f.key] = { num: f.num ? String(f.num) : '', nombre: f.nombre || '', include: true }; });
-      setJob({ file, parsed, rows });
+      setJob({ file, parsed, rows, mode: isKml ? 'add' : 'replace' });
     } catch (e) { setJob({ file, err: e.message || 'No se pudo leer el archivo' }); }
   }
   const setRow = (key, patch) => setJob(j => ({ ...j, confirm: false, rows: { ...j.rows, [key]: { ...j.rows[key], ...patch } } }));
+  const add = job?.mode === 'add';
 
   const check = useMemo(() => {
     if (!job?.parsed) return null;
@@ -57,8 +60,10 @@ export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
     const bad = lots.filter(f => { const n = +job.rows[f.key].num; return !(Number.isInteger(n) && n >= 1 && n <= 99); }).map(f => f.key);
     const dupNums = nums.filter((n, i) => n && nums.indexOf(n) !== i);
     const dup = lots.filter(f => dupNums.includes(job.rows[f.key].num.trim())).map(f => f.key);
-    return { count: lots.length, bad, dup, ok: lots.length > 0 && !bad.length && !dup.length };
-  }, [job]);
+    const taken = add ? lots.filter(f => existing.has(+job.rows[f.key].num)).map(f => f.key) : [];
+    return { count: lots.length, bad, dup, taken, ok: lots.length > 0 && !bad.length && !dup.length && !taken.length };
+  }, [job, state.lots]); // eslint-disable-line
+  const libres = useMemo(() => Array.from({ length: 99 }, (_, i) => i + 1).filter(n => !existing.has(n)).slice(0, 6).join(', '), [state.lots]); // eslint-disable-line
 
   async function apply() {
     if (!check?.ok) return;
@@ -66,26 +71,47 @@ export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
     setJob(j => ({ ...j, busy: true }));
     try {
       const rows = Object.entries(job.rows).map(([key, r]) => ({ key, num: +r.num, nombre: r.nombre, include: r.include }));
-      const change = buildKmlImport(job.parsed, rows, state, geo, { archivo: job.file.name });
+      const change = buildKmlImport(job.parsed, rows, state, geo, { archivo: job.file.name, mode: job.mode });
       const st = await store.importKml(change, me);
       onState(st); setJob(null);
-      toast(`${change.lots.length} lotes cargados desde ${job.file.name}${state.silos.length ? ` · ${state.silos.length} silos reubicados` : ''}`, 'ok', 5000);
+      toast(change.mode === 'add' ? `${change.added} lotes agregados desde ${job.file.name} · ${change.lots.length} en total`
+        : `${change.lots.length} lotes cargados desde ${job.file.name}${state.silos.length ? ` · ${state.silos.length} silos reubicados` : ''}`, 'ok', 5000);
       if (change.sinCoord) toast(`${change.sinCoord} silos no tenían coordenadas: quedaron en el centro de su lote. Movelos desde su ficha.`, 'info', 7000);
       onShowLots?.();
     } catch (e) { setJob(j => ({ ...j, busy: false, confirm: false })); toast(e.message, 'error'); }
+  }
+  async function removeKml(id) {
+    try {
+      const change = buildKmlRemove(state, id);
+      onState(await store.importKml(change, me)); setDel(null);
+      toast('KML quitado junto con sus lotes', 'ok');
+    } catch (e) { setDel(null); toast(e.message, 'error'); }
   }
 
   const f = job?.parsed?.features || [];
   return (
     <section className="card set-sec kml-sec">
-      <div className="panel-head"><h3><Icon name="lots" size={18} /> Lotes desde KML</h3>{isKml && <span className="badge badge-ok">KML</span>}</div>
-      <p className="muted small">
-        {isKml ? <>Lotes actuales: <b>{g?.archivo || 'KML'}</b> · {g?.lotes} lotes · {fmtDate(g?.fecha)}. Están en coordenadas reales: no hacen falta puntos de control.</>
-          : <>Los lotes actuales vienen del plano digitalizado. Cargá un KML o KMZ (Google Earth, QGIS, Pix4Dfields) para usar los límites reales de cada lote.</>}
-      </p>
+      <div className="panel-head"><h3><Icon name="lots" size={18} /> Lotes desde KML</h3>{isKml && <span className="badge badge-ok">{list.length} KML · {state.lots.length} lotes</span>}</div>
+      {!isKml && <p className="muted small">Los lotes actuales vienen del plano digitalizado. El primer KML los reemplaza; después podés ir <b>agregando</b> más KML (otros campos o sectores) sin perder lo cargado.</p>}
+      {isKml && (
+        <div className="kml-files" role="list" aria-label="KML cargados">
+          {list.map(k => (
+            <div key={k.id} className="kml-file" role="listitem">
+              <span className="kml-file-ic"><Icon name="lots" size={16} /></span>
+              <div className="kml-row-main">
+                <b>{k.archivo}</b>
+                <span className="muted small">{k.lotes.length} lote{k.lotes.length === 1 ? '' : 's'}{k.lotes.length ? ` (${[...k.lotes].sort((a, b) => a - b).join(', ')})` : ''}{k.fecha ? ` · ${fmtDate(k.fecha)}` : ''}</span>
+              </div>
+              {list.length > 1 && (del === k.id
+                ? <div className="row gap-s"><Button size="sm" onClick={() => setDel(null)}>No</Button><Button size="sm" variant="danger" onClick={() => removeKml(k.id)}>Quitar</Button></div>
+                : <Button size="sm" variant="ghost" icon="trash" onClick={() => setDel(k.id)} aria-label={`Quitar ${k.archivo} y sus lotes`} />)}
+            </div>
+          ))}
+        </div>
+      )}
       {!job && (
         <button type="button" className="dropzone" onClick={() => inp.current.click()}>
-          <Icon name="upload" size={26} /><b>{isKml ? 'Reemplazar con otro KML' : 'Elegir KML o KMZ'}</b><span className="muted small">Cada polígono es un lote · el número se toma del nombre</span>
+          <Icon name={isKml ? 'plus' : 'upload'} size={26} /><b>{isKml ? 'Agregar KML' : 'Elegir KML o KMZ'}</b><span className="muted small">Cada polígono es un lote · el número se toma del nombre</span>
         </button>
       )}
       <input ref={inp} type="file" accept=".kml,.kmz,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" hidden onChange={e => { const fl = e.target.files?.[0]; e.target.value = ''; if (fl) pick(fl); }} />
@@ -102,10 +128,16 @@ export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
             <b>{job.file.name}</b>
             <span className="muted small">{f.filter(x => !x.isOutline).length} polígonos{f.some(x => x.isOutline) ? ' · contorno del campo' : ''}{job.parsed.lines.length ? ` · ${job.parsed.lines.length} líneas` : ''}</span>
           </div>
+          {isKml && (
+            <Field label="Qué hacer con los lotes actuales" hint={add ? `Se suman a los ${state.lots.length} lotes cargados. Números libres: ${libres}…` : 'Se borran los lotes actuales y quedan solo los de este archivo.'}>
+              <Segmented value={job.mode} onChange={m => setJob(j => ({ ...j, mode: m, confirm: false }))} options={[{ value: 'add', label: 'Agregar' }, { value: 'replace', label: 'Reemplazar todo' }]} />
+            </Field>
+          )}
           <Preview features={f} rows={job.rows} />
           <div className="kml-list" role="list">
             {f.map(x => {
-              const r = job.rows[x.key], err = check.bad.includes(x.key) ? 'Número 1 a 99' : check.dup.includes(x.key) ? 'Repetido' : null;
+              const r = job.rows[x.key];
+              const err = check.bad.includes(x.key) ? 'Número 1 a 99' : check.dup.includes(x.key) ? 'Repetido' : check.taken.includes(x.key) ? 'Ya existe' : null;
               return (
                 <div key={x.key} className={`kml-row ${r.include ? '' : 'is-off'}`} role="listitem">
                   <button type="button" className={`tick ${r.include ? 'is-on' : ''}`} onClick={() => setRow(x.key, { include: !r.include })} aria-pressed={r.include} aria-label={`${r.include ? 'Excluir' : 'Incluir'} ${x.name}`}><Icon name="check" size={14} /></button>
@@ -123,12 +155,15 @@ export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
           </div>
           {job.confirm && (
             <p className="kml-confirm"><Icon name="alert" size={16} />
-              Se reemplazan los {state.lots.length} lotes actuales por {check.count}. {state.silos.length ? `Los ${state.silos.length} silos se reubican por sus coordenadas.` : ''} Se borran los puntos de control y las subdivisiones.
+              {add ? `Se agregan ${check.count} lotes a los ${state.lots.length} actuales. Los lotes y silos cargados no cambian.`
+                : `Se reemplazan los ${state.lots.length} lotes actuales por ${check.count}. ${state.silos.length ? `Los ${state.silos.length} silos se reubican por sus coordenadas.` : ''} Se borran los puntos de control y las subdivisiones.`}
             </p>
           )}
           <div className="row end gap-s">
             <Button onClick={() => setJob(null)} disabled={job.busy}>Cancelar</Button>
-            <Button variant="primary" icon="check" onClick={apply} disabled={!check.ok || job.busy}>{job.busy ? 'Cargando…' : job.confirm ? 'Confirmar reemplazo' : `Usar ${check.count} lotes`}</Button>
+            <Button variant="primary" icon={add ? 'plus' : 'check'} onClick={apply} disabled={!check.ok || job.busy}>
+              {job.busy ? 'Cargando…' : job.confirm ? (add ? 'Confirmar' : 'Confirmar reemplazo') : add ? `Agregar ${check.count} lotes` : `Usar ${check.count} lotes`}
+            </Button>
           </div>
         </div>
       )}

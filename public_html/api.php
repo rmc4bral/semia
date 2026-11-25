@@ -303,10 +303,11 @@ switch ($action) {
     if (!is_array($c) || !is_array($c['lots'] ?? null) || !is_array($c['georef'] ?? null)) fail('Datos incompletos');
     $polyOk = function ($poly, $max = 3000) {
       if (!is_array($poly) || count($poly) < 3 || count($poly) > $max) return false;
-      foreach ($poly as $p) if (!is_array($p) || count($p) !== 2 || num($p[0]) === null || num($p[1]) === null || abs($p[0]) > 5000 || abs($p[1]) > 5000) return false;
+      foreach ($poly as $p) if (!is_array($p) || count($p) !== 2 || num($p[0]) === null || num($p[1]) === null || abs($p[0]) > 200000 || abs($p[1]) > 200000) return false;
       return true;
     };
     $clean = fn($poly) => array_map(fn($p) => [round((float)$p[0], 2), round((float)$p[1], 2)], $poly);
+    $kid = fn($v) => preg_match('/^k[a-z0-9]{1,24}$/', (string)$v) ? (string)$v : null;
     $g = $c['georef'];
     foreach (['lat0', 'lng0', 's', 'ox', 'oy'] as $k) if (num($g[$k] ?? null) === null) fail('Georreferencia del KML inválida');
     if (abs($g['lat0']) > 90 || abs($g['lng0']) > 180 || $g['s'] <= 0) fail('Georreferencia del KML inválida');
@@ -317,20 +318,34 @@ switch ($action) {
       if ($n < 1 || $n > 99 || isset($seen[$n])) fail("Número de lote inválido o repetido ($n)"); $seen[$n] = 1;
       if (!$polyOk($l['poly'] ?? null)) fail("Forma inválida en el lote $n");
       $lab = $l['label'] ?? null;
-      $lots[] = ['num' => $n, 'ha' => round(max(0, (float)(num($l['ha'] ?? 0) ?? 0)), 1), 'nombre' => str($l['nombre'] ?? '', 60), 'obs' => str($l['obs'] ?? '', 1000),
-        'poly' => $clean($l['poly']), 'subs' => [], 'label' => is_array($lab) && count($lab) === 2 ? $clean([$lab])[0] : $clean([$l['poly'][0]])[0]];
+      $subs = [];
+      foreach ((is_array($l['subs'] ?? null) ? array_slice($l['subs'], 0, 20) : []) as $sb) {
+        if (!$polyOk($sb['poly'] ?? null)) continue;
+        $sl = $sb['label'] ?? null;
+        $subs[] = ['id' => str($sb['id'] ?? '', 4), 'ha' => round(max(0, (float)(num($sb['ha'] ?? 0) ?? 0)), 1), 'poly' => $clean($sb['poly']),
+          'label' => is_array($sl) && count($sl) === 2 ? $clean([$sl])[0] : $clean([$sb['poly'][0]])[0]];
+      }
+      $rec = ['num' => $n, 'ha' => round(max(0, (float)(num($l['ha'] ?? 0) ?? 0)), 1), 'nombre' => str($l['nombre'] ?? '', 60), 'obs' => str($l['obs'] ?? '', 1000),
+        'poly' => $clean($l['poly']), 'subs' => $subs, 'label' => is_array($lab) && count($lab) === 2 ? $clean([$lab])[0] : $clean([$l['poly'][0]])[0], 'kml' => $kid($l['kml'] ?? '')];
+      if ($polyOk($l['poly0'] ?? null)) $rec['poly0'] = $clean($l['poly0']);
+      $lots[] = $rec;
     }
     usort($lots, fn($a, $b) => $a['num'] <=> $b['num']);
     if (!$polyOk($c['outline'] ?? null, 5000)) fail('Contorno inválido');
     $lines = [];
     foreach (array_slice(is_array($c['lines'] ?? null) ? $c['lines'] : [], 0, 200) as $ln)
-      if (is_array($ln['pts'] ?? null) && count($ln['pts']) >= 2 && count($ln['pts']) <= 3000) $lines[] = ['name' => str($ln['name'] ?? '', 60), 'pts' => $clean($ln['pts'])];
-    $state = withData(function (&$d) use ($c, $g, $lots, $lines, $clean) {
+      if (is_array($ln['pts'] ?? null) && count($ln['pts']) >= 2 && count($ln['pts']) <= 3000) $lines[] = ['name' => str($ln['name'] ?? '', 60), 'pts' => $clean($ln['pts']), 'kml' => $kid($ln['kml'] ?? '')];
+    $kmls = [];
+    foreach ((is_array($g['kmls'] ?? null) ? array_slice($g['kmls'], 0, 50) : []) as $k) {
+      if (!$kid($k['id'] ?? '')) continue;
+      $kmls[] = ['id' => $k['id'], 'archivo' => str($k['archivo'] ?? '', 120), 'fecha' => str($k['fecha'] ?? '', 40) ?: null, 'lotes' => array_values(array_filter(array_map('intval', is_array($k['lotes'] ?? null) ? $k['lotes'] : []), fn($n) => $n >= 1 && $n <= 99))];
+    }
+    $state = withData(function (&$d) use ($c, $g, $lots, $lines, $kmls, $clean) {
       $d['lots'] = $lots;
       $d['outline'] = $clean($c['outline']);
       $d['decor'] = ['lines' => $lines];
       $d['georef'] = ['mode' => 'kml', 'lat0' => (float)$g['lat0'], 'lng0' => (float)$g['lng0'], 's' => (float)$g['s'], 'ox' => (float)$g['ox'], 'oy' => (float)$g['oy'], 'points' => [],
-        'kml' => ['archivo' => str($g['kml']['archivo'] ?? '', 120), 'fecha' => gmdate('c'), 'lotes' => count($lots)]];
+        'kml' => ['archivo' => str($g['kml']['archivo'] ?? '', 120), 'fecha' => gmdate('c'), 'lotes' => count($lots)], 'kmls' => $kmls];
       $nums = array_column($lots, 'num');
       foreach (($c['silos'] ?? []) as $u) foreach ($d['silos'] as $k => $s) if ($s['id'] === ($u['id'] ?? null)) {
         if (!is_array($u['map'] ?? null) || count($u['map']) !== 2 || !in_array((int)($u['lote'] ?? 0), $nums, true)) continue;

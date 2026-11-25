@@ -160,6 +160,26 @@ console.log(`geo+proj: ${n} comprobaciones OK`);
   const re = K.parseKml(x, DOMParser);
   ok(re.features.length === 3 && re.features.every(f => f.num), 'KML exportado se vuelve a leer');
   ok((x.match(/<LineString>/g) || []).length === 1 && (x.match(/<Point>/g) || []).length === 2, 'KML exportado: bolsa con A-B como línea, el resto como punto');
+  // Agregar un segundo KML sin tocar lo cargado
+  const st1 = { ...state, lots: out.lots, outline: out.outline, georef: out.georef, decor: { lines: out.lines }, silos: [] };
+  const kml2 = `<kml xmlns="http://www.opengis.net/kml/2.2"><Document>${pm('Lote 30', sq(-36.05, -60.30, 0.01))}${pm('Lote 7', sq(-36.06, -60.30, 0.01))}</Document></kml>`;
+  const p2 = K.parseKml(kml2, DOMParser), rows2 = p2.features.map(f => ({ key: f.key, num: f.num, include: true }));
+  let taken = null; try { K.buildKmlImport(p2, rows2, st1, geo, { mode: 'add' }); } catch (e) { taken = e.message; }
+  ok(/7 ya existe/.test(taken || ''), 'agregar KML: avisa número de lote ya existente');
+  const add = K.buildKmlImport(p2, rows2.map(r => (r.num === 7 ? { ...r, num: 31 } : r)), st1, geo, { mode: 'add', archivo: 'campo2.kml' });
+  ok(add.mode === 'add' && add.lots.length === 5 && add.added === 2, 'agregar KML: suma lotes a los actuales');
+  ok(JSON.stringify(add.lots.find(l => l.num === 16).poly) === JSON.stringify(l16.poly), 'agregar KML: los lotes cargados no cambian');
+  ok(add.georef.s === out.georef.s && add.georef.lat0 === out.georef.lat0, 'agregar KML: misma proyección');
+  const g2 = G.buildGeo(add.georef), c30 = g2.toMap(-36.05, -60.30);
+  ok(add.lots.find(l => l.num === 30).poly.some(q => G.dist(q, c30) < 0.05), 'agregar KML: nuevo lote en su coordenada real');
+  ok(add.georef.kmls.length === 2 && add.georef.kmls[1].archivo === 'campo2.kml' && add.georef.kmls[1].lotes.join() === '30,31', 'agregar KML: listado de KML cargados');
+  ok(add.lots.every(l => add.outline.length >= 3) && add.lines.length === 1, 'agregar KML: contorno y líneas conservadas');
+  const st2 = { ...st1, lots: add.lots, outline: add.outline, georef: add.georef, decor: { lines: add.lines } };
+  const rm = K.buildKmlRemove(st2, add.georef.kmls[1].id);
+  ok(rm.lots.length === 3 && rm.georef.kmls.length === 1, 'quitar KML: borra solo sus lotes');
+  let blocked = null; try { K.buildKmlRemove({ ...st2, silos: [{ id: 'RB30001', lote: 30 }] }, add.georef.kmls[1].id); } catch (e) { blocked = e.message; }
+  ok(/silobolsa/.test(blocked || ''), 'quitar KML: no permite si sus lotes tienen silos');
+  ok(K.kmlList({ georef: { mode: 'kml', kml: { archivo: 'viejo.kml' } }, lots: [{ num: 1 }] })[0].archivo === 'viejo.kml', 'listado: migra el formato de un solo KML');
   n += 0;
 }
 

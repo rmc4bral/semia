@@ -5,9 +5,9 @@ import { WarpLayer } from './maplayers.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, selectedSilo, onSelectSilo, pickMode, onPick, gps, onNeedGeoref, editing, onVertexMove, onInsertVertex, onSelectVertex, overlays = [], overlayOpacity = 1, mapEdit, onMapCorners, capture }) {
+export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, selectedSilo, onSelectSilo, pickMode, onPick, gps, onNeedGeoref, editing, onVertexMove, onInsertVertex, onSelectVertex, overlays = [], overlayOpacity = 1, mapEdit, onMapCorners, capture, moving, onMoveDraft }) {
   const el = useRef(null), map = useRef(null), layers = useRef({}), fitted = useRef(false), editFit = useRef(null);
-  const cb = useRef({}); cb.current = { onSelectLot, onSelectSilo, onPick, pickMode, geo, selectedLot, editing, onVertexMove, onInsertVertex, onSelectVertex, onMapCorners, mapEdit };
+  const cb = useRef({}); cb.current = { onSelectLot, onSelectSilo, onPick, pickMode, geo, selectedLot, editing, onVertexMove, onInsertVertex, onSelectVertex, onMapCorners, mapEdit, onMoveDraft };
   const warp = useRef({});
 
   useEffect(() => {
@@ -38,10 +38,10 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
     src.forEach(l => {
       const ll = l.poly.map(p => geo.toLatLng(p)); all.push(...ll);
       const sel = editing ? l.num === editing.lot : l.num === selectedLot;
-      const pg = L.polygon(ll, { className: `sat-lot ${sel ? 'is-sel' : ''} ${editing && !sel ? 'is-dim' : ''}`, weight: sel ? 3 : 1.5, fillOpacity: sel ? (editing ? 0.12 : 0.28) : 0.08, interactive: !editing });
+      const pg = L.polygon(ll, { className: `sat-lot ${sel ? 'is-sel' : ''} ${editing && !sel ? 'is-dim' : ''} ${typeof l.num === 'string' ? 'is-casco' : ''}`, weight: sel ? 2 : 1, fillOpacity: sel ? (editing ? 0.1 : 0.2) : 0.04, interactive: !editing });
       if (!editing) {
         pg.on('click', e => { L.DomEvent.stopPropagation(e); const c = cb.current; if (c.pickMode) c.onPick(c.geo.toMap(e.latlng.lat, e.latlng.lng)); else c.onSelectLot(c.selectedLot === l.num ? null : l.num); });
-        pg.bindTooltip(`<b>${l.num}</b> · ${l.ha} ha`, { permanent: true, direction: 'center', className: 'sat-label' });
+        pg.bindTooltip(sel ? `<b>${esc(l.num)}</b><span> · ${esc(l.ha)} ha</span>` : `<b>${esc(l.num)}</b>`, { permanent: true, direction: 'center', className: `sat-label ${sel ? 'is-sel' : ''}` });
       }
       g.addLayer(pg);
       if (sel && editing) layers.current.editPoly = pg;
@@ -85,7 +85,8 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
   useEffect(() => {
     const g = layers.current.silos; g.clearLayers();
     if (!geo) return;
-    silos.forEach(s => {
+    silos.forEach(s0 => {
+      const s = moving && moving.id === s0.id ? { ...s0, map: moving.map, map2: moving.map2, latlng: null, latlng2: null } : s0;
       if (!s.map) return;
       const sel = s.id === selectedSilo;
       const a = s.latlng2 && s.latlng ? s.latlng : geo.toLatLng(s.map);
@@ -104,7 +105,14 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
       mk.bindTooltip(tip, { direction: 'top', offset: [0, -10], className: 'sat-tip', permanent: sel });
       g.addLayer(mk);
     });
-  }, [geo, silos, selectedSilo]);
+    // bolsa en movimiento: manija central arrastrable (traslada la bolsa completa)
+    if (moving) {
+      const a = moving.map, b = moving.map2, c = b ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] : a;
+      const h = L.marker(geo.toLatLng(c), { draggable: true, autoPan: true, icon: L.divIcon({ className: 'v-handle map-center move-handle', iconSize: [40, 40], html: '<span>✥</span>' }), title: 'Arrastrar la silobolsa' });
+      h.on('dragend', e => { const p = e.target.getLatLng(); cb.current.onMoveDraft({ point: cb.current.geo.toMap(p.lat, p.lng), free: true }); });
+      g.addLayer(h);
+    }
+  }, [geo, silos, selectedSilo, moving]);
 
   // Medición GPS en curso: A, B y línea hasta la posición actual
   useEffect(() => {
@@ -158,8 +166,9 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
   useEffect(() => {
     const g = layers.current.gps; g.clearLayers();
     if (!gps) return;
-    g.addLayer(L.circle([gps.lat, gps.lng], { radius: gps.acc || 10, className: 'sat-acc', weight: 1 }));
-    g.addLayer(L.circleMarker([gps.lat, gps.lng], { radius: 6, className: 'sat-gps', weight: 2, fillOpacity: 1 }));
+    // no interactivos: el lote donde estás parado se sigue pudiendo tocar
+    g.addLayer(L.circle([gps.lat, gps.lng], { radius: gps.acc || 10, className: 'sat-acc', weight: 1, interactive: false }));
+    g.addLayer(L.circleMarker([gps.lat, gps.lng], { radius: 6, className: 'sat-gps', weight: 2, fillOpacity: 1, interactive: false }));
     if (!geo && !fitted.current) { map.current.setView([gps.lat, gps.lng], 15); fitted.current = true; }
   }, [gps, geo]);
 
@@ -168,9 +177,9 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
       <div ref={el} className="satmap-el" />
       {!geo && !editing && !mapEdit && !overlays.length && (
         <div className="sat-note">
-          <b>Mapa sin georreferenciar</b>
-          <span>Cargá los 4 puntos de esquina en Ajustes para superponer los lotes sobre la imagen satelital.</span>
-          <button type="button" className="btn btn-primary btn-sm" onClick={onNeedGeoref}>Ir a georreferencia</button>
+          <b>Todavía no hay lotes con coordenadas</b>
+          <span>Cargá el KML (o KMZ) de los lotes en la pestaña Mapas para verlos sobre la imagen satelital y ubicar silobolsas con el GPS.</span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={onNeedGeoref}>Cargar KML</button>
         </div>
       )}
     </div>

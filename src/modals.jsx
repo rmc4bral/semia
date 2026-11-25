@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Button, Field, TextInput, TextArea, Select, Icon, useToast, fmtKg, fmtDate, fmtNum, parseNum } from './ui.jsx';
-import { nextSiloId, snapToBorder, areaHa, pointInPoly } from './geo.js';
+import { nextSiloId, snapToBorder, areaHa, pointInPoly, isSiloLot, parseLotCode, lotName } from './geo.js';
 import { resolvePhoto } from './store.js';
 import { fmtFecha, parseFecha } from './maplayers.js';
 
@@ -42,7 +42,7 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
   const [confirmDel, setConfirmDel] = useState(false);
   const cam = useRef(null), gal = useRef(null);
   const sigla = state.estancia.sigla || 'RB';
-  const lotOpts = state.lots.map(l => ({ value: l.num, label: `Lote ${l.num}`, meta: `${l.ha} ha` }));
+  const lotOpts = state.lots.filter(isSiloLot).map(l => ({ value: l.num, label: `Lote ${l.num}`, meta: `${l.ha} ha` }));
   const lot = state.lots.find(l => l.num === f.lote);
 
   // ID automático según lote
@@ -192,8 +192,8 @@ export function LotModal({ lot, state, me, geo, store, onClose, onSaved, onShape
   const subSum = f.subs.reduce((a, s) => a + (parseNum(s.ha) || 0), 0);
 
   async function save() {
-    const num = parseInt(f.num, 10), ha = parseNum(f.ha);
-    if (!(num > 0 && num < 100)) return toast('El número de lote debe ser entre 1 y 99', 'error');
+    const num = parseLotCode(f.num), ha = parseNum(f.ha);
+    if (num === null) return toast('Escribí un número de 1 a 99 o un nombre con letras (ej. Casco)', 'error');
     if (!(ha > 0)) return toast('Ingresá las hectáreas', 'error');
     if (num !== lot.num && silos.length) return toast('El lote tiene silos registrados: no se puede cambiar su número', 'error');
     const subs = f.subs.map(s => ({ ...s, ha: parseNum(s.ha) }));
@@ -201,12 +201,12 @@ export function LotModal({ lot, state, me, geo, store, onClose, onSaved, onShape
     setBusy(true);
     try {
       const st = await store.saveLot({ _origNum: lot.num, num, ha, nombre: f.nombre.trim(), obs: f.obs.trim(), subs }, me);
-      toast(`Lote ${num} guardado`, 'ok'); onSaved(st, num);
+      toast(`${lotName(num)} guardado`, 'ok'); onSaved(st, num);
     } catch (e) { toast(e.message, 'error'); } finally { setBusy(false); }
   }
 
   return (
-    <Modal title={`Lote ${lot.num}`} subtitle={lot.nombre || 'Configuración del lote'} onClose={onClose}
+    <Modal title={lotName(lot.num)} subtitle={lot.nombre || (isSiloLot(lot) ? 'Configuración del lote' : 'Lote sin silobolsas')} onClose={onClose}
       footer={<>{isAdmin && onShape && <Button variant="ghost" icon="edit" className="foot-left" onClick={() => onShape(lot.num)}>Ajustar forma</Button>}<Button onClick={onClose}>{isAdmin ? 'Cancelar' : 'Cerrar'}</Button>{isAdmin && <Button variant="primary" icon="check" onClick={save} disabled={busy}>Guardar</Button>}</>}>
       <div className="stat-row">
         <div><span className="muted small">Silobolsas</span><b>{silos.length}</b></div>
@@ -214,7 +214,7 @@ export function LotModal({ lot, state, me, geo, store, onClose, onSaved, onShape
         <div><span className="muted small">Sup. medida</span><b>{measured ? `${fmtNum(measured)} ha` : '—'}</b></div>
       </div>
       <div className="form-grid">
-        <Field label="Número de lote"><TextInput value={f.num} onChange={v => setF(x => ({ ...x, num: v.replace(/\D/g, '').slice(0, 2) }))} numeric disabled={!isAdmin} /></Field>
+        <Field label="Número o nombre del lote" hint={/^\d+$/.test(f.num.trim()) ? 'Con número: recibe silobolsas' : 'Con letras (ej. Casco): no recibe silobolsas'}><TextInput value={f.num} onChange={v => setF(x => ({ ...x, num: v.slice(0, 16) }))} disabled={!isAdmin} /></Field>
         <Field label="Hectáreas" hint={f.subs.length ? `Suma de subdivisiones: ${fmtNum(subSum)} ha` : null}><TextInput value={f.ha} onChange={v => setF(x => ({ ...x, ha: v }))} numeric disabled={!isAdmin} /></Field>
         <Field label="Nombre o referencia" className="span-2"><TextInput value={f.nombre} onChange={v => setF(x => ({ ...x, nombre: v }))} placeholder="Ej: Lote del molino" disabled={!isAdmin} /></Field>
         {f.subs.map((s, i) => (

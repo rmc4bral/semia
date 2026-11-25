@@ -1,7 +1,7 @@
 // SemIA · lotes desde KML / KMZ (Google Earth, QGIS, Pix4Dfields…)
 // Los lotes quedan en coordenadas reales: el mapa usa una proyección local exacta
 // (x → este, y → sur) escalada para que el campo mida ~900 unidades.
-import { signedArea, pointInPoly, poleLabel, snapToBorder, kmlGeo } from './geo.js';
+import { signedArea, pointInPoly, poleLabel, snapToBorder, kmlGeo, parseLotCode, lotKey, sortLots, isSiloLot } from './geo.js';
 export { kmlGeo };
 
 const R = 6371008.8, RAD = Math.PI / 180;
@@ -106,10 +106,13 @@ export function parseKml(text, Parser = globalThis.DOMParser) {
     // número de lote: campo de datos o primer número del nombre
     const fieldNum = toNum(pick(ext, /^(lote|n[uú]m(ero)?|nro|n°|id_?lote|cod(igo)?)$/i));
     const m = /(\d{1,3})/.exec(name);
-    const num = fieldNum && fieldNum > 0 ? Math.round(fieldNum) : m ? +m[1] : null;
+    // sin número: se propone el nombre (ej. «Casco»), que queda como lote sin silobolsas
+    const word = parseLotCode((name.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][\wÁÉÍÓÚÜÑáéíóúüñ.-]*/) || [''])[0].slice(0, 16));
+    const numeric = fieldNum && fieldNum > 0 ? Math.round(fieldNum) : m ? +m[1] : null;
+    const num = numeric ?? (OUTLINE_RE.test(`${name} ${folder}`) ? null : word);
     const nombre = (pick(ext, /^(nombre|name|denominaci[oó]n)$/i) || name.replace(/^\s*(lote|lt|l)?\s*\.?\s*\d{1,3}\s*[-–:·.]?\s*/i, '')).trim().slice(0, 60);
     const haKml = toNum(pick(ext, /^(ha|has|hect[aá]reas?|sup(erficie)?(_ha)?|area_?ha)$/i));
-    const isOutline = !num && OUTLINE_RE.test(`${name} ${folder}`);
+    const isOutline = !numeric && OUTLINE_RE.test(`${name} ${folder}`);
     features.push({
       key: `f${idx}`, name: name || `Polígono ${idx + 1}`, folder, num: isOutline ? null : num, nombre: nombre === name ? '' : nombre,
       haKml, ha: +geodesicHa(ring).toFixed(1), ring, isOutline, multi: polys.length > 1,
@@ -173,14 +176,14 @@ const newId = () => 'k' + Date.now().toString(36) + Math.random().toString(36).s
  */
 export function buildKmlImport(parsed, rows, state, oldGeo, meta = {}) {
   const byKey = Object.fromEntries(parsed.features.map(f => [f.key, f]));
-  const chosen = rows.filter(r => r.include && byKey[r.key] && !byKey[r.key].isOutline);
-  const nums = chosen.map(r => +r.num);
+  const chosen = rows.filter(r => r.include && byKey[r.key] && !byKey[r.key].isOutline).map(r => ({ ...r, num: parseLotCode(r.num) }));
+  const nums = chosen.map(r => r.num), keys = nums.map(lotKey);
   const add = meta.mode === 'add' && state.georef?.mode === 'kml';
   if (!chosen.length) throw new Error('Elegí al menos un polígono como lote');
-  if (nums.some(n => !(n >= 1 && n <= 99 && Number.isInteger(n)))) throw new Error('Cada lote necesita un número entre 1 y 99');
-  const dup = nums.find((n, i) => nums.indexOf(n) !== i);
-  if (dup) throw new Error(`El número de lote ${dup} está repetido`);
-  if (add) { const ex = nums.find(n => state.lots.some(l => l.num === n)); if (ex) throw new Error(`El lote ${ex} ya existe: elegí otro número`); }
+  if (nums.some(n => n === null)) throw new Error('Cada lote necesita un número (1 a 99) o un nombre con letras');
+  const dup = nums.find((n, i) => keys.indexOf(lotKey(n)) !== i);
+  if (dup) throw new Error(`El lote ${dup} está repetido`);
+  if (add) { const ex = nums.find(n => state.lots.some(l => lotKey(l.num) === lotKey(n))); if (ex) throw new Error(`El lote ${ex} ya existe: elegí otro número o nombre`); }
   const outlineF = parsed.features.find(f => f.isOutline && rows.find(r => r.key === f.key)?.include !== false);
   let proj;
   if (add) { const { points, kml, kmls, ...g } = state.georef; proj = g; }
@@ -195,14 +198,14 @@ export function buildKmlImport(parsed, rows, state, oldGeo, meta = {}) {
   const id = newId();
   const prevLots = Object.fromEntries((state.lots || []).map(l => [l.num, l]));
   const fresh = chosen.map(r => {
-    const f = byKey[r.key], poly = toPoly(f.ring), prev = add ? null : prevLots[+r.num];
+    const f = byKey[r.key], poly = toPoly(f.ring), prev = add ? null : prevLots[r.num];
     return {
-      num: +r.num, ha: f.haKml ?? f.ha, nombre: (r.nombre ?? f.nombre ?? '').slice(0, 60) || prev?.nombre || '', obs: prev?.obs || '',
+      num: r.num, ha: f.haKml ?? f.ha, nombre: (r.nombre ?? f.nombre ?? '').slice(0, 60) || prev?.nombre || '', obs: prev?.obs || '',
       poly, subs: [], label: poleLabel(poly), kml: id,
     };
   });
   const oldList = kmlList(state);
-  const lots = (add ? [...state.lots.map(l => ({ ...l, kml: l.kml || (oldList.find(k => k.lotes.includes(l.num))?.id ?? null) })), ...fresh] : fresh).sort((a, b) => a.num - b.num);
+  const lots = (add ? [...state.lots.map(l => ({ ...l, kml: l.kml || (oldList.find(k => k.lotes.includes(l.num))?.id ?? null) })), ...fresh] : fresh).sort(sortLots);
   const outline = add ? outlineOf(lots, (state.outline || []).concat(outlineF ? toPoly(outlineF.ring) : []))
     : outlineF ? toPoly(outlineF.ring) : outlineOf(lots);
   const newLines = parsed.lines.slice(0, 200).map(l => ({ name: l.name.slice(0, 60), pts: simplify(l.ring.map(([la, lo]) => geo.toMap(la, lo)).map(p => [r2(p[0]), r2(p[1])]), tol), kml: id }));
@@ -217,9 +220,11 @@ export function buildKmlImport(parsed, rows, state, oldGeo, meta = {}) {
     let map = ll ? geo.toMap(ll[0], ll[1]).map(r2) : null;
     const ll2 = s.latlng2 || (oldGeo && s.map2 ? oldGeo.toLatLng(s.map2) : null);
     const map2 = ll2 ? geo.toMap(ll2[0], ll2[1]).map(r2) : null;
-    let lot = lots.find(l => l.num === s.lote) || null;
-    if (map) { const inside = lots.find(l => pointInPoly(map, l.poly)); if (inside && (!lot || !pointInPoly(map, lot.poly))) lot = inside; }
-    if (!lot) lot = lots[0];
+    const siloLots = lots.filter(isSiloLot);
+    if (!siloLots.length) throw new Error('Hace falta al menos un lote con número para ubicar los silos');
+    let lot = siloLots.find(l => l.num === s.lote) || null;
+    if (map) { const inside = siloLots.find(l => pointInPoly(map, l.poly)); if (inside && (!lot || !pointInPoly(map, lot.poly))) lot = inside; }
+    if (!lot) lot = siloLots[0];
     if (!map) { map = [...lot.label]; sinCoord++; }
     const u = { id: s.id, lote: lot.num, map, map2: map2 || null, t: null, ang: null, latlng: ll ? ll.map(v => +(+v).toFixed(7)) : geo.toLatLng(map).map(v => +v.toFixed(7)), latlng2: ll2 ? ll2.map(v => +(+v).toFixed(7)) : null };
     if (Number.isFinite(s.t) && !s.map2) { const sn = snapToBorder(map, lot.poly); u.map = sn.point.map(r2); u.t = r2(sn.t); u.ang = +sn.angle.toFixed(4); }
@@ -232,13 +237,25 @@ export function buildKmlImport(parsed, rows, state, oldGeo, meta = {}) {
   };
 }
 
+// Cambia el nombre con que se muestra un KML cargado
+export function buildKmlRename(state, id, nombre) {
+  const list = kmlList(state), n = String(nombre || '').trim().slice(0, 120);
+  if (!n) throw new Error('Escribí un nombre');
+  const kmls = list.map(k => (k.id === id ? { ...k, archivo: n } : k));
+  const { points, ...g } = state.georef;
+  return {
+    mode: 'rename', lots: state.lots.map(l => ({ ...l, kml: l.kml || (list.find(x => x.lotes.includes(l.num))?.id ?? null) })), outline: state.outline, silos: [], sinCoord: 0,
+    lines: state.decor?.lines || [], georef: { ...g, points: [], kmls },
+  };
+}
+
 // Quita un KML cargado y sus lotes (no se permite si sus lotes tienen silobolsas)
 export function buildKmlRemove(state, id) {
   const list = kmlList(state), k = list.find(x => x.id === id);
   if (!k) throw new Error('Ese KML ya no está cargado');
-  if (list.length < 2) throw new Error('Es el único KML: para cambiarlo cargá otro con «Reemplazar todo»');
   const n = state.silos.filter(s => k.lotes.includes(s.lote)).length;
   if (n) throw new Error(`Los lotes de ${k.archivo} tienen ${n} silobolsa${n === 1 ? '' : 's'}: movelas o eliminalas antes`);
+  if (list.length < 2) return { mode: 'clear', lots: [], outline: [], silos: [], sinCoord: 0, lines: [], georef: { points: [], kmls: [] } };
   const lots = state.lots.filter(l => !k.lotes.includes(l.num)).map(l => ({ ...l, kml: l.kml || (list.find(x => x.lotes.includes(l.num))?.id ?? null) }));
   const kmls = list.filter(x => x.id !== id);
   const { points, kml, ...g } = state.georef;
@@ -252,8 +269,8 @@ export function buildKmlRemove(state, id) {
 const xesc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
 const kc = ll => `${(+ll[1]).toFixed(7)},${(+ll[0]).toFixed(7)},0`;
 export function exportKml(state, geo) {
-  const lots = geo ? state.lots.map(l => `<Placemark><name>Lote ${l.num}${l.nombre ? ` - ${xesc(l.nombre)}` : ''}</name><styleUrl>#lote</styleUrl>
-<ExtendedData><Data name="lote"><value>${l.num}</value></Data><Data name="ha"><value>${l.ha}</value></Data></ExtendedData>
+  const lots = geo ? state.lots.map(l => `<Placemark><name>${typeof l.num === 'number' ? `Lote ${l.num}` : xesc(l.num)}${l.nombre ? ` - ${xesc(l.nombre)}` : ''}</name><styleUrl>#lote</styleUrl>
+<ExtendedData><Data name="lote"><value>${xesc(l.num)}</value></Data><Data name="ha"><value>${l.ha}</value></Data></ExtendedData>
 <Polygon><outerBoundaryIs><LinearRing><coordinates>${[...l.poly, l.poly[0]].map(p => kc(geo.toLatLng(p))).join(' ')}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>`).join('\n') : '';
   const silos = state.silos.map(s => {
     const a = s.latlng || (geo && s.map ? geo.toLatLng(s.map) : null); if (!a) return '';

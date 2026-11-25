@@ -273,3 +273,15 @@ export function nextSiloId(sigla, lotNum, silos, exceptId) {
   });
   return `${sigla}${String(lotNum).padStart(2, '0')}${String(max + 1).padStart(3, '0')}`;
 }
+
+/* ---------- Lotes: número (1–99, reciben silobolsas) o nombre con letras (ej. «Casco», sin silos) ---------- */
+export const isSiloLot = l => typeof (l?.num ?? l) === 'number';
+export const lotName = num => (typeof num === 'number' ? `Lote ${num}` : String(num));
+// Convierte lo que escribe el usuario: «16» → 16 · «Casco» → 'Casco' · inválido → null
+export function parseLotCode(v) {
+  const t = String(v ?? '').trim().replace(/\s+/g, ' ');
+  if (/^\d{1,2}$/.test(t)) { const n = +t; return n >= 1 && n <= 99 ? n : null; }
+  return /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ][A-Za-z0-9ÁÉÍÓÚÜÑáéíóúüñ .-]{0,15}$/.test(t) ? t : null;
+}
+export const lotKey = num => (typeof num === 'number' ? `n${num}` : `s${String(num).toLowerCase()}`);
+export const sortLots = (a, b) => (isSiloLot(a) && isSiloLot(b) ? a.num - b.num : isSiloLot(a) ? -1 : isSiloLot(b) ? 1 : String(a.num).localeCompare(String(b.num), 'es'));

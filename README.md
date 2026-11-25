@@ -58,14 +58,15 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
   2. Caminá hasta la **cola** (se ve la distancia en vivo) y tocá *Marcar cola (B)*, o *Solo un punto*.
   3. Se abre la ficha con el lote detectado por coordenadas, el ID automático, el **largo en metros**, kg, grano, observación y foto.
   Sin GPS o sin lotes georreferenciados, se marca tocando el plano.
-- **Plano 3D:** pasar el cursor (o tocar) un lote lo eleva. Arrastrar = mover; rueda / pellizco = zoom; botón derecho o dos dedos = girar. Las bolsas A‑B se dibujan con su largo y orientación reales.
-- **Satélite:** lotes, bolsas (línea A‑B) y tu posición sobre la imagen Esri; filtro **Mapa a mostrar** para tus ortomosaicos.
+- **Mapa (satélite):** lotes con su número (al tocar uno se ven sus hectáreas), bolsas (línea A‑B) y tu posición sobre la imagen Esri; filtro **Mapa a mostrar** para tus ortomosaicos.
+- **Lotes con nombre:** un lote puede llamarse con letras (ej. *Casco*, donde está el personal); esos lotes no reciben silobolsas.
 - **Ajustar forma (admin):** cada lote se ajusta por separado (los vecinos no se mueven). Las bolsas ubicadas por GPS quedan donde se midieron.
-- **Mover (admin):** tocar el silo → *Mover* → arrastrarlo; la bolsa A‑B se traslada completa.
+- **Mover (admin):** tocar el silo → *Mover* → arrastrar el punto central; la bolsa A‑B se traslada completa.
 - **Mapas propios:** GeoTIFF (se ubica solo), PDF, JPG/PNG/WebP con barra de proceso.
 - **ID:** `RB16001` = RB (estancia) + 16 (lote) + 001 (bolsa). La sigla se cambia en Ajustes.
 - **Exportar (Silos):** **KML** con lotes y bolsas (para Google Earth / QGIS) y **CSV** con cabecera, cola y largo.
-- **Ajustes:** tocando tu inicial arriba a la derecha.
+- **Ajustes** (tu inicial arriba a la derecha): Mi cuenta, Apariencia, Estancia, Usuarios, Lotes y ubicación, Datos.
+- **Mapas y KML cargados:** cada uno se puede renombrar o eliminar desde la pestaña Mapas.
 - **Roles:** el operador registra silos; el administrador además mueve, elimina, edita lotes, carga KML y gestiona usuarios.
 
 ## Repositorio y despliegue automático

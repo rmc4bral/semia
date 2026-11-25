@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Button, Field, TextInput, Select, Segmented, Icon, useToast, fmtKg, fmtNum, fmtDate } from './ui.jsx';
 import { fmtFecha } from './maplayers.js';
-import { areaHa, lotCorners, migrateGeoref, pointKey } from './geo.js';
+import { areaHa, lotCorners, migrateGeoref, pointKey, isSiloLot, lotName } from './geo.js';
 import { PhotoView, GRANOS } from './modals.jsx';
 import { KmlImport } from './kmlImport.jsx';
 import GlobalMap from './GlobalMap.jsx';
@@ -11,13 +11,13 @@ const sumKg = arr => arr.reduce((a, s) => a + (+s.kg || 0), 0);
 const fmtT = kg => (kg >= 1000 ? `${fmtNum(kg / 1000, kg < 100000 ? 1 : 0)} t` : `${fmtKg(kg)} kg`);
 
 export function Kpis({ state }) {
-  const lotsWith = new Set(state.silos.map(s => s.lote)).size;
+  const lotsWith = new Set(state.silos.map(s => s.lote)).size, nSilo = state.lots.filter(isSiloLot).length;
   const ha = state.lots.reduce((a, l) => a + (+l.ha || 0), 0);
   const kg = sumKg(state.silos);
   const items = [
     { k: 'Almacenado', v: fmtT(kg), s: `${fmtKg(kg)} kg`, hero: true },
     { k: 'Silobolsas', v: fmtNum(state.silos.length), s: 'registradas' },
-    { k: 'Lotes con silos', v: `${lotsWith}/${state.lots.length}`, s: 'lotes' },
+    { k: 'Lotes con silos', v: `${lotsWith}/${nSilo}`, s: state.lots.length > nSilo ? `${state.lots.length - nSilo} sin silos (casco, etc.)` : 'lotes' },
     { k: 'Superficie', v: `${fmtNum(ha)} ha`, s: state.estancia.nombre },
   ];
   return (
@@ -35,7 +35,7 @@ export function LotPanel({ lot, state, geo, onEdit, onShape, onSelectSilo, compa
   if (compact) {
     return (
       <div className="lot-bar">
-        <div className="lot-bar-main"><b>Lote {lot.num}</b><span className="muted">{lot.ha} ha · {silos.length} silo{silos.length === 1 ? '' : 's'} · {fmtT(kg)}</span></div>
+        <div className="lot-bar-main"><b>{lotName(lot.num)}{lot.nombre ? <span className="muted"> · {lot.nombre}</span> : null}</b><span className="muted">{fmtNum(lot.ha, 1)} ha{isSiloLot(lot) ? ` · ${silos.length} silo${silos.length === 1 ? '' : 's'} · ${fmtT(kg)}` : ' · sin silobolsas'}</span></div>
         {onShape && <Button size="sm" variant="ghost" icon="edit" onClick={() => onShape(lot.num)}>Ajustar</Button>}
         <Button variant="ghost" icon="gear" onClick={() => onEdit(lot.num)} aria-label="Configurar lote" />
       </div>
@@ -43,7 +43,7 @@ export function LotPanel({ lot, state, geo, onEdit, onShape, onSelectSilo, compa
   }
   return (
     <section className="panel-sec">
-      <div className="panel-head"><h3>Lote {lot.num}{lot.nombre ? <span className="muted"> · {lot.nombre}</span> : null}</h3><div className="row gap-s">{onShape && <Button size="sm" variant="ghost" icon="edit" onClick={() => onShape(lot.num)}>Ajustar forma</Button>}<Button size="sm" variant="ghost" icon="gear" onClick={() => onEdit(lot.num)}>Configurar</Button></div></div>
+      <div className="panel-head"><h3>{lotName(lot.num)}{lot.nombre ? <span className="muted"> · {lot.nombre}</span> : null}</h3><div className="row gap-s">{onShape && <Button size="sm" variant="ghost" icon="edit" onClick={() => onShape(lot.num)}>Ajustar forma</Button>}<Button size="sm" variant="ghost" icon="gear" onClick={() => onEdit(lot.num)}>Configurar</Button></div></div>
       <div className="stat-row">
         <div><span className="muted small">Hectáreas</span><b>{lot.ha}</b></div>
         <div><span className="muted small">Silos</span><b>{silos.length}</b></div>
@@ -88,7 +88,7 @@ export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml }) {
       && (!t || s.id.toLowerCase().includes(t) || (s.obs || '').toLowerCase().includes(t)))
       .sort((a, b) => a.id.localeCompare(b.id));
   }, [state.silos, q, lote, grano]);
-  const lotOpts = [{ value: 'all', label: 'Todos los lotes' }, ...state.lots.map(l => ({ value: l.num, label: `Lote ${l.num}` }))];
+  const lotOpts = [{ value: 'all', label: 'Todos los lotes' }, ...state.lots.filter(isSiloLot).map(l => ({ value: l.num, label: `Lote ${l.num}` }))];
   return (
     <div className="screen">
       <div className="screen-head">
@@ -116,16 +116,19 @@ export function LotsScreen({ state, onEditLot, onShowLot }) {
   return (
     <div className="screen">
       <div className="screen-head"><div><h1>Lotes</h1><p className="muted">{state.lots.length} lotes · {fmtNum(state.lots.reduce((a, l) => a + l.ha, 0))} ha</p></div></div>
+      {!state.lots.length && <div className="empty"><Icon name="lots" size={28} /><p>No hay lotes cargados. Cargá el KML en la pestaña Mapas.</p></div>}
       <div className="lot-grid">
         {state.lots.map(l => (
-          <div className="card lot-card" key={l.num}>
+          <div className={`card lot-card ${isSiloLot(l) ? '' : 'is-casco'}`} key={String(l.num)}>
             <button type="button" className="lot-card-main" onClick={() => onShowLot(l.num)}>
-              <span className="lot-card-num">{l.num}</span>
-              <span className="lot-card-info"><b>{l.ha} ha</b><span className="muted small">{l.nombre || (l.subs?.length ? l.subs.map(s => s.id).join(' · ') : 'Sin subdivisiones')}</span></span>
+              <span className="lot-card-num">{isSiloLot(l) ? l.num : String(l.num).slice(0, 2).toUpperCase()}</span>
+              <span className="lot-card-info"><b>{isSiloLot(l) ? `${fmtNum(l.ha, 1)} ha` : l.num}</b><span className="muted small">{isSiloLot(l) ? (l.nombre || (l.subs?.length ? l.subs.map(s => s.id).join(' · ') : 'Sin subdivisiones')) : `${fmtNum(l.ha, 1)} ha${l.nombre ? ` · ${l.nombre}` : ''}`}</span></span>
             </button>
-            <Button variant="ghost" icon="gear" onClick={() => onEditLot(l.num)} aria-label={`Configurar lote ${l.num}`} />
-            <div className="lot-card-bar"><span style={{ width: `${((kgBy[l.num] || 0) / max) * 100}%` }} /></div>
-            <div className="lot-card-foot muted small"><span>{nBy[l.num] || 0} silos</span><span>{fmtT(kgBy[l.num] || 0)}</span></div>
+            <Button variant="ghost" icon="gear" onClick={() => onEditLot(l.num)} aria-label={`Configurar ${lotName(l.num)}`} />
+            {isSiloLot(l) ? <>
+              <div className="lot-card-bar"><span style={{ width: `${((kgBy[l.num] || 0) / max) * 100}%` }} /></div>
+              <div className="lot-card-foot muted small"><span>{nBy[l.num] || 0} silos</span><span>{fmtT(kgBy[l.num] || 0)}</span></div>
+            </> : <div className="lot-card-foot muted small"><span>Sin silobolsas</span></div>}
           </div>
         ))}
       </div>
@@ -149,8 +152,18 @@ function LotMini({ lot, vi, n }) {
   );
 }
 
+// Grupo de Ajustes: título y descripción a la izquierda, controles a la derecha (fuera del componente para no perder el foco)
+function Group({ icon, title, desc, children, id }) {
+  return (
+    <section className="set-group" aria-labelledby={`sg-${id}`}>
+      <div className="set-group-head"><h3 id={`sg-${id}`}><Icon name={icon} size={18} />{title}</h3>{desc && <p className="muted small">{desc}</p>}</div>
+      <div className="set-group-body">{children}</div>
+    </section>
+  );
+}
+
 /* ---------- Pantalla Ajustes ---------- */
-export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, setTheme, onState, onLogout, mode }) {
+export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, setTheme, onState, onLogout, mode, onGoMapas }) {
   const toast = useToast();
   const isAdmin = me.rol === 'admin';
   const [pts, setPts] = useState(() => migrateGeoref(state.georef, state.lots).points.map(p => ({ ...p, lat: p.lat ?? '', lng: p.lng ?? '' })));
@@ -212,19 +225,82 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
     try { const data = JSON.parse(await file.text()); await run(() => store.importData(data, me), 'Datos importados'); } catch { toast('El archivo no es un JSON válido', 'error'); }
   }
 
+  const kmls = state.georef?.kmls || (state.georef?.mode === 'kml' ? [state.georef.kml] : []);
+  const [newUser, setNewUser] = useState(false);
+
   return (
     <div className="screen">
-      <div className="screen-head"><div><h1>Ajustes</h1><p className="muted">{me.nombre} · {me.rol === 'admin' ? 'Administrador' : 'Operador'} · {mode === 'local' ? 'Modo local' : 'Servidor'}</p></div></div>
-      <div className="settings">
+      <div className="screen-head"><div><h1>Ajustes</h1><p className="muted">{state.estancia.nombre} · {mode === 'local' ? 'Modo local: los datos quedan en este dispositivo' : 'Conectado al servidor'}</p></div></div>
+      <div className="set-page">
+        <Group id="cuenta" icon="user" title="Mi cuenta" desc="Tu usuario y contraseña.">
+          <div className="set-me">
+            <span className="avatar">{(me.nombre || me.user).slice(0, 1).toUpperCase()}</span>
+            <div className="grow"><b>{me.nombre || me.user}</b><span className="muted small">{me.user} · {me.rol === 'admin' ? 'Administrador' : 'Operador'}</span></div>
+            <Button variant="ghost" icon="logout" onClick={onLogout}>Cerrar sesión</Button>
+          </div>
+          <div className="set-inline">
+            <Field label="Nueva contraseña" className="grow"><TextInput type="password" value={myPass} onChange={setMyPass} placeholder="Mínimo 6 caracteres" autoComplete="new-password" /></Field>
+            <Button onClick={async () => { if (myPass.length < 6) return toast('Mínimo 6 caracteres', 'error'); if (await run(() => store.saveUser({ user: me.user, nombre: me.nombre, rol: me.rol, pass: myPass }, me), 'Contraseña actualizada')) setMyPass(''); }}>Cambiar</Button>
+          </div>
+        </Group>
+
+        <Group id="tema" icon="sun" title="Apariencia" desc="Oscuro para el campo de noche, claro a pleno sol.">
+          <Field label="Tema"><Segmented value={theme} onChange={setTheme} options={[{ value: 'dark', label: 'Oscuro', icon: 'moon' }, { value: 'light', label: 'Claro', icon: 'sun' }]} /></Field>
+        </Group>
+
+        <Group id="estancia" icon="map" title="Estancia" desc="La sigla forma el ID de cada silobolsa.">
+          <div className="form-grid">
+            <Field label="Nombre"><TextInput value={est.nombre} onChange={v => setEst(x => ({ ...x, nombre: v }))} disabled={!isAdmin} /></Field>
+            <Field label="Sigla para IDs" hint={`Ejemplo: ${est.sigla || 'RB'}16001`}><TextInput value={est.sigla} onChange={v => setEst(x => ({ ...x, sigla: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) }))} disabled={!isAdmin} /></Field>
+          </div>
+          {isAdmin && (est.nombre !== state.estancia.nombre || est.sigla !== state.estancia.sigla) && <div className="row end"><Button variant="primary" icon="check" onClick={() => { if (!est.nombre.trim() || !est.sigla) return toast('Completá nombre y sigla', 'error'); run(() => store.saveEstancia(est, me), 'Estancia guardada'); }}>Guardar</Button></div>}
+        </Group>
+
+        {isAdmin && (
+          <Group id="usuarios" icon="user" title="Usuarios" desc="El operador registra silos; el administrador además edita lotes, mapas y usuarios.">
+            <div className="set-list">
+              {state.users.map(u => (
+                <div className="set-row" key={u.user}>
+                  <span className="avatar sm">{(u.nombre || u.user).slice(0, 1).toUpperCase()}</span>
+                  <div className="grow"><b>{u.nombre || u.user}</b><span className="muted small">{u.user} · {u.rol === 'admin' ? 'Administrador' : 'Operador'}{u.user === me.user ? ' · vos' : ''}</span></div>
+                  {u.user !== me.user && <Button size="sm" variant="ghost" icon="trash" onClick={() => run(() => store.deleteUser(u.user, me), 'Usuario eliminado')} aria-label={`Eliminar a ${u.user}`} />}
+                </div>
+              ))}
+            </div>
+            {!newUser ? <div><Button icon="plus" onClick={() => setNewUser(true)}>Nuevo usuario</Button></div> : (
+              <div className="set-sub">
+                <div className="form-grid">
+                  <Field label="Usuario"><TextInput value={nu.user} onChange={v => setNu(x => ({ ...x, user: v.toLowerCase().replace(/[^a-z0-9._-]/g, '') }))} /></Field>
+                  <Field label="Nombre"><TextInput value={nu.nombre} onChange={v => setNu(x => ({ ...x, nombre: v }))} /></Field>
+                  <Field label="Contraseña"><TextInput type="password" value={nu.pass} onChange={v => setNu(x => ({ ...x, pass: v }))} autoComplete="new-password" /></Field>
+                  <Field label="Rol"><Select value={nu.rol} options={[{ value: 'operador', label: 'Operador (registra silos)' }, { value: 'admin', label: 'Administrador' }]} onChange={v => setNu(x => ({ ...x, rol: v }))} /></Field>
+                </div>
+                <div className="row end gap-s">
+                  <Button onClick={() => { setNewUser(false); setNu({ user: '', nombre: '', pass: '', rol: 'operador' }); }}>Cancelar</Button>
+                  <Button variant="primary" icon="check" onClick={async () => {
+                    if (nu.user.length < 3 || nu.pass.length < 6) return toast('Usuario (3+) y contraseña (6+) requeridos', 'error');
+                    if (state.users.some(u => u.user === nu.user)) return toast('Ese usuario ya existe', 'error');
+                    if (await run(() => store.saveUser(nu, me), 'Usuario creado')) { setNu({ user: '', nombre: '', pass: '', rol: 'operador' }); setNewUser(false); }
+                  }}>Crear usuario</Button>
+                </div>
+              </div>
+            )}
+          </Group>
+        )}
+
         {state.georef?.mode === 'kml' ? (
-          <section className="card set-sec">
-            <div className="panel-head"><h3><Icon name="gps" size={18} /> Georreferencia</h3><span className="badge badge-ok">KML</span></div>
-            <p className="muted small">Los lotes se cargaron desde <b>{state.georef.kml?.archivo || 'un KML'}</b> y están en coordenadas reales. Los silobolsas se ubican directamente con el GPS del celular. Para cambiar los lotes, cargá otro KML en la pestaña Mapas.</p>
-            {measured && <p className="small">Superficie calculada: <b>{fmtNum(measured)} ha</b> · declarada {fmtNum(declared)} ha</p>}
-          </section>
+          <Group id="lotes" icon="gps" title="Lotes y ubicación" desc="Los lotes vienen de KML en coordenadas reales; las silobolsas se ubican con el GPS.">
+            <div className="set-stats">
+              <div><span className="muted small">KML cargados</span><b>{kmls.length}</b></div>
+              <div><span className="muted small">Lotes</span><b>{state.lots.length}</b></div>
+              <div><span className="muted small">Superficie medida</span><b>{measured ? `${fmtNum(measured)} ha` : '—'}</b></div>
+            </div>
+            {measured && <p className="muted small">Declarada en los lotes: {fmtNum(declared)} ha.</p>}
+            {onGoMapas && <div><Button icon="layers" onClick={onGoMapas}>Administrar KML y mapas</Button></div>}
+          </Group>
         ) : (
-        <section className="card set-sec">
-          <div className="panel-head"><h3><Icon name="gps" size={18} /> Puntos de control</h3><span className={`badge ${geo ? 'badge-ok' : ''}`}>{geo ? `Activa · ${geo.count} puntos` : `${done}/4 mínimo`}</span></div>
+          <Group id="lotes" icon="gps" title="Puntos de control" desc="Solo para el plano digitalizado. Con un KML no hacen falta.">
+            <div className="row"><span className={`badge ${geo ? 'badge-ok' : ''}`}>{geo ? `Activa · ${geo.count} puntos` : `${done}/4 mínimo`}</span></div>
           <p className="muted small">Elegí cualquier lote y su esquina (N, NE, E, SE, S, SO, O, NO), parate en ese punto y tocá el ícono de ubicación. Con 4 puntos el plano se ubica sobre el satélite; con más puntos el ajuste es más preciso y se informa el desvío de cada uno.</p>
           <div className="geo-pts">
             {pts.map((p, i) => {
@@ -260,62 +336,23 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
             {gps && <span className="muted small grow">Tu GPS: ±{Math.round(gps.acc)} m</span>}
             {isAdmin && <Button variant="primary" icon="check" onClick={saveGeo}>Guardar georreferencia</Button>}
           </div>
-        </section>
+          </Group>
         )}
 
-        <section className="card set-sec">
-          <div className="panel-head"><h3><Icon name="map" size={18} /> Estancia</h3></div>
-          <div className="form-grid">
-            <Field label="Nombre"><TextInput value={est.nombre} onChange={v => setEst(x => ({ ...x, nombre: v }))} disabled={!isAdmin} /></Field>
-            <Field label="Sigla para IDs" hint={`Ejemplo: ${est.sigla || 'RB'}16001`}><TextInput value={est.sigla} onChange={v => setEst(x => ({ ...x, sigla: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) }))} disabled={!isAdmin} /></Field>
-          </div>
-          {isAdmin && <div className="row end"><Button icon="check" onClick={() => { if (!est.nombre.trim() || !est.sigla) return toast('Completá nombre y sigla', 'error'); run(() => store.saveEstancia(est, me), 'Estancia guardada'); }}>Guardar</Button></div>}
-        </section>
-
-        <section className="card set-sec">
-          <div className="panel-head"><h3><Icon name="user" size={18} /> Usuarios</h3></div>
-          {isAdmin && (
-            <div className="user-list">
-              {state.users.map(u => (
-                <div className="user-row" key={u.user}>
-                  <span className="avatar">{(u.nombre || u.user).slice(0, 1).toUpperCase()}</span>
-                  <span className="grow"><b>{u.nombre || u.user}</b><span className="muted small"> · {u.user} · {u.rol === 'admin' ? 'Administrador' : 'Operador'}</span></span>
-                  {u.user !== me.user && <Button size="sm" variant="ghost" icon="trash" onClick={() => run(() => store.deleteUser(u.user, me), 'Usuario eliminado')} aria-label="Eliminar usuario" />}
-                </div>
-              ))}
-            </div>
-          )}
-          {isAdmin && (
-            <div className="form-grid">
-              <Field label="Usuario"><TextInput value={nu.user} onChange={v => setNu(x => ({ ...x, user: v.toLowerCase().replace(/[^a-z0-9._-]/g, '') }))} /></Field>
-              <Field label="Nombre"><TextInput value={nu.nombre} onChange={v => setNu(x => ({ ...x, nombre: v }))} /></Field>
-              <Field label="Contraseña"><TextInput type="password" value={nu.pass} onChange={v => setNu(x => ({ ...x, pass: v }))} /></Field>
-              <Field label="Rol"><Select value={nu.rol} options={[{ value: 'operador', label: 'Operador (registra silos)' }, { value: 'admin', label: 'Administrador' }]} onChange={v => setNu(x => ({ ...x, rol: v }))} /></Field>
-              <div className="span-2 row end"><Button icon="plus" onClick={async () => {
-                if (nu.user.length < 3 || nu.pass.length < 6) return toast('Usuario (3+) y contraseña (6+) requeridos', 'error');
-                if (state.users.some(u => u.user === nu.user)) return toast('Ese usuario ya existe', 'error');
-                if (await run(() => store.saveUser(nu, me), 'Usuario creado')) setNu({ user: '', nombre: '', pass: '', rol: 'operador' });
-              }}>Agregar usuario</Button></div>
-            </div>
-          )}
-          <div className="form-grid">
-            <Field label="Nueva contraseña (tu cuenta)" className="span-2"><TextInput type="password" value={myPass} onChange={setMyPass} placeholder="Mínimo 6 caracteres" /></Field>
-          </div>
-          <div className="row end"><Button onClick={async () => { if (myPass.length < 6) return toast('Mínimo 6 caracteres', 'error'); if (await run(() => store.saveUser({ user: me.user, nombre: me.nombre, rol: me.rol, pass: myPass }, me), 'Contraseña actualizada')) setMyPass(''); }}>Cambiar contraseña</Button></div>
-        </section>
-
-        <section className="card set-sec">
-          <div className="panel-head"><h3><Icon name="layers" size={18} /> Datos y apariencia</h3></div>
-          <Field label="Tema"><Segmented value={theme} onChange={setTheme} options={[{ value: 'dark', label: 'Oscuro', icon: 'moon' }, { value: 'light', label: 'Claro', icon: 'sun' }]} /></Field>
+        <Group id="datos" icon="download" title="Datos" desc={mode === 'local' ? 'Exportá un respaldo seguido: los datos solo están en este dispositivo.' : 'Respaldo completo de lotes, silobolsas y mapas.'}>
           <div className="row wrap gap-s">
             <Button icon="download" onClick={exportJson}>Exportar respaldo</Button>
             {isAdmin && <Button icon="upload" onClick={() => imp.current.click()}>Importar respaldo</Button>}
             <input ref={imp} type="file" accept="application/json,.json" hidden onChange={importJson} />
-            {isAdmin && mode === 'local' && !confirmReset && <Button variant="ghost" icon="trash" onClick={() => setConfirmReset(true)}>Restablecer datos locales</Button>}
-            {confirmReset && <><span className="small">¿Borrar todo lo guardado en este dispositivo?</span><Button onClick={() => setConfirmReset(false)}>No</Button><Button variant="danger" onClick={() => { store.resetLocal(); location.reload(); }}>Sí, borrar</Button></>}
           </div>
-          <div className="row end"><Button variant="ghost" icon="logout" onClick={onLogout}>Cerrar sesión</Button></div>
-        </section>
+          {isAdmin && mode === 'local' && (
+            <div className="set-danger">
+              {!confirmReset ? <Button variant="ghost" icon="trash" onClick={() => setConfirmReset(true)}>Restablecer datos locales</Button> : (
+                <div className="row wrap gap-s"><span className="small">¿Borrar todo lo guardado en este dispositivo?</span><Button onClick={() => setConfirmReset(false)}>No</Button><Button variant="danger" onClick={() => { store.resetLocal(); location.reload(); }}>Sí, borrar</Button></div>
+              )}
+            </div>
+          )}
+        </Group>
       </div>
     </div>
   );
@@ -332,7 +369,11 @@ export function MapsScreen({ state, me, job, onPick, onJobChange, onCancel, onSe
   const sizeMb = job?.res ? (job.res.dataUrl.length * 0.75) / 1048576 : 0;
   // listado general
   const [q, setQ] = useState(''), [orden, setOrden] = useState('fecha'), [sel, setSel] = useState(null);
-  const [imgs, setImgs] = useState(true), [focus, setFocus] = useState(null);
+  const [imgs, setImgs] = useState(true), [focus, setFocus] = useState(null), [delMap, setDelMap] = useState(null);
+  const toast = useToast();
+  async function borrarMapa(m) {
+    try { onState(await store.deleteMap(m.id, me)); setDelMap(null); if (sel === m.id) setSel(null); toast(`«${m.nombre}» eliminado`, 'ok'); } catch (e) { toast(e.message, 'error'); }
+  }
   const rows = useMemo(() => {
     const t = q.trim().toLowerCase();
     const r = (state.maps || []).map(m => ({ ...m, tipo: m.tipo || (m.crs ? 'GeoTIFF' : 'Imagen'), ha: geodesicHa(m.corners) }))
@@ -377,11 +418,16 @@ export function MapsScreen({ state, me, job, onPick, onJobChange, onCancel, onSe
                       <span className="muted small">{fmtNum(m.ha, m.ha < 10 ? 1 : 0)} ha{m.peso ? ` · ${fmtNum(m.peso / 1048576, 1)} MB` : ''}{m.original ? ` · ${m.original[0]}×${m.original[1]} px` : ''}</span>
                     </span>
                   </button>
-                  <div className="maps-act">
-                    <Button size="sm" variant="ghost" icon="sat" onClick={() => onShowMap(m.id)} aria-label={`Ver ${m.nombre} en el mapa satelital`} />
-                    {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => onAdjustMap(m.id)} aria-label={`Ajustar posición de ${m.nombre}`} />}
-                    {isAdmin && <Button size="sm" variant="ghost" icon="edit" onClick={() => onEditMap(m.id)} aria-label={`Editar o eliminar ${m.nombre}`} />}
-                  </div>
+                  {delMap === m.id ? (
+                    <div className="row gap-s"><Button size="sm" onClick={() => setDelMap(null)}>No</Button><Button size="sm" variant="danger" onClick={() => borrarMapa(m)}>Eliminar</Button></div>
+                  ) : (
+                    <div className="maps-act">
+                      <Button size="sm" variant="ghost" icon="sat" onClick={() => onShowMap(m.id)} aria-label={`Ver ${m.nombre} en el mapa satelital`} />
+                      {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => onAdjustMap(m.id)} aria-label={`Ajustar posición de ${m.nombre}`} />}
+                      {isAdmin && <Button size="sm" variant="ghost" icon="edit" onClick={() => onEditMap(m.id)} aria-label={`Renombrar ${m.nombre}`} />}
+                      {isAdmin && <Button size="sm" variant="ghost" icon="trash" onClick={() => setDelMap(m.id)} aria-label={`Eliminar ${m.nombre}`} />}
+                    </div>
+                  )}
                 </div>
               ))}
               {!maps.length && <p className="muted small">Todavía no hay mapas cargados.{isAdmin ? ' Subí el primero desde «Subir mapa».' : ''}</p>}

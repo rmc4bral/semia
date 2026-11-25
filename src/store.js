@@ -219,9 +219,10 @@ export function createStore(mode) {
         if (!isAdmin(me)) throw new Error('Solo el administrador puede reemplazar los lotes');
         const d = localLoad();
         const { kx, ky, ...g } = change.georef;
+        if (!change.lots.length) { d.lots = []; d.outline = []; d.decor = {}; d.georef = { points: [] }; localSave(d); return publicState(d); }
         d.lots = change.lots.map(l => ({ ...l, subs: l.subs || [] })); d.outline = change.outline; d.decor = { lines: change.lines || [] };
         d.georef = { ...g, points: [], kml: { ...(g.kml || {}), lotes: change.lots.length }, kmls: g.kmls || [] };
-        const nums = d.lots.map(l => l.num);
+        const nums = d.lots.map(l => l.num).filter(n => typeof n === 'number');
         (change.silos || []).forEach(u => { const x = d.silos.find(s => s.id === u.id); if (x) Object.assign(x, { lote: u.lote, map: u.map, map2: u.map2 || null, t: u.t, ang: u.ang, latlng: u.latlng || x.latlng, latlng2: u.latlng2 || x.latlng2 || null }); });
         d.silos.forEach(x => { if (!nums.includes(x.lote)) x.lote = nums[0]; });
         localSave(d); return publicState(d);

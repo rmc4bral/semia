@@ -108,3 +108,62 @@ let threw = false; try { toLatLng(22195, 0, 0); } catch { threw = true; }
 ok(threw, 'sistema no soportado avisa');
 
 console.log(`geo+proj: ${n} comprobaciones OK`);
+
+// 9. Lotes desde KML / KMZ
+{
+  const { DOMParser } = await import('@xmldom/xmldom');
+  const K = await import('../src/kml.js');
+  const sq = (la, lo, d, w = d) => `${lo},${la},0 ${lo + w},${la},0 ${lo + w},${la - d},0 ${lo},${la - d},0 ${lo},${la},0`;
+  const pm = (name, coords, ext = '') => `<Placemark><name>${name}</name>${ext}<Polygon><outerBoundaryIs><LinearRing><coordinates>${coords}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>`;
+  const kml = `<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><Folder><name>Lotes</name>
+    ${pm('Lote 16 - La Loma', sq(-35.9, -60.42, 0.02), '<ExtendedData><Data name="ha"><value>311,5</value></Data></ExtendedData>')}
+    ${pm('3', sq(-35.9, -60.40, 0.02))}
+    ${pm('Potrero', sq(-35.92, -60.42, 0.01), '<ExtendedData><SchemaData><SimpleData name="LOTE">7</SimpleData></SchemaData></ExtendedData>')}
+    ${pm('Perímetro estancia', sq(-35.899, -60.421, 0.042))}
+    <Placemark><name>Camino</name><LineString><coordinates>-60.42,-35.91 -60.38,-35.91</coordinates></LineString></Placemark>
+  </Folder></Document></kml>`;
+  const p = K.parseKml(kml, DOMParser);
+  const byName = Object.fromEntries(p.features.map(f => [f.name, f]));
+  ok(p.features.length === 4 && p.lines.length === 1, 'KML: 4 polígonos y 1 línea');
+  ok(byName['Lote 16 - La Loma'].num === 16 && byName['Lote 16 - La Loma'].nombre === 'La Loma', 'KML: número y nombre desde el título');
+  ok(byName['Lote 16 - La Loma'].haKml === 311.5, 'KML: hectáreas del campo de datos (coma decimal)');
+  ok(byName.Potrero.num === 7, 'KML: número desde SimpleData LOTE');
+  ok(byName['Perímetro estancia'].isOutline && byName['Perímetro estancia'].num === null, 'KML: contorno del campo detectado');
+  const ha = byName['3'].ha; ok(ha > 390 && ha < 410, `KML: superficie geodésica (${ha} ha)`);
+  let bad = false; try { K.parseKml('<kml><Document></Document></kml>', DOMParser); } catch { bad = true; }
+  ok(bad, 'KML sin polígonos avisa');
+
+  const rows = p.features.map(f => ({ key: f.key, num: f.num, include: true }));
+  const state = { lots: [{ num: 16, nombre: 'Viejo', obs: 'nota', poly: [[0, 0], [1, 0], [1, 1]] }], estancia: { nombre: 'X' },
+    silos: [{ id: 'RB16001', lote: 16, kg: 1, latlng: [-35.905, -60.41], map: [0, 0], t: null }, { id: 'RB03001', lote: 3, kg: 2, latlng: [-35.905, -60.39], latlng2: [-35.906, -60.39], map: [0, 0], map2: [1, 1] }, { id: 'RB09001', lote: 9, kg: 3, map: [5, 5] }] };
+  const out = K.buildKmlImport(p, rows, state, null, { archivo: 'campo.kml' });
+  ok(out.lots.map(l => l.num).join() === '3,7,16', 'KML: lotes ordenados');
+  ok(out.lots.find(l => l.num === 16).obs === 'nota', 'KML: conserva observaciones del lote con el mismo número');
+  ok(out.lots.every(l => G.pointInPoly(l.label, l.poly) && G.signedArea(l.poly) > 0), 'KML: etiquetas dentro y orientación horaria');
+  const geo = G.buildGeo(out.georef);
+  ok(geo && geo.kml, 'KML: georreferencia exacta activa');
+  const rt = geo.toLatLng(geo.toMap(-35.9123, -60.4111));
+  ok(Math.abs(rt[0] + 35.9123) < 1e-9 && Math.abs(rt[1] + 60.4111) < 1e-9, 'KML: ida y vuelta exacta');
+  const xs = out.outline.map(q => q[0]), ys = out.outline.map(q => q[1]);
+  ok(Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) > 880, 'KML: el campo ocupa ~900 unidades');
+  const corner = geo.toMap(-35.9, -60.42), l16 = out.lots.find(l => l.num === 16);
+  ok(l16.poly.some(q => G.dist(q, corner) < 0.05), 'KML: vértice en la coordenada real');
+  ok(Math.abs(G.areaHa(l16.poly, geo) - 400.6) < 2, 'KML: superficie medida coincide');
+  const s1 = out.silos.find(s => s.id === 'RB16001'), s3 = out.silos.find(s => s.id === 'RB03001'), s9 = out.silos.find(s => s.id === 'RB09001');
+  ok(s1.lote === 16 && G.pointInPoly(s1.map, l16.poly), 'KML: silo reubicado por coordenadas dentro de su lote');
+  ok(s3.map2 && G.metersBetween(geo.toLatLng(s3.map2), [-35.906, -60.39]) < 0.5, 'KML: silo con cabecera y cola reubicado');
+  ok(s9.lote === 3 && out.sinCoord === 1, 'KML: silo sin coordenadas de un lote inexistente queda en un lote válido');
+  ok(out.lines[0].pts.length >= 2, 'KML: caminos como líneas');
+  let dupErr = null; try { K.buildKmlImport(p, rows.map(r => ({ ...r, num: 5 })), state, null); } catch (e) { dupErr = e.message; }
+  ok(/repetido/.test(dupErr || '') || /número/.test(dupErr || ''), 'KML: número repetido avisa');
+  const x = K.exportKml({ ...state, lots: out.lots, silos: out.silos.map(s => ({ ...s, kg: 5, latlng2: s.map2 ? geo.toLatLng(s.map2) : null })) }, geo);
+  const re = K.parseKml(x, DOMParser);
+  ok(re.features.length === 3 && re.features.every(f => f.num), 'KML exportado se vuelve a leer');
+  ok((x.match(/<LineString>/g) || []).length === 1 && (x.match(/<Point>/g) || []).length === 2, 'KML exportado: bolsa con A-B como línea, el resto como punto');
+  n += 0;
+}
+
+// 10. GPS: forma de la bolsa libre y recorrido sólo para silos de borde
+ok(S.buildShapeChange({ lots: [{ num: 1, poly: [[0, 0], [10, 0], [10, 10], [0, 10]], subs: [] }], outline: [[0, 0], [10, 0], [10, 10]], silos: [{ id: 'A', lote: 1, map: [5, 5], map2: [6, 6], t: null }, { id: 'B', lote: 1, map: [3, 3], t: null }] },
+  { lots: [{ num: 1, poly: [[0, 0], [12, 0], [12, 10], [0, 10]], subs: [] }], outline: [[0, 0], [10, 0], [10, 10]] }, null).silos.length === 0, 'ajustar forma no mueve silos ubicados por GPS');
+console.log(`geo+kml: ${n} comprobaciones OK`);

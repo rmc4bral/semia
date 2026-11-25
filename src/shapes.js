@@ -87,7 +87,8 @@ export function buildShapeChange(state, geom, geo) {
     subs: l.subs.map(s => ({ id: s.id, poly: s.poly, label: poleLabel(s.poly) })),
   }));
   const nums = new Set(changed.map(l => l.num));
-  const silos = state.silos.filter(s => nums.has(s.lote) && s.map).map(s => {
+  // los silos ubicados por GPS (punto libre o inicio/fin) quedan donde se midieron
+  const silos = state.silos.filter(s => nums.has(s.lote) && s.map && !s.map2 && s.t !== null && s.t !== undefined && isFinite(s.t)).map(s => {
     const poly = geom.lots.find(l => l.num === s.lote).poly;
     const sn = snapToBorder(s.map, poly);
     const map = sn.point.map(v => Math.round(v * 100) / 100);

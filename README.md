@@ -1,6 +1,8 @@
 # SemIA · Registro de silobolsas
 
-App web móvil (React + HTML5 + CSS + PHP) para registrar silobolsas por lote en la **Est. Rincón de Baguales**.
+App web móvil (React + HTML5 + CSS + PHP) para registrar silobolsas en la **Est. Rincón de Baguales**: los lotes se cargan desde un **KML** con sus límites reales y cada bolsa se ubica con el **GPS del celular** marcando su cabecera y su cola.
+
+Tema: negro `#000000`, lima `#CCFF00`, gris `#999999` y claro `#F2F2F2`; modo oscuro y claro con la misma paleta. Pensada para el celular (barra inferior con botón central **+**, hojas inferiores, instalable como app); la misma base sirve para empaquetar el APK de Android.
 
 ## Estructura
 
@@ -10,6 +12,7 @@ SemIA/
 │  ├─ index.html         página única
 │  ├─ script.js          app React compilada (no editar a mano: se genera desde src/)
 │  ├─ tiff.js, pdf.js, pdf.worker.js   lectores de GeoTIFF y PDF (se cargan solo al subir un mapa)
+│  │                     (el lector de KML/KMZ va dentro de script.js)
 │  ├─ style.css          estilos (paleta #183630 · #E3DAC9 · #E5C690, radio 6px)
 │  ├─ api.php            API: login, silos, lotes, georreferencia, fotos, usuarios
 │  ├─ data.seed.json     plantilla inicial; api.php crea data.json la primera vez
@@ -48,17 +51,21 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 
 ## Cómo se usa
 
-- **Plano 3D:** pasar el cursor (o tocar) un lote lo eleva. Arrastrar = mover; rueda / pellizco = zoom; botón derecho o dos dedos = girar; botón 2D/3D.
-- **Tuerca sobre el lote:** edita número, hectáreas, subdivisiones, nombre y observaciones (también desde la pestaña Lotes).
-- **Puntos de control (Ajustes):** elegir cualquier lote y su esquina por orientación (N, NE, E, SE, S, SO, O, NO), pararse ahí y tocar el ícono de ubicación. Con 4 puntos el plano se ubica sobre el **mapa satelital**; se pueden cargar hasta 12 y el ajuste por mínimos cuadrados informa el desvío en metros de cada punto (en rojo si supera 15 m).
-- **Ajustar forma (admin):** con el lote seleccionado en *Satélite* → *Ajustar forma*. Se arrastran los vértices, *+* agrega uno, *Quitar vértice*, *Deshacer* y *Original*. **Cada lote se ajusta por separado** (hay caminos y cortinas entre lotes): los vecinos no se mueven; los puntos de control GPS del lote quedan fijos; los silos del lote se reubican sobre el nuevo borde.
-- **Mapas (pestaña aparte):** subir ortomosaicos del dron en **GeoTIFF** (WGS84, UTM o POSGAR fajas 1–7: se ubican solos por sus coordenadas), **PDF** (primera página) o imágenes JPG/PNG/WebP, que se ubican arrastrando sus 4 esquinas sobre el satélite. Tiene barra de proceso (convertir → revisar → subir con porcentaje real) y sigue en segundo plano si cambiás de pestaña. Se reducen en el navegador a 4096 px antes de subir. En *Satélite* el filtro **Mapa a mostrar** permite ver todos (el más nuevo arriba), uno solo o solo el satélite, con opacidad 50/75/100 %.
-- **Botón +:** toma tu ubicación en tiempo real, detecta el lote y ubica el silo sobre su **borde**. Se abre la ficha con ID automático, Kg, grano, observación y foto. Sin GPS o sin georreferencia, se marca tocando el borde del lote.
+- **Lotes desde KML (Mapas → Lotes desde KML, administrador):** elegí un `.kml` o `.kmz` (Google Earth, QGIS, Pix4Dfields). Cada polígono es un lote: el número se toma del nombre (`Lote 16`, `16 - La Loma`) o de un campo `lote`; las hectáreas, de un campo `ha` o se calculan. Un polígono llamado *Perímetro / Campo / Estancia* se usa como contorno, y las líneas (caminos, cortinas) se dibujan en el plano. Antes de confirmar se ven todos los polígonos, se puede corregir el número o excluir alguno. Al reemplazar, los silos existentes se reubican por sus coordenadas. Con KML no hacen falta puntos de control.
+- **Nueva silobolsa (botón + de la barra):**
+  1. Parate en la **cabecera** de la bolsa y tocá *Marcar cabecera (A)*: se toman lecturas durante 5 segundos y se promedian.
+  2. Caminá hasta la **cola** (se ve la distancia en vivo) y tocá *Marcar cola (B)*, o *Solo un punto*.
+  3. Se abre la ficha con el lote detectado por coordenadas, el ID automático, el **largo en metros**, kg, grano, observación y foto.
+  Sin GPS o sin lotes georreferenciados, se marca tocando el plano.
+- **Plano 3D:** pasar el cursor (o tocar) un lote lo eleva. Arrastrar = mover; rueda / pellizco = zoom; botón derecho o dos dedos = girar. Las bolsas A‑B se dibujan con su largo y orientación reales.
+- **Satélite:** lotes, bolsas (línea A‑B) y tu posición sobre la imagen Esri; filtro **Mapa a mostrar** para tus ortomosaicos.
+- **Ajustar forma (admin):** cada lote se ajusta por separado (los vecinos no se mueven). Las bolsas ubicadas por GPS quedan donde se midieron.
+- **Mover (admin):** tocar el silo → *Mover* → arrastrarlo; la bolsa A‑B se traslada completa.
+- **Mapas propios:** GeoTIFF (se ubica solo), PDF, JPG/PNG/WebP con barra de proceso.
 - **ID:** `RB16001` = RB (estancia) + 16 (lote) + 001 (bolsa). La sigla se cambia en Ajustes.
-- **Recorrido:** los silos de cada lote se unen en el orden de carga siguiendo el borde (línea punteada).
-- **Corregir ubicación (admin):** tocar el silo → *Mover* → arrastrarlo; se desliza solo por el contorno del lote → *Guardar*.
-- **Roles:** el operador registra silos; el administrador además mueve, elimina, edita lotes, georreferencia y gestiona usuarios.
-- **Exportar:** CSV de silos (pestaña Silos) y respaldo JSON (Ajustes).
+- **Exportar (Silos):** **KML** con lotes y bolsas (para Google Earth / QGIS) y **CSV** con cabecera, cola y largo.
+- **Ajustes:** tocando tu inicial arriba a la derecha.
+- **Roles:** el operador registra silos; el administrador además mueve, elimina, edita lotes, carga KML y gestiona usuarios.
 
 ## Repositorio y despliegue automático
 
@@ -74,7 +81,7 @@ Secretos a cargar en GitHub → Settings → Secrets and variables → Actions:
 ```
 npm install
 npm run build                 # src/ → public_html/script.js + style.css
-node tests/geo.test.mjs       # geometría, homografía, IDs
+node tests/geo.test.mjs       # geometría, homografía, IDs, lectura y exportación KML
 bash tests/api.test.sh http://localhost:8000      # API (con php -S corriendo)
 python3 tests/e2e.py http://localhost:8000 public_html   # flujo completo en navegador
 ```

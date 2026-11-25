@@ -37,7 +37,9 @@ def mdist(a, b): return np.hypot((a[0] - b[0]) * 111320, (a[1] - b[1]) * 111320 
 ok = 0; errs = []
 def check(c, m):
     global ok
-    if c: ok += 1
+    if c:
+        ok += 1
+        if __import__('os').environ.get('E2E_V'): print('ok:', m)
     else: errs.append(m); print('FALLA:', m)
 
 IGNORE = ('arcgisonline', 'fonts.g', 'ERR_INTERNET_DISCONNECTED', 'ERR_NAME_NOT_RESOLVED', 'Failed to load resource', 'ERR_TUNNEL', 'ERR_CONNECTION')
@@ -95,11 +97,24 @@ with sync_playwright() as p:
         la, lo = latlng(lot16['label']); ctx.set_geolocation({'latitude': la, 'longitude': lo})
         page.reload(); page.wait_for_selector('.map3d-svg'); page.wait_for_timeout(1200)
         check(page.locator('.gps-dot').count() == 1, f'{tag}: posición en vivo sobre el plano')
-        for i, (dx, kg) in enumerate([(0, '180000'), (0.002, '150.000')]):
-            ctx.set_geolocation({'latitude': la + 0.001, 'longitude': lo + dx}); page.wait_for_timeout(900)
-            page.click('.fab'); page.wait_for_selector('.modal .input-static')
+        # alta por GPS: silo 1 con cabecera y cola (A-B), silo 2 con un solo punto
+        for i, kg in enumerate(['180000', '150.000']):
+            ctx.set_geolocation({'latitude': la + 0.001, 'longitude': lo + 0.002 * i, 'accuracy': 4}); page.wait_for_timeout(700)
+            page.click('.nav-add'); page.wait_for_selector('.cap-sheet')
+            check('cabecera' in page.inner_text('.cap-title'), f'{tag}: pide pararse en la cabecera')
+            page.click('.cap-btn'); page.wait_for_selector('.cap-dist, .modal', timeout=15000)
+            if i == 0:
+                ctx.set_geolocation({'latitude': la + 0.001, 'longitude': lo + 0.0007, 'accuracy': 4}); page.wait_for_timeout(1500)
+                d = page.inner_text('.cap-dist b')
+                check(d.replace('m', '').strip().isdigit() and 55 <= int(d.replace('m', '').strip()) <= 72, f'{tag}: distancia en vivo desde la cabecera ({d})')
+                check(page.locator('.cap-pt').count() >= 1 or page.locator('.sat-cap-pt').count() >= 1, f'{tag}: punto A en el mapa')
+                page.click('.cap-btn')
+            else:
+                page.click('.cap-foot button:has-text("Solo un punto")')
+            page.wait_for_function("() => (document.querySelector('.modal .input-static')?.textContent || '').length > 3", timeout=15000)
             sid = page.inner_text('.modal .input-static')
             check(sid == f'RB16{i+1:03d}', f'{tag}: ID automático {sid}')
+            if i == 0: check('m de largo' in page.inner_text('.modal .loc-gps'), f'{tag}: ficha con largo de la bolsa')
             page.fill('.modal input[inputmode=decimal]', kg)
             page.locator('.modal .select').nth(1).click(); page.click('.select-opt:has-text("Soja")')
             page.fill('.modal textarea', 'Bolsa de prueba')
@@ -110,26 +125,24 @@ with sync_playwright() as p:
         st = page.request.get(URL + '/api.php?action=state').json()['state']
         check(len(st['silos']) == 2 and all(s['lote'] == 16 and s['foto'] for s in st['silos']), f'{tag}: 2 silos con foto en lote 16')
         check(st['silos'][1]['kg'] == 150000, f'{tag}: kg con separador de miles')
-        check(page.locator('.track').count() == 1, f'{tag}: recorrido por el borde dibujado')
+        s1 = st['silos'][0]
+        check(s1.get('map2') and 55 <= (s1.get('largo') or 0) <= 72 and s1['gps2']['acc'] == 4, f'{tag}: bolsa A-B guardada ({s1.get("largo")} m)')
+        check(abs(s1['latlng'][0] - (la + 0.001)) < 1e-6 and abs(s1['latlng'][1] - lo) < 1e-6, f'{tag}: cabecera en la coordenada medida')
+        check(st['silos'][1].get('map2') is None and st['silos'][1]['t'] is None, f'{tag}: punto único libre (sin pegar al borde)')
+        check(page.locator('.track').count() == 0 and page.locator('.silo-bag').count() == 2, f'{tag}: bolsas dibujadas sin recorrido de borde')
         check('RB16002' in page.inner_text('.silo-pop') and '150.000' in page.inner_text('.silo-pop'), f'{tag}: el punto muestra ID y KG')
-        # mover silo por el contorno
+        # mover silo (punto libre): se desplaza donde se suelta
         page.click('.silo-pop button:has-text("Mover")'); page.wait_for_selector('.map-banner')
         before = st['silos'][1]['map']
         box = page.evaluate("""() => { const r=document.querySelector('[data-silo="RB16002"] .silo-hit').getBoundingClientRect(); return [r.x+r.width/2, r.y+r.height/2]; }""")
-        page.mouse.move(*box); page.mouse.down(); page.mouse.move(box[0] + 40, box[1] + 30, steps=8); page.mouse.up()
+        page.mouse.move(*box); page.mouse.down(); page.mouse.move(box[0] + 30, box[1] + 20, steps=8); page.mouse.up()
         page.click('.map-banner .btn-primary'); page.wait_for_timeout(500)
-        after = next(s for s in page.request.get(URL + '/api.php?action=state').json()['state']['silos'] if s['id'] == 'RB16002')['map']
-        poly = lot16['poly']
-        def onborder(q):
-            best = 9e9
-            for a, c in zip(poly, poly[1:] + poly[:1]):
-                d = np.array(c) - a; k = max(0, min(1, np.dot(np.array(q) - a, d) / np.dot(d, d))); best = min(best, np.linalg.norm(np.array(q) - (np.array(a) + d * k)))
-            return best
-        check(after != before and onborder(after) < 0.05, f'{tag}: silo desplazado sobre el borde del lote ({onborder(after):.3f})')
+        after = next(s for s in page.request.get(URL + '/api.php?action=state').json()['state']['silos'] if s['id'] == 'RB16002')
+        check(np.hypot(after['map'][0] - before[0], after['map'][1] - before[1]) > 1 and after['t'] is None, f'{tag}: silo movido libremente')
         # satélite
         page.click('.seg button:has-text("Satélite")'); page.wait_for_selector('.leaflet-container'); page.wait_for_timeout(500)
         check(page.locator('path.sat-lot').count() == 25, f'{tag}: lotes superpuestos en satélite')
-        check(page.locator('.sat-silo').count() == 2, f'{tag}: silos en satélite')
+        check(page.locator('.sat-silo').count() == 1 and page.locator('path.sat-bag').count() == 1, f'{tag}: silos en satélite (bolsa A-B como línea)')
         # ajuste manual de la forma del lote 16 sobre el satélite
         btn = '.side-panel button:has-text("Ajustar forma")' if vp[0] > 500 else '.lot-bar button:has-text("Ajustar")'
         if vp[0] < 500:  # quitar la selección del silo tocando fuera del campo
@@ -156,13 +169,16 @@ with sync_playwright() as p:
             for a, c in zip(poly, poly[1:] + poly[:1]):
                 d = np.array(c) - a; k = max(0, min(1, np.dot(np.array(q) - a, d) / np.dot(d, d))); best = min(best, np.linalg.norm(np.array(q) - (np.array(a) + d * k)))
             return best
-        check(all(onb(s_['map'], L16['poly']) < 0.05 for s_ in st2['silos'] if s_['lote'] == 16), f'{tag}: silos siguen sobre el borde ajustado')
+        check([s_['map'] for s_ in st2['silos']] == [s_['map'] for s_ in page.request.get(URL + '/api.php?action=state').json()['state']['silos']] and st2['silos'][0]['map'] == next(x for x in st2['silos'] if x['id'] == 'RB16001')['map'], f'{tag}: silos GPS no se mueven al ajustar la forma')
         page.click('.seg button:has-text("Plano 3D")')
         # pantallas
         page.click('.nav button:has-text("Silos")'); page.wait_for_selector('.silo-row')
         check(page.locator('.list-card .silo-row').count() == 2, f'{tag}: listado de silos'); layout_checks(page, tag + ' silos')
+        with page.expect_download() as dl: page.click('.screen button:has-text("KML")')
+        kx = open(dl.value.path(), encoding='utf-8').read()
+        check(kx.count('<Placemark>') == 27 and '<LineString>' in kx, f'{tag}: exporta KML con lotes y silobolsas')
         page.click('.nav button:has-text("Lotes")'); check(page.locator('.lot-card').count() == 25, f'{tag}: listado de lotes'); layout_checks(page, tag + ' lotes')
-        page.click('.nav button:has-text("Ajustes")'); check(page.locator('.geo-pt').count() == 4, f'{tag}: 4 puntos de georreferencia')
+        page.click('.avatar-btn'); page.wait_for_selector('.settings'); check(page.locator('.geo-pt').count() == 4, f'{tag}: 4 puntos de georreferencia')
         check('Activa' in page.inner_text('.badge'), f'{tag}: georreferencia activa'); layout_checks(page, tag + ' ajustes')
         check('Lote 21' in page.locator('.geo-pt').nth(0).inner_text() and 'NO' in page.locator('.geo-pt').nth(0).inner_text(), f'{tag}: punto 1 = lote 21 esquina NO')
         # quinto punto en cualquier lote, por orientación
@@ -185,7 +201,7 @@ with sync_playwright() as p:
             check(cols[0] == cols[1] == cols[2], f'{tag} {th}: barra, menú y fondo con el mismo tono {cols}')
         # mapas propios: GeoTIFF georreferenciado
         page.click('.nav button:has-text("Mapas")'); page.wait_for_selector('.dropzone')
-        page.set_input_files('.maps-screen input[type=file]', str(TIF)); page.wait_for_selector('.pbar'); page.wait_for_selector('.map-prev img', timeout=60000)
+        page.set_input_files('.maps-screen input[accept*=".tif"]', str(TIF)); page.wait_for_selector('.pbar'); page.wait_for_selector('.map-prev img', timeout=60000)
         check(page.get_attribute('.pbar', 'aria-valuenow') == '100', f'{tag}: barra de proceso completa al convertir')
         check('UTM 21S' in page.inner_text('.maps-screen .loc-box'), f'{tag}: detecta UTM 21S')
         check(page.input_value('.maps-screen input[inputmode=numeric]') == '20/10/2026', f'{tag}: toma la fecha del GeoTIFF')
@@ -202,7 +218,7 @@ with sync_playwright() as p:
         pick('Solo satélite'); check(page.locator('.warp-img').count() == 0, f'{tag}: filtro solo satélite')
         pick('Todos los mapas'); check(page.locator('.warp-img').count() == 1, f'{tag}: filtro todos')
         # imagen común: se ubica arrastrando esquinas
-        page.click('.nav button:has-text("Mapas")'); page.set_input_files('.maps-screen input[type=file]', str(PNG)); page.wait_for_selector('.map-prev img')
+        page.click('.nav button:has-text("Mapas")'); page.set_input_files('.maps-screen input[accept*=".tif"]', str(PNG)); page.wait_for_selector('.map-prev img')
         check('sin coordenadas' in page.inner_text('.maps-screen .loc-box').lower(), f'{tag}: imagen sin coordenadas')
         page.click('.maps-screen button:has-text("Subir mapa") >> nth=-1'); page.wait_for_selector('.edit-bar'); page.wait_for_timeout(500)
         check(page.locator('.map-corner').count() == 4 and page.locator('.map-center').count() == 1, f'{tag}: manijas de esquinas y centro')
@@ -213,7 +229,7 @@ with sync_playwright() as p:
         after_c = next(m for m in page.request.get(URL + '/api.php?action=state').json()['state']['maps'] if m['nombre'] == 'croquis')['corners']
         check(after_c[1] != before_c[1] and after_c[0] == before_c[0], f'{tag}: esquina NE reubicada a mano')
         # PDF: se convierte a imagen y se sube
-        page.click('.nav button:has-text("Mapas")'); page.set_input_files('.maps-screen input[type=file]', str(PDF)); page.wait_for_selector('.map-prev img', timeout=60000)
+        page.click('.nav button:has-text("Mapas")'); page.set_input_files('.maps-screen input[accept*=".tif"]', str(PDF)); page.wait_for_selector('.map-prev img', timeout=60000)
         check('sin coordenadas' in page.inner_text('.maps-screen .loc-box').lower() and '1 de 1' not in page.inner_text('.maps-screen .loc-box'), f'{tag}: PDF convertido a imagen')
         page.click('.maps-screen button:has-text("Subir mapa") >> nth=-1'); page.wait_for_selector('.edit-bar'); page.wait_for_timeout(400)
         page.click('.edit-bar button:has-text("Guardar")'); page.wait_for_selector('.edit-bar', state='detached')
@@ -225,6 +241,52 @@ with sync_playwright() as p:
         check(not bucket, f'{tag}: sin errores de consola {bucket[:3]}')
         ctx.close()
 
+    # Lotes desde KML (móvil): importar, numerar, reemplazar y cargar una bolsa por GPS
+    def rect(la, lo, d=0.01):
+        return f"{lo},{la},0 {lo+d},{la},0 {lo+d},{la-d},0 {lo},{la-d},0 {lo},{la},0"
+    KML = TMP / 'lotes.kml'
+    KML.write_text(f"""<?xml version="1.0" encoding="UTF-8"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><Folder><name>Rincón</name>
+<Placemark><name>Lote 1 - Casco</name><Polygon><outerBoundaryIs><LinearRing><coordinates>{rect(-35.94, -60.40)}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+<Placemark><name>Lote 2</name><ExtendedData><Data name="ha"><value>95,5</value></Data></ExtendedData><Polygon><outerBoundaryIs><LinearRing><coordinates>{rect(-35.94, -60.39)}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+<Placemark><name>Potrero sin número</name><Polygon><outerBoundaryIs><LinearRing><coordinates>{rect(-35.95, -60.40)}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+<Placemark><name>Camino interno</name><LineString><coordinates>-60.40,-35.95 -60.38,-35.95</coordinates></LineString></Placemark>
+</Folder></Document></kml>""", encoding='utf-8')
+    shutil.copy(ROOT / 'public_html/data.seed.json', SRV / 'data.json')
+    bucket = []
+    ctx = br.new_context(viewport={'width': 390, 'height': 844}, permissions=['geolocation'], geolocation={'latitude': -35.945, 'longitude': -60.385, 'accuracy': 3}, has_touch=True)
+    page = ctx.new_page(); watch(page, bucket)
+    page.goto(URL); page.wait_for_selector('.login-card')
+    page.fill('input[autocomplete=username]', 'rodma'); page.fill('input[type=password]', 'rmaldonado'); page.click('button[type=submit]')
+    page.wait_for_selector('.map3d-svg')
+    page.click('.nav button:has-text("Mapas")'); page.wait_for_selector('.kml-sec')
+    page.set_input_files('.kml-sec input[type=file]', str(KML)); page.wait_for_selector('.kml-row')
+    check(page.locator('.kml-row').count() == 3 and page.locator('.kml-prev polygon').count() == 3, 'kml: 3 polígonos con vista previa')
+    btn = page.locator('.kml-sec .btn-primary')
+    check(btn.is_disabled() and 'Número 1 a 99' in page.inner_text('.kml-list'), 'kml: exige número al polígono sin número')
+    page.locator('.kml-row').nth(2).locator('input').fill('3'); page.wait_for_timeout(100)
+    check('Usar 3 lotes' in btn.inner_text(), 'kml: listo para usar 3 lotes')
+    btn.click(); page.wait_for_selector('.kml-confirm'); layout_checks(page, 'kml vista previa')
+    btn.click(); page.wait_for_selector('.leaflet-container', timeout=10000); page.wait_for_timeout(600)
+    st = page.request.get(URL + '/api.php?action=state').json()['state']
+    check(st['georef'].get('mode') == 'kml' and [l['num'] for l in st['lots']] == [1, 2, 3], f"kml: lotes reemplazados {[l['num'] for l in st['lots']]}")
+    check(next(l for l in st['lots'] if l['num'] == 2)['ha'] == 95.5 and next(l for l in st['lots'] if l['num'] == 1)['nombre'] == 'Casco', 'kml: hectáreas y nombre del archivo')
+    check(st['decor'].get('lines') and len(st['decor']['lines']) == 1, 'kml: camino interno guardado')
+    check(page.locator('path.sat-lot').count() == 3, 'kml: lotes sobre el satélite sin puntos de control')
+    page.click('.seg button:has-text("Plano 3D")'); page.wait_for_selector('.map3d-svg')
+    check(page.locator('g.lot').count() == 3 and page.locator('.kml-line').count() == 1, 'kml: plano 3D con lotes y camino')
+    page.wait_for_timeout(900)
+    page.click('.nav-add'); page.wait_for_selector('.cap-sheet'); page.click('.cap-btn'); page.wait_for_selector('.cap-dist', timeout=15000)
+    ctx.set_geolocation({'latitude': -35.9455, 'longitude': -60.3852, 'accuracy': 3}); page.wait_for_timeout(1200); page.click('.cap-btn')
+    page.wait_for_function("() => (document.querySelector('.modal .input-static')?.textContent || '').length > 3", timeout=15000)
+    check(page.inner_text('.modal .input-static') == 'RB02001', 'kml: la bolsa cae en el lote 2 por coordenadas')
+    page.fill('.modal input[inputmode=decimal]', '210000'); page.click('.modal-foot .btn-primary'); page.wait_for_selector('.modal', state='detached')
+    s_ = page.request.get(URL + '/api.php?action=state').json()['state']['silos'][0]
+    check(mdist(s_['latlng2'], (-35.9455, -60.3852)) < 0.5 and 50 < s_['largo'] < 62, f"kml: cola y largo exactos ({s_['largo']} m)")
+    page.click('.avatar-btn'); page.wait_for_selector('.settings')
+    check('KML' in page.inner_text('.settings') and page.locator('.geo-pt').count() == 0, 'kml: ajustes sin puntos de control')
+    check(not bucket, f'kml: sin errores de consola {bucket[:3]}')
+    ctx.close()
+
     # Modo local (file://): sin servidor, colocar silo tocando el mapa
     bucket = []
     ctx = br.new_context(viewport={'width': 390, 'height': 844}, has_touch=True)
@@ -233,7 +295,7 @@ with sync_playwright() as p:
     check('modo local' in page.inner_text('.login-card'), 'local: detecta modo local')
     page.fill('input[autocomplete=username]', 'rodma'); page.fill('input[type=password]', 'rmaldonado'); page.click('button[type=submit]')
     page.wait_for_selector('.map3d-svg'); page.wait_for_timeout(300)
-    page.click('.fab'); page.wait_for_selector('.map-banner')
+    page.click('.nav-add'); page.wait_for_selector('.map-banner')
     x, y = label_xy(page, 7); page.touchscreen.tap(x, y)
     page.wait_for_selector('.modal .input-static')
     check(page.inner_text('.modal .input-static') == 'RB07001', 'local: ID por toque en lote 7')

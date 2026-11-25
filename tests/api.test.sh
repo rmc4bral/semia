@@ -45,6 +45,29 @@ chk mapa-archivo "$(curl -s -o /dev/null -w '%{http_code}' $B/$(echo "$M" | grep
 chk mapa-editar "$(curl -s -b $A "${J[@]}" -d "{\"map\":{\"id\":\"$MID\",\"nombre\":\"Vuelo 2\",\"fecha\":\"2026-10-21\",\"corners\":[[-35.8,-60.4],[-35.8,-60.3],[-35.9,-60.3],[-35.9,-60.4]]}}" $B/api.php?action=saveMap)" '"nombre":"Vuelo 2"'
 chk mapa-esquinas-malas "$(curl -s -b $A "${J[@]}" -d "{\"map\":{\"id\":\"$MID\",\"corners\":[[1,2]]}}" $B/api.php?action=saveMap)" '4 esquinas'
 chk mapa-no-imagen "$(curl -s -b $A "${J[@]}" -d "{\"map\":{\"corners\":$CORN},\"data\":\"data:image/png;base64,PD9waHAgZWNobyAxOw==\"}" $B/api.php?action=uploadMap)" 'no permitido'
+# Silobolsa por GPS: cabecera (A) y cola (B)
+GPS2='{"silo":{"lote":16,"kg":200000,"grano":"Maíz","map":[600,500],"map2":[640,505],"latlng":[-35.9,-60.4],"latlng2":[-35.9004,-60.4],"largo":44.5,"t":null,"ang":0.12,"origen":"gps","gps":{"lat":-35.9,"lng":-60.4,"acc":3,"n":12},"gps2":{"lat":-35.9004,"lng":-60.4,"acc":4,"n":9}}}'
+R=$(curl -s -b $A "${J[@]}" -d "$GPS2" $B/api.php?action=saveSilo)
+chk gps-ab "$R" '"map2":\[640,505\]'
+chk gps-largo "$R" '"largo":44.5'
+chk gps-b-fix "$R" '"gps2":{"lat":-35.9004'
+chk gps-map2-malo "$(curl -s -b $A "${J[@]}" -d '{"silo":{"lote":16,"kg":1,"map":[1,1],"map2":[1]}}' $B/api.php?action=saveSilo)" 'fin de la bolsa'
+OPS=$(curl -s -b $O "${J[@]}" -d '{"silo":{"lote":3,"kg":7000,"map":[300,800],"map2":[320,800],"largo":40}}' $B/api.php?action=saveSilo)
+OPID=$(echo "$OPS" | grep -o '"id":"RB03[0-9]*","lote":3,"kg":7000' | cut -d'"' -f4)
+chk op-no-mueve-b "$(curl -s -b $O "${J[@]}" -d "{\"prevId\":\"$OPID\",\"silo\":{\"id\":\"$OPID\",\"lote\":3,\"kg\":7000,\"map\":[300,800],\"map2\":[330,810]}}" $B/api.php?action=saveSilo)" 'Solo el administrador puede mover'
+chk op-edita-kg "$(curl -s -b $O "${J[@]}" -d "{\"prevId\":\"$OPID\",\"silo\":{\"id\":\"$OPID\",\"lote\":3,\"kg\":7500,\"map\":[300,800],\"map2\":[320,800],\"largo\":40}}" $B/api.php?action=saveSilo)" '"kg":7500'
+# Lotes desde KML
+KML='{"change":{"lots":[{"num":3,"ha":10,"nombre":"Bajo","poly":[[10,10],[100,10],[100,100],[10,100]],"label":[55,55]},{"num":16,"ha":12,"poly":[[110,10],[200,10],[200,100],[110,100]],"label":[155,55]}],"outline":[[10,10],[200,10],[200,100],[10,100]],"georef":{"lat0":-35.9,"lng0":-60.4,"s":0.2,"ox":100,"oy":50,"kml":{"archivo":"campo.kml"}},"silos":[{"id":"RB16001","lote":16,"map":[150,50],"map2":null,"t":null,"ang":null,"latlng":[-35.9,-60.39]}],"lines":[{"name":"Camino","pts":[[0,0],[10,10]]}]}}'
+chk op-no-kml "$(curl -s -b $O "${J[@]}" -d "$KML" $B/api.php?action=importKml)" 'Solo el administrador'
+chk kml-dup "$(curl -s -b $A "${J[@]}" -d '{"change":{"lots":[{"num":3,"poly":[[0,0],[1,0],[1,1]]},{"num":3,"poly":[[0,0],[1,0],[1,1]]}],"outline":[[0,0],[1,0],[1,1]],"georef":{"lat0":-35,"lng0":-60,"s":1,"ox":0,"oy":0}}}' $B/api.php?action=importKml)" 'repetido'
+chk kml-georef-mala "$(curl -s -b $A "${J[@]}" -d '{"change":{"lots":[{"num":3,"poly":[[0,0],[1,0],[1,1]]}],"outline":[[0,0],[1,0],[1,1]],"georef":{"lat0":-135,"lng0":-60,"s":1,"ox":0,"oy":0}}}' $B/api.php?action=importKml)" 'inválida'
+R=$(curl -s -b $A "${J[@]}" -d "$KML" $B/api.php?action=importKml)
+chk kml-modo "$R" '"mode":"kml"'
+chk kml-archivo "$R" '"archivo":"campo.kml"'
+chk kml-silo "$R" '"id":"RB16001","lote":16,[^}]*"map":\[150,50\]'
+chk kml-lineas "$R" '"lines":\[{"name":"Camino"'
+chk kml-sin-poly0 "$(echo "$R" | grep -c poly0)" '^0$'
+chk kml-silo-huerfano "$R" "\"id\":\"RB05001\",\"lote\":3"
 chk borrar "$(curl -s -b $A "${J[@]}" -d '{"id":"RB05001"}' $B/api.php?action=deleteSilo)" '"ok":true'
 chk mapa-borrar "$(curl -s -b $A "${J[@]}" -d "{\"id\":\"$MID\"}" $B/api.php?action=deleteMap)" '"maps":\[\]'
 code=$(curl -s -o /dev/null -w '%{http_code}' $B/api.php?action=nada); chk accion-desconocida "$code" 404

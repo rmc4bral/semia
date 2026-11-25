@@ -51,10 +51,10 @@ export function Icon({ name, size = 20, className = '', ...rest }) {
 export function Logo({ size = 32 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" aria-label="SemIA" className="logo">
-      <rect width="48" height="48" rx="6" fill="var(--brand-bg)" />
-      <path d="M24 7c8 6.5 12 13.6 12 20.2C36 34.3 30.6 40 24 40s-12-5.7-12-12.8C12 20.6 16 13.5 24 7Z" fill="none" stroke="var(--accent)" strokeWidth="2.4" strokeLinejoin="round" />
-      <path d="M24 40V22m0 8-6-5m6 0 6-5" stroke="var(--accent)" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-      <circle cx="18" cy="25" r="2.4" fill="var(--accent)" /><circle cx="30" cy="20" r="2.4" fill="var(--accent)" /><circle cx="24" cy="21" r="2.4" fill="var(--brand-bg)" stroke="var(--accent)" strokeWidth="2" />
+      <circle cx="24" cy="24" r="24" fill="#CCFF00" />
+      <path d="M24 8.5c7.4 6 11 12.5 11 18.6C35 33.6 30.1 39 24 39s-11-5.4-11-11.9C13 21 16.6 14.5 24 8.5Z" fill="none" stroke="#000" strokeWidth="2.6" strokeLinejoin="round" />
+      <path d="M24 39V22.5m0 7.5-5.5-4.6m5.5 0 5.5-4.6" stroke="#000" strokeWidth="2.4" strokeLinecap="round" fill="none" />
+      <circle cx="18.5" cy="25.4" r="2.5" fill="#000" /><circle cx="29.5" cy="20.8" r="2.5" fill="#000" /><circle cx="24" cy="21.6" r="2.6" fill="#CCFF00" stroke="#000" strokeWidth="2.2" />
     </svg>
   );
 }

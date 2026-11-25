@@ -5,7 +5,7 @@ import { WarpLayer } from './maplayers.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, selectedSilo, onSelectSilo, pickMode, onPick, gps, onNeedGeoref, editing, onVertexMove, onInsertVertex, onSelectVertex, overlays = [], overlayOpacity = 1, mapEdit, onMapCorners }) {
+export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, selectedSilo, onSelectSilo, pickMode, onPick, gps, onNeedGeoref, editing, onVertexMove, onInsertVertex, onSelectVertex, overlays = [], overlayOpacity = 1, mapEdit, onMapCorners, capture }) {
   const el = useRef(null), map = useRef(null), layers = useRef({}), fitted = useRef(false), editFit = useRef(null);
   const cb = useRef({}); cb.current = { onSelectLot, onSelectSilo, onPick, pickMode, geo, selectedLot, editing, onVertexMove, onInsertVertex, onSelectVertex, onMapCorners, mapEdit };
   const warp = useRef({});
@@ -17,7 +17,7 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
     }).addTo(m);
     L.control.zoom({ position: 'topright' }).addTo(m);
     const pane = m.createPane('semiaMaps'); pane.style.zIndex = 350; pane.style.pointerEvents = 'none';
-    layers.current = { lots: L.layerGroup().addTo(m), silos: L.layerGroup().addTo(m), gps: L.layerGroup().addTo(m), edit: L.layerGroup().addTo(m), maps: L.layerGroup().addTo(m), mapEdit: L.layerGroup().addTo(m) };
+    layers.current = { cap: L.layerGroup().addTo(m), lots: L.layerGroup().addTo(m), silos: L.layerGroup().addTo(m), gps: L.layerGroup().addTo(m), edit: L.layerGroup().addTo(m), maps: L.layerGroup().addTo(m), mapEdit: L.layerGroup().addTo(m) };
     m.on('click', e => {
       const c = cb.current;
       if (c.editing || c.mapEdit) return;
@@ -81,19 +81,39 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
     });
   }, [geo, editing]);
 
-  // Silos
+  // Silos: línea inicio → fin (GPS) o marcador
   useEffect(() => {
     const g = layers.current.silos; g.clearLayers();
     if (!geo) return;
     silos.forEach(s => {
       if (!s.map) return;
-      const ll = geo.toLatLng(s.map), sel = s.id === selectedSilo;
-      const mk = L.marker(ll, { icon: L.divIcon({ className: `sat-silo ${sel ? 'is-sel' : ''}`, iconSize: [18, 18], html: '<span></span>' }) });
-      mk.on('click', e => { L.DomEvent.stopPropagation(e); cb.current.onSelectSilo(s.id); });
-      mk.bindTooltip(`<b>${esc(s.id)}</b><br>${fmtKg(s.kg)} kg`, { direction: 'top', offset: [0, -10], className: 'sat-tip', permanent: sel });
+      const sel = s.id === selectedSilo;
+      const a = s.latlng2 && s.latlng ? s.latlng : geo.toLatLng(s.map);
+      const b = s.map2 ? (s.latlng2 || geo.toLatLng(s.map2)) : null;
+      const pick = e => { L.DomEvent.stopPropagation(e); cb.current.onSelectSilo(s.id); };
+      const tip = `<b>${esc(s.id)}</b><br>${fmtKg(s.kg)} kg${s.largo ? ` · ${Math.round(s.largo)} m` : ''}`;
+      if (b) {
+        g.addLayer(L.polyline([a, b], { className: 'sat-bag-hit', weight: 22, opacity: 0.001 }).on('click', pick));
+        const ln = L.polyline([a, b], { className: `sat-bag ${sel ? 'is-sel' : ''}`, weight: sel ? 9 : 7, lineCap: 'round' }).on('click', pick);
+        ln.bindTooltip(tip, { direction: 'top', className: 'sat-tip', permanent: sel, sticky: !sel });
+        g.addLayer(ln);
+        return;
+      }
+      const mk = L.marker(a, { icon: L.divIcon({ className: `sat-silo ${sel ? 'is-sel' : ''}`, iconSize: [18, 18], html: '<span></span>' }) });
+      mk.on('click', pick);
+      mk.bindTooltip(tip, { direction: 'top', offset: [0, -10], className: 'sat-tip', permanent: sel });
       g.addLayer(mk);
     });
   }, [geo, silos, selectedSilo]);
+
+  // Medición GPS en curso: A, B y línea hasta la posición actual
+  useEffect(() => {
+    const g = layers.current.cap; g.clearLayers();
+    if (!capture?.a) return;
+    const b = capture.b || (gps ? [gps.lat, gps.lng] : null);
+    if (b) g.addLayer(L.polyline([capture.a, b], { className: `sat-cap ${capture.b ? 'is-done' : ''}`, weight: 4, dashArray: capture.b ? null : '6 6', interactive: false }));
+    [['A', capture.a], ['B', capture.b]].forEach(([t, p]) => p && g.addLayer(L.marker(p, { interactive: false, icon: L.divIcon({ className: 'sat-cap-pt', iconSize: [26, 26], html: `<span>${t}</span>` }) })));
+  }, [capture?.a?.join(), capture?.b?.join(), gps?.lat, gps?.lng]); // eslint-disable-line
 
   // Mapas propios (ortomosaicos): debajo de los lotes, encima del satélite
   useEffect(() => {

@@ -3,6 +3,7 @@ import { Button, Field, TextInput, Select, Segmented, Icon, useToast, fmtKg, fmt
 import { fmtFecha } from './maplayers.js';
 import { areaHa, lotCorners, migrateGeoref, pointKey } from './geo.js';
 import { PhotoView, GRANOS } from './modals.jsx';
+import { KmlImport } from './kmlImport.jsx';
 
 const sumKg = arr => arr.reduce((a, s) => a + (+s.kg || 0), 0);
 const fmtT = kg => (kg >= 1000 ? `${fmtNum(kg / 1000, kg < 100000 ? 1 : 0)} t` : `${fmtKg(kg)} kg`);
@@ -12,14 +13,14 @@ export function Kpis({ state }) {
   const ha = state.lots.reduce((a, l) => a + (+l.ha || 0), 0);
   const kg = sumKg(state.silos);
   const items = [
+    { k: 'Almacenado', v: fmtT(kg), s: `${fmtKg(kg)} kg`, hero: true },
     { k: 'Silobolsas', v: fmtNum(state.silos.length), s: 'registradas' },
-    { k: 'Almacenado', v: fmtT(kg), s: `${fmtKg(kg)} kg` },
     { k: 'Lotes con silos', v: `${lotsWith}/${state.lots.length}`, s: 'lotes' },
     { k: 'Superficie', v: `${fmtNum(ha)} ha`, s: state.estancia.nombre },
   ];
   return (
     <div className="kpis">
-      {items.map(i => <div className="kpi" key={i.k}><span className="kpi-k">{i.k}</span><b className="kpi-v">{i.v}</b><span className="kpi-s">{i.s}</span></div>)}
+      {items.map(i => <div className={`kpi ${i.hero ? 'is-hero' : ''}`} key={i.k}><span className="kpi-k">{i.k}</span><b className="kpi-v">{i.v}</b><span className="kpi-s">{i.s}</span></div>)}
     </div>
   );
 }
@@ -71,13 +72,13 @@ export function RecentPanel({ state, onSelectSilo }) {
     <section className="panel-sec grow">
       <div className="panel-head"><h3>Últimos registros</h3></div>
       <div className="mini-list">{recent.map(s => <SiloRow key={s.id} s={s} onClick={() => onSelectSilo(s.id)} />)}</div>
-      {!recent.length && <div className="empty"><Icon name="silo" size={28} /><p>Todavía no hay silobolsas. Tocá <b>+</b> para registrar la primera con tu ubicación actual.</p></div>}
+      {!recent.length && <div className="empty"><Icon name="silo" size={28} /><p>Todavía no hay silobolsas. Tocá <b>+</b> y marcá con el GPS la cabecera y la cola de la bolsa.</p></div>}
     </section>
   );
 }
 
 /* ---------- Pantalla Silos ---------- */
-export function SilosScreen({ state, onOpenSilo, onExportCsv }) {
+export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml }) {
   const [q, setQ] = useState(''), [lote, setLote] = useState('all'), [grano, setGrano] = useState('all');
   const list = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -90,7 +91,7 @@ export function SilosScreen({ state, onOpenSilo, onExportCsv }) {
     <div className="screen">
       <div className="screen-head">
         <div><h1>Silobolsas</h1><p className="muted">{list.length} de {state.silos.length} · {fmtT(sumKg(list))}</p></div>
-        <Button icon="download" onClick={onExportCsv}>Exportar CSV</Button>
+        <div className="row gap-s"><Button icon="download" onClick={onExportKml}>KML</Button><Button icon="download" onClick={onExportCsv}>CSV</Button></div>
       </div>
       <div className="filters">
         <Field label="Buscar"><div className="input-ic"><Icon name="search" size={16} /><TextInput value={q} onChange={setQ} placeholder="ID u observación" /></div></Field>
@@ -213,6 +214,13 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
     <div className="screen">
       <div className="screen-head"><div><h1>Ajustes</h1><p className="muted">{me.nombre} · {me.rol === 'admin' ? 'Administrador' : 'Operador'} · {mode === 'local' ? 'Modo local' : 'Servidor'}</p></div></div>
       <div className="settings">
+        {state.georef?.mode === 'kml' ? (
+          <section className="card set-sec">
+            <div className="panel-head"><h3><Icon name="gps" size={18} /> Georreferencia</h3><span className="badge badge-ok">KML</span></div>
+            <p className="muted small">Los lotes se cargaron desde <b>{state.georef.kml?.archivo || 'un KML'}</b> y están en coordenadas reales. Los silobolsas se ubican directamente con el GPS del celular. Para cambiar los lotes, cargá otro KML en la pestaña Mapas.</p>
+            {measured && <p className="small">Superficie calculada: <b>{fmtNum(measured)} ha</b> · declarada {fmtNum(declared)} ha</p>}
+          </section>
+        ) : (
         <section className="card set-sec">
           <div className="panel-head"><h3><Icon name="gps" size={18} /> Puntos de control</h3><span className={`badge ${geo ? 'badge-ok' : ''}`}>{geo ? `Activa · ${geo.count} puntos` : `${done}/4 mínimo`}</span></div>
           <p className="muted small">Elegí cualquier lote y su esquina (N, NE, E, SE, S, SO, O, NO), parate en ese punto y tocá el ícono de ubicación. Con 4 puntos el plano se ubica sobre el satélite; con más puntos el ajuste es más preciso y se informa el desvío de cada uno.</p>
@@ -251,6 +259,7 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
             {isAdmin && <Button variant="primary" icon="check" onClick={saveGeo}>Guardar georreferencia</Button>}
           </div>
         </section>
+        )}
 
         <section className="card set-sec">
           <div className="panel-head"><h3><Icon name="map" size={18} /> Estancia</h3></div>
@@ -312,7 +321,7 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
 
 /* ---------- Mapas propios: subida con barra de proceso ---------- */
 const STAGES = [['convert', 'Convertir'], ['ready', 'Revisar'], ['upload', 'Subir']];
-export function MapsScreen({ state, me, job, onPick, onJobChange, onCancel, onSend, onShowMap, onAdjustMap, onEditMap }) {
+export function MapsScreen({ state, me, job, onPick, onJobChange, onCancel, onSend, onShowMap, onAdjustMap, onEditMap, geo, store, onState, onShowLots }) {
   const isAdmin = me.rol === 'admin';
   const inp = useRef(null);
   const maps = [...(state.maps || [])].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
@@ -321,8 +330,9 @@ export function MapsScreen({ state, me, job, onPick, onJobChange, onCancel, onSe
   const sizeMb = job?.res ? (job.res.dataUrl.length * 0.75) / 1048576 : 0;
   return (
     <div className="screen maps-screen">
-      <div className="screen-head"><div><h1>Mapas</h1><p className="muted">{maps.length} {maps.length === 1 ? 'mapa propio' : 'mapas propios'} · GeoTIFF, PDF o imagen</p></div></div>
+      <div className="screen-head"><div><h1>Mapas</h1><p className="muted">Lotes en KML · {maps.length} {maps.length === 1 ? 'mapa propio' : 'mapas propios'} (GeoTIFF, PDF o imagen)</p></div></div>
       <div className="maps-grid">
+        {isAdmin && <KmlImport state={state} me={me} geo={geo} store={store} onState={onState} onShowLots={onShowLots} />}
         {isAdmin && (
           <section className="card set-sec">
             <div className="panel-head"><h3><Icon name="upload" size={18} /> Subir mapa</h3></div>

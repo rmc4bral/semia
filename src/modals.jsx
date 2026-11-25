@@ -32,7 +32,7 @@ export function PhotoView({ refPath, className }) {
 }
 
 /* ---------- Alta / edición de silobolsa ---------- */
-export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRelocate, onStartMove }) {
+export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRelocate, onRemeasure, onStartMove }) {
   const toast = useToast();
   const isNew = !draft.prevId;
   const isAdmin = me.rol === 'admin';
@@ -51,8 +51,10 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
     else setF(x => ({ ...x, id: draft.prevId }));
   }, [f.lote]); // eslint-disable-line
 
+  const free = !!f.map2 || !Number.isFinite(f.t); // ubicado por GPS: no se pega al borde
   const changeLot = num => {
     const l = state.lots.find(x => x.num === num);
+    if (free) { setF(x => ({ ...x, lote: num, fuera: false })); return; }
     const base = f.rawMap || f.map;
     const sn = base && l ? snapToBorder(base, l.poly) : null;
     setF(x => ({ ...x, lote: num, ...(sn ? { map: sn.point, t: sn.t, ang: sn.angle } : {}) }));
@@ -78,9 +80,12 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
       if (f.fotoData) foto = await store.uploadPhoto(id, f.fotoData);
       const silo = {
         id, lote: f.lote, kg: kgNum, grano: f.grano || '', obs: (f.obs || '').trim(), foto,
-        map: f.map.map(v => Math.round(v * 100) / 100), t: Math.round(f.t * 100) / 100, ang: Math.round(f.ang * 1e4) / 1e4,
-        latlng: geo ? geo.toLatLng(f.map).map(v => +v.toFixed(7)) : (draft.latlng || null),
-        gps: f.gps || null, origen: f.origen || 'mapa',
+        map: f.map.map(v => Math.round(v * 100) / 100), t: free ? null : Math.round(f.t * 100) / 100, ang: Number.isFinite(f.ang) ? Math.round(f.ang * 1e4) / 1e4 : 0,
+        map2: f.map2 ? f.map2.map(v => Math.round(v * 100) / 100) : null,
+        latlng: f.latlng && f.origen === 'gps' ? f.latlng : geo ? geo.toLatLng(f.map).map(v => +v.toFixed(7)) : (draft.latlng || null),
+        latlng2: f.map2 ? (f.latlng2 || (geo ? geo.toLatLng(f.map2).map(v => +v.toFixed(7)) : null)) : null,
+        largo: f.map2 ? f.largo ?? null : null,
+        gps: f.gps || null, gps2: f.map2 ? f.gps2 || null : null, origen: f.origen || 'mapa',
       };
       const st = await store.saveSilo(silo, me, draft.prevId);
       toast(isNew ? `Silo ${id} registrado` : `Silo ${id} actualizado`, 'ok');
@@ -97,7 +102,7 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
   const photoShown = f.fotoData || (f.fotoData !== null && f.foto);
 
   return (
-    <Modal title={isNew ? 'Nueva silobolsa' : `Silobolsa ${draft.prevId}`} subtitle={isNew ? 'Se ubica sobre el borde del lote' : `Registrada ${fmtDate(draft.creadoEn)} por ${draft.creadoPor || '—'}`}
+    <Modal title={isNew ? 'Nueva silobolsa' : `Silobolsa ${draft.prevId}`} subtitle={isNew ? (f.origen === 'gps' ? 'Ubicada con el GPS del celular' : 'Marcada en el mapa') : `Registrada ${fmtDate(draft.creadoEn)} por ${draft.creadoPor || '—'}`}
       onClose={onClose}
       footer={confirmDel ? (
         <><span className="foot-msg">¿Eliminar {draft.prevId}? No se puede deshacer.</span><Button onClick={() => setConfirmDel(false)}>Cancelar</Button><Button variant="danger" onClick={del} disabled={busy}>Eliminar</Button></>
@@ -144,15 +149,31 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
           </div>
         </Field>
         <Field label="Ubicación" className="span-2">
-          <div className="loc-box">
-            <Icon name={f.origen === 'gps' ? 'gps' : 'pin'} size={18} />
-            <div className="loc-txt">
-              {f.origen === 'gps' && f.gps ? <span>GPS ±{fmtNum(f.gps.acc)} m · ajustado al borde del lote {f.lote}{insideLot === false ? ' (fuera del lote, se tomó el borde más cercano)' : ''}</span>
-                : <span>Marcado en el mapa · borde del lote {f.lote}</span>}
-              {geo && f.map && <span className="muted small mono">{geo.toLatLng(f.map).map(v => v.toFixed(6)).join(', ')}</span>}
+          {f.map2 ? (
+            <div className="loc-gps">
+              <div className="loc-len"><b>{f.largo != null ? fmtNum(f.largo) : '—'}</b><span>m de largo</span></div>
+              <div className="loc-pts">
+                <span><i>A</i>Cabecera{f.gps ? ` · ±${fmtNum(f.gps.acc)} m` : ''}<em className="mono">{(f.latlng || geo?.toLatLng(f.map) || []).map(v => (+v).toFixed(6)).join(', ')}</em></span>
+                <span><i>B</i>Cola{f.gps2 ? ` · ±${fmtNum(f.gps2.acc)} m` : ''}<em className="mono">{(f.latlng2 || geo?.toLatLng(f.map2) || []).map(v => (+v).toFixed(6)).join(', ')}</em></span>
+              </div>
             </div>
-            {canEdit && isNew && <Button size="sm" variant="ghost" onClick={() => onRelocate(f)}>Marcar en mapa</Button>}
-          </div>
+          ) : (
+            <div className="loc-box">
+              <Icon name={f.origen === 'gps' ? 'gps' : 'pin'} size={18} />
+              <div className="loc-txt">
+                {f.origen === 'gps' && f.gps ? <span>GPS ±{fmtNum(f.gps.acc)} m{free ? ' · punto medido' : ` · ajustado al borde del lote ${f.lote}`}</span>
+                  : <span>Marcado en el mapa · {free ? 'punto libre' : `borde del lote ${f.lote}`}</span>}
+                {geo && f.map && <span className="muted small mono">{geo.toLatLng(f.map).map(v => v.toFixed(6)).join(', ')}</span>}
+              </div>
+            </div>
+          )}
+          {f.fuera && <p className="field-hint is-error">La bolsa quedó fuera de los lotes: se asignó el lote más cercano ({f.lote}). Revisá el lote.</p>}
+          {canEdit && isNew && (
+            <div className="row gap-s wrap">
+              {onRemeasure && geo && <Button size="sm" icon="gps" onClick={() => onRemeasure(f)}>Volver a medir</Button>}
+              <Button size="sm" variant="ghost" icon="pin" onClick={() => onRelocate(f)}>Marcar en mapa</Button>
+            </div>
+          )}
         </Field>
       </div>
     </Modal>

@@ -161,6 +161,10 @@ switch ($action) {
       $kg = num($s['kg'] ?? null); if ($kg === null || $kg < 0) fail('Kg inválido');
       $map = $s['map'] ?? null;
       if (!is_array($map) || count($map) !== 2 || num($map[0]) === null || num($map[1]) === null) fail('Ubicación inválida');
+      $map2 = $s['map2'] ?? null;
+      if ($map2 !== null && (!is_array($map2) || count($map2) !== 2 || num($map2[0]) === null || num($map2[1]) === null)) fail('Ubicación del fin de la bolsa inválida');
+      if ($map2 !== null) $map2 = [round((float)$map2[0], 2), round((float)$map2[1], 2)];
+      $gpsFix = fn($g) => is_array($g) ? ['lat' => num($g['lat'] ?? null), 'lng' => num($g['lng'] ?? null), 'acc' => num($g['acc'] ?? null), 'n' => (int)($g['n'] ?? 1), 'at' => str($g['at'] ?? '', 40)] : null;
       $idx = null;
       if ($prev !== null) { foreach ($d['silos'] as $i => $x) if ($x['id'] === $prev) $idx = $i; if ($idx === null) fail('El silo ya no existe', 404); }
       $isAdmin = ($me['rol'] ?? '') === 'admin';
@@ -168,6 +172,8 @@ switch ($action) {
       if ($idx !== null && !$isAdmin) {
         $old = $d['silos'][$idx]['map'] ?? null;
         if ($old && (abs($old[0] - $map[0]) > 0.01 || abs($old[1] - $map[1]) > 0.01)) fail('Solo el administrador puede mover un silo', 403);
+        $old2 = $d['silos'][$idx]['map2'] ?? null;
+        if (($old2 === null) !== ($map2 === null) || ($old2 && (abs($old2[0] - $map2[0]) > 0.01 || abs($old2[1] - $map2[1]) > 0.01))) fail('Solo el administrador puede mover un silo', 403);
       }
       // ID: RB + lote(2) + bolsa(3), único
       $id = strtoupper((string)($s['id'] ?? ''));
@@ -182,8 +188,12 @@ switch ($action) {
       $rec = [
         'id' => $id, 'lote' => $lote, 'kg' => $kg, 'grano' => str($s['grano'] ?? '', 30), 'obs' => str($s['obs'] ?? '', 1000), 'foto' => $foto,
         'map' => [round((float)$map[0], 2), round((float)$map[1], 2)], 't' => num($s['t'] ?? null), 'ang' => num($s['ang'] ?? null),
+        'map2' => $map2,
         'latlng' => is_array($s['latlng'] ?? null) ? array_map('floatval', array_slice($s['latlng'], 0, 2)) : null,
-        'gps' => is_array($s['gps'] ?? null) ? ['lat' => num($s['gps']['lat'] ?? null), 'lng' => num($s['gps']['lng'] ?? null), 'acc' => num($s['gps']['acc'] ?? null), 'at' => str($s['gps']['at'] ?? '', 40)] : null,
+        'latlng2' => $map2 && is_array($s['latlng2'] ?? null) ? array_map('floatval', array_slice($s['latlng2'], 0, 2)) : null,
+        'largo' => $map2 && num($s['largo'] ?? null) !== null ? round(max(0, min(5000, (float)$s['largo'])), 1) : null,
+        'gps' => $gpsFix($s['gps'] ?? null),
+        'gps2' => $map2 ? $gpsFix($s['gps2'] ?? null) : null,
         'origen' => in_array($s['origen'] ?? '', ['gps', 'mapa'], true) ? $s['origen'] : 'mapa',
       ];
       if ($idx !== null) $d['silos'][$idx] = array_merge($d['silos'][$idx], $rec, ['editadoPor' => $me['user'], 'editadoEn' => gmdate('c')]);
@@ -282,6 +292,57 @@ switch ($action) {
         foreach ($d['lots'] as $l) if ((int)$l['num'] === (int)$p['lote'])
           foreach ($l['poly'] as $vi => $q) if (abs($q[0] - $p['map'][0]) < 0.6 && abs($q[1] - $p['map'][1]) < 0.6) { $d['georef']['points'][$k]['vi'] = $vi; $d['georef']['points'][$k]['key'] = "L{$p['lote']}-{$vi}"; }
       }
+      return publicState($d);
+    }, true);
+    out(['ok' => true, 'state' => $state]);
+  }
+
+  // Reemplaza los lotes por los polígonos de un KML (coordenadas reales) y reubica los silos
+  case 'importKml': {
+    requireAdmin(); $c = body()['change'] ?? null;
+    if (!is_array($c) || !is_array($c['lots'] ?? null) || !is_array($c['georef'] ?? null)) fail('Datos incompletos');
+    $polyOk = function ($poly, $max = 3000) {
+      if (!is_array($poly) || count($poly) < 3 || count($poly) > $max) return false;
+      foreach ($poly as $p) if (!is_array($p) || count($p) !== 2 || num($p[0]) === null || num($p[1]) === null || abs($p[0]) > 5000 || abs($p[1]) > 5000) return false;
+      return true;
+    };
+    $clean = fn($poly) => array_map(fn($p) => [round((float)$p[0], 2), round((float)$p[1], 2)], $poly);
+    $g = $c['georef'];
+    foreach (['lat0', 'lng0', 's', 'ox', 'oy'] as $k) if (num($g[$k] ?? null) === null) fail('Georreferencia del KML inválida');
+    if (abs($g['lat0']) > 90 || abs($g['lng0']) > 180 || $g['s'] <= 0) fail('Georreferencia del KML inválida');
+    if (count($c['lots']) < 1 || count($c['lots']) > 99) fail('Cantidad de lotes inválida');
+    $lots = []; $seen = [];
+    foreach ($c['lots'] as $l) {
+      $n = (int)($l['num'] ?? 0);
+      if ($n < 1 || $n > 99 || isset($seen[$n])) fail("Número de lote inválido o repetido ($n)"); $seen[$n] = 1;
+      if (!$polyOk($l['poly'] ?? null)) fail("Forma inválida en el lote $n");
+      $lab = $l['label'] ?? null;
+      $lots[] = ['num' => $n, 'ha' => round(max(0, (float)(num($l['ha'] ?? 0) ?? 0)), 1), 'nombre' => str($l['nombre'] ?? '', 60), 'obs' => str($l['obs'] ?? '', 1000),
+        'poly' => $clean($l['poly']), 'subs' => [], 'label' => is_array($lab) && count($lab) === 2 ? $clean([$lab])[0] : $clean([$l['poly'][0]])[0]];
+    }
+    usort($lots, fn($a, $b) => $a['num'] <=> $b['num']);
+    if (!$polyOk($c['outline'] ?? null, 5000)) fail('Contorno inválido');
+    $lines = [];
+    foreach (array_slice(is_array($c['lines'] ?? null) ? $c['lines'] : [], 0, 200) as $ln)
+      if (is_array($ln['pts'] ?? null) && count($ln['pts']) >= 2 && count($ln['pts']) <= 3000) $lines[] = ['name' => str($ln['name'] ?? '', 60), 'pts' => $clean($ln['pts'])];
+    $state = withData(function (&$d) use ($c, $g, $lots, $lines, $clean) {
+      $d['lots'] = $lots;
+      $d['outline'] = $clean($c['outline']);
+      $d['decor'] = ['lines' => $lines];
+      $d['georef'] = ['mode' => 'kml', 'lat0' => (float)$g['lat0'], 'lng0' => (float)$g['lng0'], 's' => (float)$g['s'], 'ox' => (float)$g['ox'], 'oy' => (float)$g['oy'], 'points' => [],
+        'kml' => ['archivo' => str($g['kml']['archivo'] ?? '', 120), 'fecha' => gmdate('c'), 'lotes' => count($lots)]];
+      $nums = array_column($lots, 'num');
+      foreach (($c['silos'] ?? []) as $u) foreach ($d['silos'] as $k => $s) if ($s['id'] === ($u['id'] ?? null)) {
+        if (!is_array($u['map'] ?? null) || count($u['map']) !== 2 || !in_array((int)($u['lote'] ?? 0), $nums, true)) continue;
+        $d['silos'][$k]['lote'] = (int)$u['lote'];
+        $d['silos'][$k]['map'] = $clean([$u['map']])[0];
+        $d['silos'][$k]['map2'] = is_array($u['map2'] ?? null) && count($u['map2']) === 2 ? $clean([$u['map2']])[0] : null;
+        $d['silos'][$k]['t'] = num($u['t'] ?? null); $d['silos'][$k]['ang'] = num($u['ang'] ?? null);
+        if (is_array($u['latlng'] ?? null)) $d['silos'][$k]['latlng'] = array_map('floatval', array_slice($u['latlng'], 0, 2));
+        if (is_array($u['latlng2'] ?? null)) $d['silos'][$k]['latlng2'] = array_map('floatval', array_slice($u['latlng2'], 0, 2));
+      }
+      // silos de lotes que ya no existen: van al primer lote (el ID se conserva)
+      foreach ($d['silos'] as $k => $s) if (!in_array((int)$s['lote'], $nums, true)) $d['silos'][$k]['lote'] = $nums[0];
       return publicState($d);
     }, true);
     out(['ok' => true, 'state' => $state]);

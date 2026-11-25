@@ -153,7 +153,18 @@ export function homographyLSQ(src, dst) {
 export function controlPoints(georef) {
   return (georef?.points || []).filter(p => p.map && p.lat !== null && p.lng !== null && p.lat !== '' && p.lng !== '' && isFinite(p.lat) && isFinite(p.lng));
 }
+// Lotes cargados desde KML: proyección local exacta (sin puntos de control)
+const RT = 6371008.8, RAD = Math.PI / 180;
+export function kmlGeo(g) {
+  const kx = g.s * RT * Math.cos(g.lat0 * RAD) * RAD, ky = g.s * RT * RAD;
+  return {
+    toMap: (lat, lng) => [g.ox + (lng - g.lng0) * kx, g.oy - (lat - g.lat0) * ky],
+    toLatLng: p => [g.lat0 - (p[1] - g.oy) / ky, g.lng0 + (p[0] - g.ox) / kx],
+    metersPerUnit: 1 / g.s, kml: true, count: 0, residuals: [],
+  };
+}
 export function buildGeo(georef) {
+  if (georef?.mode === 'kml' && isFinite(georef.s) && georef.s > 0) return kmlGeo(georef);
   const pts = controlPoints(georef);
   if (pts.length < 4) return null;
   const src = pts.map(p => p.map), dst = pts.map(p => [+p.lng, +p.lat]);
@@ -165,6 +176,7 @@ export function buildGeo(georef) {
     toMap: (lat, lng) => applyH(Hi, [lng, lat]),
     count: pts.length,
   };
+  geo.metersPerUnit = metersBetween(geo.toLatLng(src[0]), geo.toLatLng([src[0][0] + 10, src[0][1]])) / 10;
   // desvío de cada punto (metros) entre lo medido y lo que ubica el ajuste
   geo.residuals = pts.map(p => ({ key: p.key, m: metersBetween([+p.lat, +p.lng], geo.toLatLng(p.map)) }));
   return isFinite(geo.toLatLng(src[0])[0]) ? geo : null;

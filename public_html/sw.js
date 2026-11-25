@@ -1,5 +1,5 @@
 // SemIA · service worker: app offline, datos siempre desde el servidor
-const CACHE = 'semia-v1';
+const CACHE = 'semia-v2';
 const SHELL = ['./', 'index.html', 'style.css', 'script.js', 'manifest.json', 'icon.svg', 'icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== CACHE).map(x => caches.delete(x)))).then(() => self.clients.claim())); });

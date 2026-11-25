@@ -57,10 +57,20 @@ function walls(poly, z0, z1, cam, sa) {
   return out.sort((u, v) => u.d - v.d);
 }
 
-function siloShape(silo, lot, cam, z) {
-  const a = silo.ang || 0, u = [Math.cos(a), Math.sin(a)], n = inwardNormal(lot.poly, a);
-  const c = [silo.map[0] + n[0] * 3.4, silo.map[1] + n[1] * 3.4], L = 6.5, Wd = 2.4;
-  const ring = [];
+// Silobolsa: sobre el borde (marcada en el mapa), punto libre o línea inicio → fin (GPS)
+const BAG_W = 2.4;
+function siloShape(silo, lot, cam, z, mpu = 12) {
+  let c, u, L;
+  if (silo.map2) {
+    const dx = silo.map2[0] - silo.map[0], dy = silo.map2[1] - silo.map[1], d = Math.hypot(dx, dy) || 1;
+    c = [(silo.map[0] + silo.map2[0]) / 2, (silo.map[1] + silo.map2[1]) / 2]; u = [dx / d, dy / d]; L = Math.max(d / 2, 30 / mpu, 2.2);
+  } else if (silo.t !== null && silo.t !== undefined && isFinite(silo.t)) {
+    const a = silo.ang || 0, n = inwardNormal(lot.poly, a); u = [Math.cos(a), Math.sin(a)];
+    c = [silo.map[0] + n[0] * 3.4, silo.map[1] + n[1] * 3.4]; L = 6.5;
+  } else {
+    const a = silo.ang || 0; u = [Math.cos(a), Math.sin(a)]; c = silo.map; L = Math.max(30 / mpu, 2.2);
+  }
+  const n = [-u[1], u[0]], Wd = BAG_W, ring = [];
   for (let k = 0; k <= 6; k++) { // extremo 1
     const th = -Math.PI / 2 + (Math.PI * k) / 6;
     ring.push([c[0] + u[0] * (L + Math.cos(th) * Wd) + n[0] * Math.sin(th) * Wd, c[1] + u[1] * (L + Math.cos(th) * Wd) + n[1] * Math.sin(th) * Wd]);
@@ -74,7 +84,7 @@ function siloShape(silo, lot, cam, z) {
 
 export default function Map3D({
   data, silos, selectedLot, onSelectLot, selectedSilo, onSelectSilo, pickMode, onPick,
-  moving, onMoveDraft, gpsMap, isAdmin, onEditLot, onOpenSilo, onStartMove,
+  moving, onMoveDraft, gpsMap, isAdmin, onEditLot, onOpenSilo, onStartMove, capture, mpu = 12,
 }) {
   const wrap = useRef(null), svgRef = useRef(null);
   const [size, setSize] = useState({ W: 800, H: 600 });
@@ -84,7 +94,7 @@ export default function Map3D({
   const [, setTick] = useState(0);
   const ptrs = useRef(new Map()), gest = useRef(null);
 
-  const { lots, outline, decor } = data;
+  const { lots, outline } = data; const decor = data.decor || {};
   const center = useMemo(() => { const b = bbox(outline); return [b.cx, b.cy]; }, [outline]);
   const areaSign = useMemo(() => {
     const o = {}; const sa = poly => { let s = 0; poly.forEach((p, i) => { const q = poly[(i + 1) % poly.length]; s += p[0] * q[1] - q[0] * p[1]; }); return s; };
@@ -162,7 +172,7 @@ export default function Map3D({
     if (g.type === 'silo') {
       const lot = lots.find(l => l.num === moving.lote); if (!lot) return;
       const m = cam.unproj(p[0], p[1], hOf(lot.num));
-      onMoveDraft(snapToBorder(m, lot.poly));
+      onMoveDraft(moving.free ? { point: m, free: true } : snapToBorder(m, lot.poly));
       return;
     }
     if (g.type === 'pinch' && ptrs.current.size >= 2) {
@@ -236,7 +246,7 @@ export default function Map3D({
   const lotsByNum = useMemo(() => Object.fromEntries(lots.map(l => [l.num, l])), [lots]);
   const tracks = useMemo(() => {
     const g = {};
-    silos.forEach(s => { if (lotsByNum[s.lote] && isFinite(s.t)) (g[s.lote] = g[s.lote] || []).push(s); });
+    silos.forEach(s => { if (lotsByNum[s.lote] && Number.isFinite(s.t) && !s.map2) (g[s.lote] = g[s.lote] || []).push(s); });
     return Object.entries(g).filter(([, a]) => a.length > 1).map(([num, a]) => {
       a.sort((x, y) => String(x.creadoEn || '').localeCompare(String(y.creadoEn || '')) || x.id.localeCompare(y.id));
       const poly = lotsByNum[num].poly; const path = [];
@@ -245,13 +255,13 @@ export default function Map3D({
     });
   }, [silos, lotsByNum]);
 
-  const shownSilos = silos.map(s => (moving && s.id === moving.id ? { ...s, map: moving.map, t: moving.t, ang: moving.ang } : s));
+  const shownSilos = silos.map(s => (moving && s.id === moving.id ? { ...s, map: moving.map, map2: moving.map2 ?? s.map2, t: moving.t, ang: moving.ang } : s));
   const selSilo = shownSilos.find(s => s.id === selectedSilo);
   const selLot = lotsByNum[selectedLot];
   const gearPos = selLot ? cam.proj(selLot.label[0], selLot.label[1], hOf(selLot.num)) : null;
   let pop = null;
   if (selSilo && lotsByNum[selSilo.lote]) {
-    const c = siloShape(selSilo, lotsByNum[selSilo.lote], cam, hOf(selSilo.lote)).center;
+    const c = siloShape(selSilo, lotsByNum[selSilo.lote], cam, hOf(selSilo.lote), mpu).center;
     pop = { x: Math.max(110, Math.min(size.W - 110, c[0])), y: c[1], below: c[1] < 130 };
   }
 
@@ -274,6 +284,7 @@ export default function Map3D({
             const ring = Array.from({ length: 20 }, (_, k) => { const a = (k / 20) * Math.PI * 2; return cam.proj(g.c[0] + Math.cos(a) * g.r[0], g.c[1] + Math.sin(a) * g.r[1], 0); });
             return <polygon key={'g' + i} points={pts(ring)} className="lagoon" />;
           })}
+          {decor.lines?.map((r, i) => <polyline key={'kl' + i} points={pts(r.pts.map(p => cam.proj(p[0], p[1], 0)))} className="kml-line" />)}
           {decor.rivers?.map((r, i) => <polyline key={'r' + i} points={pts(r.map(p => cam.proj(p[0], p[1], 0)))} className="river" strokeWidth={Math.max(1.2, 1.6 * Math.sqrt(view.zoom))} />)}
         </g>
         <polygon points={pts(outline.map(p => cam.proj(p[0], p[1], 0)))} className="outline" pointerEvents="none" />
@@ -294,7 +305,7 @@ export default function Map3D({
         {/* silobolsas */}
         {shownSilos.map(s => {
           const lot = lotsByNum[s.lote]; if (!lot || !s.map) return null;
-          const sh = siloShape(s, lot, cam, hOf(lot.num));
+          const sh = siloShape(s, lot, cam, hOf(lot.num), mpu);
           const isMov = moving && moving.id === s.id;
           return (
             <g key={s.id} data-silo={s.id} className={`silo ${s.id === selectedSilo ? 'is-sel' : ''} ${isMov ? 'is-moving' : ''}`}>
@@ -303,6 +314,15 @@ export default function Map3D({
             </g>
           );
         })}
+        {capture?.a && (() => {
+          const a = cam.proj(capture.a[0], capture.a[1], 0), b = capture.b ? cam.proj(capture.b[0], capture.b[1], 0) : gpsMap ? cam.proj(gpsMap[0], gpsMap[1], 0) : null;
+          return (
+            <g className="cap" pointerEvents="none">
+              {b && <line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} className={capture.b ? 'cap-line is-done' : 'cap-line'} />}
+              <circle cx={a[0]} cy={a[1]} r="7" className="cap-pt" /><text x={a[0]} y={a[1] - 12} className="cap-txt">A</text>
+              {capture.b && <><circle cx={b[0]} cy={b[1]} r="7" className="cap-pt" /><text x={b[0]} y={b[1] - 12} className="cap-txt">B</text></>}
+            </g>);
+        })()}
         {gpsMap && (() => { const [x, y] = cam.proj(gpsMap[0], gpsMap[1], 0); return (
           <g className="gps" pointerEvents="none"><circle cx={x} cy={y} r="14" className="gps-pulse" /><circle cx={x} cy={y} r="6" className="gps-dot" /></g>); })()}
       </svg>

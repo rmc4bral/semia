@@ -152,7 +152,7 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
               </div>
             </div>
           )}
-          {f.fuera && <p className="field-hint is-error">La bolsa quedó fuera de los lotes: se asignó el lote más cercano ({f.lote}). Revisá el lote.</p>}
+          {f.fuera && <p className="field-hint is-error">{f.fueraM != null ? `La bolsa quedó a ${fmtNum(f.fueraM)} m afuera del lote ${f.lote}. Revisá que el lote elegido sea el correcto.` : `La bolsa quedó fuera de los lotes: se asignó el lote más cercano (${f.lote}). Revisá el lote.`}</p>}
           {canEdit && isNew && (
             <div className="row gap-s wrap">
               {onRemeasure && geo && <Button size="sm" icon="gps" onClick={() => onRemeasure(f)}>Volver a medir</Button>}
@@ -195,6 +195,44 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
           <TextArea value={f.obs} onChange={v => setF(x => ({ ...x, obs: v }))} rows={3} placeholder="Agregá la información que haga falta" disabled={!canEdit} />
         </Field>
       </div>
+    </Modal>
+  );
+}
+
+/* ---------- Tarjeta de información de un silo ---------- */
+export const userName = (u, state) => (state.users || []).find(x => x.user === u)?.nombre || u || '—';
+export function SiloCard({ silo: s, state, me, geo, onClose, onEdit, onMap }) {
+  const lot = siloLot(s, state.lots);
+  const canEdit = me.rol === 'admin' || s.creadoPor === me.user;
+  const ll = s.latlng || (geo && s.map ? geo.toLatLng(s.map) : null), ll2 = s.latlng2 || (geo && s.map2 ? geo.toLatLng(s.map2) : null);
+  const c = p => p.map(v => (+v).toFixed(6)).join(', ');
+  const hasKg = s.kg != null && s.kg !== '';
+  return (
+    <Modal title={`Silobolsa ${s.id}`} subtitle={`${estanciaNombre(lot, state) || state.estancia.nombre} · ${lotName(s.lote)}`} onClose={onClose}
+      footer={<><Button icon="map" onClick={() => onMap(s.id)}>Ver en el mapa</Button>{canEdit && <Button variant="primary" icon="edit" onClick={() => onEdit(s.id)}>Editar</Button>}</>}>
+      <div className="silo-id" aria-label={`Número de silobolsa ${s.id}`}>
+        <span className="silo-id-num mono">{s.id}</span>
+        <div className="silo-id-parts">
+          <span><b className="mono">{siglaOf(lot, state)}</b>{estanciaNombre(lot, state) || 'Estancia'}</span>
+          <span><b className="mono">{String(s.lote).padStart(2, '0')}</b>Lote</span>
+          <span><b className="mono">{s.id.slice(-3)}</b>Bolsa</span>
+        </div>
+      </div>
+      <dl className="card-facts">
+        <div><dt>Estancia</dt><dd>{estanciaNombre(lot, state) || state.estancia.nombre}</dd></div>
+        <div><dt>Lote</dt><dd>{lotName(s.lote)}{lot?.ha ? <span className="muted"> · {fmtNum(lot.ha, 0)} ha</span> : null}</dd></div>
+        <div><dt>Grano</dt><dd>{s.grano || '—'}</dd></div>
+        <div><dt>Kilos</dt><dd>{hasKg ? <>{fmtKg(s.kg)} kg <span className="muted">· {fmtNum(s.kg / 1000, 1)} t</span></> : <span className="muted">Sin cargar</span>}</dd></div>
+        <div className="span-2"><dt>Lugar</dt><dd>{ll ? <>
+          {s.largo ? <span>Bolsa de {fmtNum(s.largo)} m{s.gps ? ` · GPS ±${fmtNum(s.gps.acc)} m` : ''}</span> : <span>{s.origen === 'gps' ? `Punto GPS${s.gps ? ` ±${fmtNum(s.gps.acc)} m` : ''}` : 'Marcado en el mapa'}</span>}
+          <span className="mono small muted">{ll2 ? `A ${c(ll)}` : c(ll)}</span>{ll2 && <span className="mono small muted">B {c(ll2)}</span>}
+        </> : <span className="muted">Sin coordenadas</span>}</dd></div>
+        <div><dt>Registrado</dt><dd>{fmtDate(s.creadoEn)}</dd></div>
+        <div><dt>Usuario</dt><dd>{userName(s.creadoPor, state)}</dd></div>
+        {s.editadoPor && s.editadoEn && s.editadoEn !== s.creadoEn && <div className="span-2"><dt>Última edición</dt><dd>{fmtDate(s.editadoEn)} · {userName(s.editadoPor, state)}</dd></div>}
+        {s.obs && <div className="span-2"><dt>Observaciones</dt><dd className="card-obs">{s.obs}</dd></div>}
+      </dl>
+      {s.foto && <PhotoView refPath={s.foto} className="card-photo" />}
     </Modal>
   );
 }

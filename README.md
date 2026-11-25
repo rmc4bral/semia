@@ -53,8 +53,10 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 
 - **Lotes desde KML (Mapas → Lotes desde KML, administrador):** elegí un `.kml` o `.kmz` (Google Earth, QGIS, Pix4Dfields). Cada polígono es un lote: el número se toma del nombre (`Lote 16`, `16 - La Loma`) o de un campo `lote`; las hectáreas, de un campo `ha` o se calculan. Un polígono llamado *Perímetro / Campo / Estancia* se usa como contorno, y las líneas (caminos, cortinas) se dibujan en el plano. Antes de confirmar se ven todos los polígonos, se puede corregir el número o excluir alguno. El primer KML reemplaza el plano digitalizado; los siguientes se **agregan** (otros campos o sectores) sin tocar lo cargado, y la lista *KML cargados* permite quitar uno con sus lotes. *Reemplazar todo* reubica los silos por sus coordenadas. Con KML no hacen falta puntos de control.
 - **Versión nueva:** cuando se publica una actualización aparece un botón flotante *Nueva versión · Actualizar*.
-- **Primer paso:** después de ingresar, la app pide activar la ubicación (con «Ahora no» vuelve a preguntar al abrirla de nuevo).
+- **Supervisor:** ingresa → elige la **Estancia** (paso 1) → activa la **ubicación** (paso 2, obligatoria) → registra. Su menú es solo **Mapa, Silos, + y Lotes** (y *Cuenta* para cambiar de estancia o salir). Ve únicamente los lotes y silos de la estancia elegida. En **Lotes**, al tocar uno ve cuántos silos tiene, los granos y las toneladas.
+- **Administrador:** primer paso, activar la ubicación (con «Ahora no» vuelve a preguntar al abrirla de nuevo). Tiene además Mapas, Ajustes, KML, usuarios y exportación.
 - **Nueva silobolsa (botón + de la barra):**
+  0. **Elegí el lote** primero: el GPS puede moverse o caer entre dos lotes, así que el supervisor lo confirma (se marca como *Estás acá* el que indica el GPS). Durante la medición se ve la distancia al contorno del lote (las bolsas suelen ir sobre el contorno) y avisa si está a más de 40 m afuera.
   1. Parate en la **cabecera** de la bolsa y tocá *Marcar cabecera (A)*: se toman lecturas durante 5 segundos y se promedian.
   2. Caminá hasta la **cola** (se ve la distancia en vivo) y tocá *Marcar cola (B)*, o *Solo un punto*.
   3. Se abre la ficha con el **número detallado** (estancia · lote · bolsa), la ubicación y el largo, el **grano** (obligatorio, con botones), los **kg (opcional)**, la **foto** y las **observaciones** del supervisor.
@@ -70,7 +72,8 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 - **Exportar (Silos):** **KML** con lotes y bolsas (para Google Earth / QGIS) y **CSV** con cabecera, cola y largo.
 - **Ajustes** (tu inicial arriba a la derecha): Mi cuenta, Apariencia, Estancia, Usuarios, Lotes y ubicación, Datos.
 - **Mapas y KML cargados:** cada uno se puede renombrar o eliminar desde la pestaña Mapas.
-- **Roles:** el operador registra silos; el administrador además mueve, elimina, edita lotes, carga KML y gestiona usuarios.
+- **Tarjeta de cada silo** (tocándolo en Silos, Lotes o el mapa): ID, lugar (cabecera, cola y largo), estancia, lote, grano, kg, fecha de registro y usuario que lo registró, más foto y observaciones.
+- **Roles:** el supervisor registra silos y edita los suyos; el administrador además mueve, elimina, edita lotes, carga KML y gestiona usuarios.
 
 ## Repositorio y despliegue automático
 

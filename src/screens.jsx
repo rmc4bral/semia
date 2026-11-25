@@ -1,14 +1,38 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Button, Field, TextInput, Select, Segmented, Icon, useToast, fmtKg, fmtNum, fmtDate } from './ui.jsx';
+import { Button, Field, TextInput, Select, Segmented, Icon, Modal, useToast, fmtKg, fmtNum, fmtDate } from './ui.jsx';
 import { fmtFecha } from './maplayers.js';
 import { areaHa, lotCorners, migrateGeoref, pointKey, isSiloLot, lotName, siloLot, estanciaNombre } from './geo.js';
-import { PhotoView, GRANOS } from './modals.jsx';
+import { PhotoView, GRANOS, userName } from './modals.jsx';
 import { KmlImport } from './kmlImport.jsx';
 import { buildKmlRename } from './kml.js';
 import GlobalMap from './GlobalMap.jsx';
 import { geodesicHa } from './kml.js';
 
 const sumKg = arr => arr.reduce((a, s) => a + (+s.kg || 0), 0);
+const fmtTon = kg => `${fmtNum(kg / 1000, kg && kg < 100000 ? 1 : 0)} t`;
+// Silos de un lote agrupados por grano: cantidad, toneladas y cuántos sin kg cargados
+export function byGrano(silos) {
+  const m = {};
+  silos.forEach(s => { const g = s.grano || 'Sin grano'; const r = m[g] || (m[g] = { grano: g, n: 0, kg: 0, sinKg: 0 }); r.n++; if (s.kg != null && s.kg !== '') r.kg += +s.kg || 0; else r.sinKg++; });
+  return Object.values(m).sort((a, b) => b.kg - a.kg || b.n - a.n);
+}
+function GranoBreak({ silos }) {
+  const rows = byGrano(silos), max = Math.max(1, ...rows.map(r => r.kg));
+  if (!rows.length) return null;
+  return (
+    <div className="grano-break">
+      {rows.map(r => (
+        <div className="gb-row" key={r.grano}>
+          <span className="gb-name">{r.grano}</span>
+          <span className="gb-n muted">{r.n} silo{r.n === 1 ? '' : 's'}</span>
+          <b className="gb-t">{fmtTon(r.kg)}</b>
+          <span className="gb-bar"><i style={{ width: `${(r.kg / max) * 100}%` }} /></span>
+          {r.sinKg > 0 && <span className="gb-note muted small">{r.sinKg} sin kg cargados</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
 const fmtT = kg => (kg >= 1000 ? `${fmtNum(kg / 1000, kg < 100000 ? 1 : 0)} t` : `${fmtKg(kg)} kg`);
 
 export function Kpis({ state }) {
@@ -28,7 +52,7 @@ export function Kpis({ state }) {
   );
 }
 
-export function LotPanel({ lot, state, geo, onEdit, onShape, onSelectSilo, compact }) {
+export function LotPanel({ lot, state, geo, onEdit, onShape, onSelectSilo, onOpenSilo, compact }) {
   if (!lot) return null;
   const silos = state.silos.filter(s => s.lot === lot.id);
   const kg = sumKg(silos);
@@ -38,33 +62,37 @@ export function LotPanel({ lot, state, geo, onEdit, onShape, onSelectSilo, compa
       <div className="lot-bar">
         <div className="lot-bar-main"><b>{lotName(lot.num)}{lot.nombre ? <span className="muted"> · {lot.nombre}</span> : null}</b><span className="muted">{fmtNum(lot.ha, 1)} ha{isSiloLot(lot) ? ` · ${silos.length} silo${silos.length === 1 ? '' : 's'} · ${fmtT(kg)}` : ' · sin silobolsas'}</span></div>
         {onShape && <Button size="sm" variant="ghost" icon="edit" onClick={() => onShape(lot.id)}>Ajustar</Button>}
-        <Button variant="ghost" icon="gear" onClick={() => onEdit(lot.id)} aria-label="Configurar lote" />
+        {onEdit && <Button variant="ghost" icon="gear" onClick={() => onEdit(lot.id)} aria-label="Configurar lote" />}
       </div>
     );
   }
   return (
     <section className="panel-sec">
-      <div className="panel-head"><h3>{lotName(lot.num)}{lot.nombre ? <span className="muted"> · {lot.nombre}</span> : null}</h3><div className="row gap-s">{onShape && <Button size="sm" variant="ghost" icon="edit" onClick={() => onShape(lot.id)}>Ajustar forma</Button>}<Button size="sm" variant="ghost" icon="gear" onClick={() => onEdit(lot.id)}>Configurar</Button></div></div>
+      <div className="panel-head"><h3>{lotName(lot.num)}{lot.nombre ? <span className="muted"> · {lot.nombre}</span> : null}</h3><div className="row gap-s">{onShape && <Button size="sm" variant="ghost" icon="edit" onClick={() => onShape(lot.id)}>Ajustar forma</Button>}{onEdit && <Button size="sm" variant="ghost" icon="gear" onClick={() => onEdit(lot.id)}>Configurar</Button>}</div></div>
       <div className="stat-row">
         <div><span className="muted small">Hectáreas</span><b>{lot.ha}</b></div>
         <div><span className="muted small">Silos</span><b>{silos.length}</b></div>
-        <div><span className="muted small">Almacenado</span><b>{fmtT(kg)}</b></div>
+        <div><span className="muted small">Toneladas</span><b>{fmtTon(kg)}</b></div>
       </div>
+      <GranoBreak silos={silos} />
       {lot.subs?.length > 0 && <div className="chips">{lot.subs.map(s => <span className="chip" key={s.id}>{lot.num}{s.id} · {s.ha} ha</span>)}</div>}
       {measured && <p className="muted small">Superficie medida por georreferencia: {fmtNum(measured)} ha</p>}
-      <div className="mini-list">{silos.map(s => <SiloRow key={s.id} s={s} onClick={() => onSelectSilo(s.id)} />)}</div>
+      <div className="mini-list">{silos.map(s => <SiloRow key={s.id} s={s} state={state} onClick={() => (onOpenSilo || onSelectSilo)(s.id)} />)}</div>
       {!silos.length && <p className="muted small">Sin silobolsas en este lote.</p>}
     </section>
   );
 }
 
-export function SiloRow({ s, onClick, thumb }) {
+export function SiloRow({ s, onClick, thumb, state, est }) {
+  const hasKg = s.kg != null && s.kg !== '';
   return (
     <button type="button" className="silo-row" onClick={onClick}>
       <span className="silo-ic"><Icon name="silo" size={18} /></span>
-      <span className="silo-row-main"><b className="mono">{s.id}</b><span className="muted small">Lote {s.lote}{s.grano ? ` · ${s.grano}` : ''} · {fmtDate(s.creadoEn)}</span></span>
+      <span className="silo-row-main"><b className="mono">{s.id}</b>
+        <span className="muted small">{est && state ? `${estanciaNombre(siloLot(s, state.lots), state) || state.estancia.nombre} · ` : ''}Lote {s.lote}{s.grano ? ` · ${s.grano}` : ''}</span>
+        <span className="muted small">{fmtDate(s.creadoEn)}{state ? ` · ${userName(s.creadoPor, state)}` : ''}</span></span>
       {thumb && s.foto && <PhotoView refPath={s.foto} className="silo-thumb" />}
-      <span className="silo-row-kg"><b>{fmtKg(s.kg)}</b><span className="muted small">kg</span></span>
+      <span className="silo-row-kg">{hasKg ? <><b>{fmtNum(s.kg / 1000, 1)}</b><span className="muted small">t</span></> : <span className="muted small">sin kg</span>}</span>
     </button>
   );
 }
@@ -74,7 +102,7 @@ export function RecentPanel({ state, onSelectSilo }) {
   return (
     <section className="panel-sec grow">
       <div className="panel-head"><h3>Últimos registros</h3></div>
-      <div className="mini-list">{recent.map(s => <SiloRow key={s.id} s={s} onClick={() => onSelectSilo(s.id)} />)}</div>
+      <div className="mini-list">{recent.map(s => <SiloRow key={s.id} s={s} state={state} onClick={() => onSelectSilo(s.id)} />)}</div>
       {!recent.length && <div className="empty"><Icon name="silo" size={28} /><p>Todavía no hay silobolsas. Tocá <b>+</b> y marcá con el GPS la cabecera y la cola de la bolsa.</p></div>}
     </section>
   );
@@ -89,12 +117,13 @@ export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est =
       && (!t || s.id.toLowerCase().includes(t) || (s.obs || '').toLowerCase().includes(t)))
       .sort((a, b) => a.id.localeCompare(b.id));
   }, [state.silos, q, lote, grano, inEst]);
+  const nEst = state.silos.filter(s => inEst(siloLot(s, state.lots))).length;
   const lotOpts = [{ value: 'all', label: 'Todos los lotes' }, ...state.lots.filter(l => isSiloLot(l) && inEst(l)).map(l => ({ value: l.id, label: `Lote ${l.num}`, meta: estanciaNombre(l, state) }))];
   return (
     <div className="screen">
       <div className="screen-head">
-        <div><h1>Silobolsas</h1><p className="muted">{list.length} de {state.silos.length} · {fmtT(sumKg(list))}</p></div>
-        <div className="row gap-s"><Button icon="download" onClick={onExportKml}>KML</Button><Button icon="download" onClick={onExportCsv}>CSV</Button></div>
+        <div><h1>Silobolsas</h1><p className="muted">{list.length} de {nEst} activas · {fmtTon(sumKg(list))}</p></div>
+        {(onExportKml || onExportCsv) && <div className="row gap-s">{onExportKml && <Button icon="download" onClick={onExportKml}>KML</Button>}{onExportCsv && <Button icon="download" onClick={onExportCsv}>CSV</Button>}</div>}
       </div>
       <div className={`filters ${estOpts ? 'has-est' : ''}`}>
         {estOpts && <Field label="Estancia"><Select value={est} options={estOpts} onChange={v => { onEst(v); setLote('all'); }} /></Field>}
@@ -103,7 +132,7 @@ export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est =
         <Field label="Grano"><Select value={grano} options={[{ value: 'all', label: 'Todos' }, ...GRANOS.map(g => ({ value: g, label: g }))]} onChange={setGrano} /></Field>
       </div>
       <div className="card list-card">
-        {list.map(s => <SiloRow key={s.id} s={s} thumb onClick={() => onOpenSilo(s.id)} />)}
+        {list.map(s => <SiloRow key={s.id} s={s} state={state} est={est === 'all' && !!estOpts} thumb onClick={() => onOpenSilo(s.id)} />)}
         {!list.length && <div className="empty"><Icon name="search" size={28} /><p>No hay silobolsas que coincidan.</p></div>}
       </div>
     </div>
@@ -111,12 +140,14 @@ export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est =
 }
 
 /* ---------- Pantalla Lotes ---------- */
-export function LotsScreen({ state, onEditLot, onShowLot, est = 'all', estOpts, onEst, inEst = () => true }) {
-  const [q, setQ] = useState('');
+export function LotsScreen({ state, onEditLot, onShowLot, onOpenSilo, est = 'all', estOpts, onEst, inEst = () => true }) {
+  const [q, setQ] = useState(''), [sel, setSel] = useState(null);
   const t = q.trim().toLowerCase();
   const shown = state.lots.filter(l => inEst(l) && (!t || String(l.num).toLowerCase() === t || String(l.num).toLowerCase().startsWith(t) || (l.nombre || '').toLowerCase().includes(t)));
   const kgBy = {}, nBy = {};
-  state.silos.forEach(s => { kgBy[s.lot] = (kgBy[s.lot] || 0) + (+s.kg || 0); nBy[s.lot] = (nBy[s.lot] || 0) + 1; });
+  const gBy = {};
+  state.silos.forEach(s => { kgBy[s.lot] = (kgBy[s.lot] || 0) + (+s.kg || 0); nBy[s.lot] = (nBy[s.lot] || 0) + 1; if (s.grano) (gBy[s.lot] || (gBy[s.lot] = new Set())).add(s.grano); });
+  const selLot = state.lots.find(l => l.id === sel), selSilos = selLot ? state.silos.filter(s => s.lot === selLot.id).sort((a, b) => a.id.localeCompare(b.id)) : [];
   const max = Math.max(1, ...Object.values(kgBy));
   return (
     <div className="screen">
@@ -132,18 +163,34 @@ export function LotsScreen({ state, onEditLot, onShowLot, est = 'all', estOpts, 
       <div className="lot-grid">
         {shown.map(l => (
           <div className={`card lot-card ${isSiloLot(l) ? '' : 'is-casco'}`} key={l.id}>
-            <button type="button" className="lot-card-main" onClick={() => onShowLot(l.id)}>
+            <button type="button" className="lot-card-main" onClick={() => (isSiloLot(l) ? setSel(l.id) : onShowLot(l.id))}>
               <span className="lot-card-num">{isSiloLot(l) ? l.num : String(l.num).slice(0, 2).toUpperCase()}</span>
               <span className="lot-card-info"><b>{isSiloLot(l) ? `${fmtNum(l.ha, 0)} ha` : l.num}</b>{(() => { const t = [estOpts && est === 'all' ? estanciaNombre(l, state) : '', isSiloLot(l) ? (l.nombre || (l.subs?.length ? l.subs.map(s => s.id).join(' · ') : '')) : `${fmtNum(l.ha, l.ha % 1 ? 1 : 0)} ha${l.nombre ? ` · ${l.nombre}` : ''}`].filter(Boolean).join(' · '); return t ? <span className="muted small">{t}</span> : null; })()}</span>
             </button>
-            <Button size="sm" variant="ghost" icon="gear" onClick={() => onEditLot(l.id)} aria-label={`Configurar ${lotName(l.num)}`} />
+            {onEditLot && <Button size="sm" variant="ghost" icon="gear" onClick={() => onEditLot(l.id)} aria-label={`Configurar ${lotName(l.num)}`} />}
             {isSiloLot(l) ? <>
               <div className="lot-card-bar"><span style={{ width: `${((kgBy[l.id] || 0) / max) * 100}%` }} /></div>
-              <div className="lot-card-foot muted small"><span>{nBy[l.id] || 0} silos</span><span>{fmtT(kgBy[l.id] || 0)}</span></div>
+              <div className="lot-card-foot muted small"><span>{nBy[l.id] || 0} silo{nBy[l.id] === 1 ? '' : 's'}{gBy[l.id] ? ` · ${[...gBy[l.id]].join(', ')}` : ''}</span><span>{fmtTon(kgBy[l.id] || 0)}</span></div>
             </> : <div className="lot-card-foot muted small"><span>Sin silobolsas</span></div>}
           </div>
         ))}
       </div>
+      {selLot && (
+        <Modal title={lotName(selLot.num)} subtitle={`${estanciaNombre(selLot, state) || state.estancia.nombre} · ${fmtNum(selLot.ha, 0)} ha`} onClose={() => setSel(null)}
+          footer={<><Button icon="map" onClick={() => { setSel(null); onShowLot(selLot.id); }}>Ver en el mapa</Button>{onEditLot && <Button variant="ghost" icon="gear" onClick={() => { setSel(null); onEditLot(selLot.id); }}>Configurar</Button>}</>}>
+          <div className="lot-sum">
+            <div><b>{selSilos.length}</b><span>silobolsa{selSilos.length === 1 ? '' : 's'}</span></div>
+            <div><b>{fmtTon(sumKg(selSilos))}</b><span>almacenadas</span></div>
+            <div><b>{byGrano(selSilos).length}</b><span>grano{byGrano(selSilos).length === 1 ? '' : 's'}</span></div>
+          </div>
+          {selSilos.length ? <>
+            <h3 className="sec-t">Por grano</h3>
+            <GranoBreak silos={selSilos} />
+            <h3 className="sec-t">Silobolsas</h3>
+            <div className="mini-list">{selSilos.map(s => <SiloRow key={s.id} s={s} state={state} onClick={() => { setSel(null); onOpenSilo?.(s.id); }} />)}</div>
+          </> : <div className="empty"><Icon name="silo" size={28} /><p>Todavía no hay silobolsas en este lote.</p></div>}
+        </Modal>
+      )}
     </div>
   );
 }
@@ -198,7 +245,7 @@ function Group({ icon, title, desc, children, id }) {
 }
 
 /* ---------- Pantalla Ajustes ---------- */
-export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, setTheme, onState, onLogout, mode, onGoMapas }) {
+export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, setTheme, onState, onLogout, mode, onGoMapas, estActual, onChangeEst }) {
   const toast = useToast();
   const isAdmin = me.rol === 'admin';
   const [pts, setPts] = useState(() => migrateGeoref(state.georef, state.lots).points.map(p => ({ ...p, lat: p.lat ?? '', lng: p.lng ?? '' })));
@@ -265,12 +312,38 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
 
   return (
     <div className="screen">
+      {!isAdmin ? <>
+        <div className="screen-head"><div><h1>Cuenta</h1><p className="muted">{estActual ? estActual.nombre : state.estancia.nombre}</p></div></div>
+        <div className="set-page">
+          <Group id="cuenta" icon="user" title="Mi cuenta" desc="Supervisor: registrás silobolsas en la estancia elegida.">
+            <div className="set-me">
+              <span className="avatar">{(me.nombre || me.user).slice(0, 1).toUpperCase()}</span>
+              <div className="grow"><b>{me.nombre || me.user}</b><span className="muted small">{me.user} · Supervisor</span></div>
+              <Button variant="ghost" icon="logout" onClick={onLogout}>Cerrar sesión</Button>
+            </div>
+            <div className="set-inline">
+              <Field label="Nueva contraseña" className="grow"><TextInput type="password" value={myPass} onChange={setMyPass} placeholder="Mínimo 6 caracteres" autoComplete="new-password" /></Field>
+              <Button onClick={async () => { if (myPass.length < 6) return toast('Mínimo 6 caracteres', 'error'); if (await run(() => store.saveUser({ user: me.user, nombre: me.nombre, rol: me.rol, pass: myPass }, me), 'Contraseña actualizada')) setMyPass(''); }}>Cambiar</Button>
+            </div>
+          </Group>
+          <Group id="estancia" icon="map" title="Estancia de trabajo" desc="Ves y registrás solo los lotes de esta estancia.">
+            <div className="set-row">
+              <span className="est-sig mono">{estActual?.sigla || state.estancia.sigla}</span>
+              <div className="grow"><b>{estActual?.nombre || state.estancia.nombre}</b>{estActual && <span className="muted small">{estActual.n} lotes</span>}</div>
+              {onChangeEst && <Button icon="map" onClick={onChangeEst}>Cambiar estancia</Button>}
+            </div>
+          </Group>
+          <Group id="tema" icon="sun" title="Apariencia" desc="Oscuro para el campo de noche, claro a pleno sol.">
+            <Field label="Tema"><Segmented value={theme} onChange={setTheme} options={[{ value: 'dark', label: 'Oscuro', icon: 'moon' }, { value: 'light', label: 'Claro', icon: 'sun' }]} /></Field>
+          </Group>
+        </div>
+      </> : <>
       <div className="screen-head"><div><h1>Ajustes</h1><p className="muted">{state.estancia.nombre} · {mode === 'local' ? 'Modo local: los datos quedan en este dispositivo' : 'Conectado al servidor'}</p></div></div>
       <div className="set-page">
         <Group id="cuenta" icon="user" title="Mi cuenta" desc="Tu usuario y contraseña.">
           <div className="set-me">
             <span className="avatar">{(me.nombre || me.user).slice(0, 1).toUpperCase()}</span>
-            <div className="grow"><b>{me.nombre || me.user}</b><span className="muted small">{me.user} · {me.rol === 'admin' ? 'Administrador' : 'Operador'}</span></div>
+            <div className="grow"><b>{me.nombre || me.user}</b><span className="muted small">{me.user} · {me.rol === 'admin' ? 'Administrador' : 'Supervisor'}</span></div>
             <Button variant="ghost" icon="logout" onClick={onLogout}>Cerrar sesión</Button>
           </div>
           <div className="set-inline">
@@ -300,12 +373,12 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
         </Group>
 
         {isAdmin && (
-          <Group id="usuarios" icon="user" title="Usuarios" desc="El operador registra silos; el administrador además edita lotes, mapas y usuarios.">
+          <Group id="usuarios" icon="user" title="Usuarios" desc="El supervisor elige su estancia y registra silobolsas; el administrador además maneja lotes, mapas, KML y usuarios.">
             <div className="set-list">
               {state.users.map(u => (
                 <div className="set-row" key={u.user}>
                   <span className="avatar sm">{(u.nombre || u.user).slice(0, 1).toUpperCase()}</span>
-                  <div className="grow"><b>{u.nombre || u.user}</b><span className="muted small">{u.user} · {u.rol === 'admin' ? 'Administrador' : 'Operador'}{u.user === me.user ? ' · vos' : ''}</span></div>
+                  <div className="grow"><b>{u.nombre || u.user}</b><span className="muted small">{u.user} · {u.rol === 'admin' ? 'Administrador' : 'Supervisor'}{u.user === me.user ? ' · vos' : ''}</span></div>
                   {u.user !== me.user && <Button size="sm" variant="ghost" icon="trash" onClick={() => run(() => store.deleteUser(u.user, me), 'Usuario eliminado')} aria-label={`Eliminar a ${u.user}`} />}
                 </div>
               ))}
@@ -316,7 +389,7 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
                   <Field label="Usuario"><TextInput value={nu.user} onChange={v => setNu(x => ({ ...x, user: v.toLowerCase().replace(/[^a-z0-9._-]/g, '') }))} /></Field>
                   <Field label="Nombre"><TextInput value={nu.nombre} onChange={v => setNu(x => ({ ...x, nombre: v }))} /></Field>
                   <Field label="Contraseña"><TextInput type="password" value={nu.pass} onChange={v => setNu(x => ({ ...x, pass: v }))} autoComplete="new-password" /></Field>
-                  <Field label="Rol"><Select value={nu.rol} options={[{ value: 'operador', label: 'Operador (registra silos)' }, { value: 'admin', label: 'Administrador' }]} onChange={v => setNu(x => ({ ...x, rol: v }))} /></Field>
+                  <Field label="Rol"><Select value={nu.rol} options={[{ value: 'operador', label: 'Supervisor (registra silos)' }, { value: 'admin', label: 'Administrador' }]} onChange={v => setNu(x => ({ ...x, rol: v }))} /></Field>
                 </div>
                 <div className="row end gap-s">
                   <Button onClick={() => { setNewUser(false); setNu({ user: '', nombre: '', pass: '', rol: 'operador' }); }}>Cancelar</Button>
@@ -397,6 +470,7 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
           )}
         </Group>
       </div>
+      </>}
     </div>
   );
 }

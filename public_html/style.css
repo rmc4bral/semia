@@ -881,7 +881,8 @@ p { margin: 0; }
 .nav-item.is-on .ic { color: var(--accent-fg); }
 .nav-item.is-on::after { content: ''; position: absolute; bottom: 7px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
 :root[data-theme='light'] .nav-item.is-on::after { box-shadow: 0 0 0 1.5px #000; }
-.nav-add { flex: 0 0 auto; display: grid; place-items: center; margin: 0 6px; width: 56px; height: 56px; border: 0; border-radius: 50%; background: var(--accent); color: var(--accent-ink); cursor: pointer; box-shadow: 0 8px 22px rgba(204, 255, 0, .28); transition: transform .12s; }
+.nav-add { flex: 0 0 auto; display: grid; place-items: center; margin: -26px 8px 0; width: 70px; height: 70px; border: 5px solid var(--bg); border-radius: 50%; background: var(--accent); color: var(--accent-ink); cursor: pointer; box-shadow: 0 10px 26px rgba(204, 255, 0, .32); transition: transform .12s; }
+.nav-add .ic { width: 32px; height: 32px; }
 .nav-add:active { transform: scale(.94); }
 .nav-add i { display: grid; place-items: center; font-style: normal; }
 .nav-add > span, .nav-brand, .nav-desk, .nav-foot { display: none; }
@@ -1205,6 +1206,59 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
 .geo-gate-act { display: flex; flex-direction: column; gap: 8px; }
 @media (prefers-reduced-motion: reduce) { .geo-gate-ring { animation: none; } }
 
+/* Supervisor: elegir estancia */
+.est-gate { grid-template-rows: auto 1fr auto; }
+.est-gate-head { display: flex; flex-direction: column; gap: 10px; }
+.est-gate-head h1 { font-size: 28px; line-height: 1.15; letter-spacing: -0.03em; margin-top: 14px; }
+.est-gate-head p { font-size: 15px; line-height: 1.5; }
+.est-gate-list { display: flex; flex-direction: column; gap: 4px; align-content: start; overflow: auto; }
+.est-opt { display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 4px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.est-opt:active { background: var(--surface); }
+.est-opt-sig { width: 54px; height: 54px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 800; font-size: 16px; letter-spacing: .04em; }
+.est-opt-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.est-opt-txt b { font-size: 18px; letter-spacing: -0.01em; }
+.est-opt-go { transform: rotate(-90deg); color: var(--muted); }
+
+/* Paso «elegí el lote» antes de medir */
+.cap-lots { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; max-height: 38dvh; overflow: auto; padding: 2px; }
+.cap-lot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 64px; border: 1px solid var(--line-2); border-radius: var(--r); background: transparent; color: var(--text); cursor: pointer; }
+.cap-lot b { font-size: 22px; font-weight: 800; font-feature-settings: 'tnum'; line-height: 1; }
+.cap-lot span { font-size: 10px; font-weight: 600; color: var(--muted); }
+.cap-lot:active, .cap-lot:hover { border-color: var(--accent); }
+.cap-lot.is-sug { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.cap-lot.is-sug span { color: rgba(0, 0, 0, .65); }
+.cap-lot-chip { display: inline-flex; align-items: baseline; gap: 5px; height: 28px; padding: 0 10px; margin-right: auto; border: 1px solid var(--line-2); border-radius: var(--pill); background: transparent; color: var(--muted); font-size: 12px; font-weight: 600; cursor: pointer; line-height: 26px; }
+.cap-lot-chip b { color: var(--text); font-size: 14px; font-weight: 800; }
+.cap-lot-chip span { color: var(--accent-fg); }
+.cap-top .cap-step + .cap-lot-chip { margin-left: 4px; }
+.cap-border { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.cap-border.is-far { color: var(--danger); }
+
+/* Ficha de silo */
+.card-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 14px; margin: 18px 0 4px; }
+.card-facts > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.card-facts .span-2 { grid-column: span 2; }
+.card-facts dt { font-size: 12px; font-weight: 600; color: var(--muted); }
+.card-facts dd { display: flex; flex-direction: column; gap: 2px; margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.card-obs { font-weight: 500; white-space: pre-wrap; line-height: 1.45; }
+.card-photo { display: block; width: 100%; max-height: 280px; object-fit: cover; border-radius: var(--r); margin-top: 14px; }
+
+/* Granos por lote */
+.grano-break { display: flex; flex-direction: column; gap: 12px; }
+.gb-row { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; gap: 4px 12px; }
+.gb-name { font-weight: 700; font-size: 15px; }
+.gb-n { font-size: 13px; }
+.gb-t { font-size: 15px; font-feature-settings: 'tnum'; min-width: 64px; text-align: right; }
+.gb-bar { grid-column: 1 / -1; height: 4px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+.gb-bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.gb-note { grid-column: 1 / -1; }
+.lot-sum { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.lot-sum > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lot-sum b { font-size: 26px; font-weight: 800; letter-spacing: -0.03em; font-feature-settings: 'tnum'; white-space: nowrap; }
+.lot-sum span { font-size: 12px; font-weight: 600; color: var(--muted); }
+.sec-t { margin: 18px 0 10px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.panel-sec .grano-break { margin: 4px 0 6px; }
+
 /* ---------- Login ---------- */
 .login { position: relative; min-height: 100%; display: grid; place-items: center; padding: 24px 16px; overflow: hidden; background: var(--bg); }
 .login-art { position: absolute; inset: 0; opacity: .6; }
@@ -1314,7 +1368,8 @@ path.glob-foot.is-sel { stroke: #fff; }
   .nav-brand div { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
   .nav-brand b { font-size: 18px; letter-spacing: -0.02em; }
   .nav-brand span { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .nav-add { order: -1; width: auto; height: 50px; margin: 0 0 14px; padding: 0 18px; border-radius: var(--pill); display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 14px; box-shadow: none; }
+  .nav-add { order: -1; width: auto; height: 50px; margin: 0 0 14px; padding: 0 18px; border-radius: var(--pill); display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 14px; box-shadow: none; border: 0; }
+  .nav-add .ic { width: 22px; height: 22px; }
   .nav-brand { order: -2; }
   .nav-add > span { display: inline; }
   .nav-item, .nav-desk { flex: none; display: flex; flex-direction: row; justify-content: flex-start; gap: 12px; height: 46px; padding: 0 14px; border-radius: var(--pill); font-size: 14px; }

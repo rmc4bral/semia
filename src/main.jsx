@@ -3,13 +3,13 @@ import { createRoot } from 'react-dom/client';
 import { Logo, Icon, Button, Field, TextInput, Segmented, Select, ToastProvider, useToast, fmtNum } from './ui.jsx';
 import { detectMode, createStore, resolvePhoto } from './store.js';
 import { fmtFecha, parseFecha, readMapFile, defaultCorners } from './maplayers.js';
-import { buildGeo, locateLot, controlPoints, metersBetween, pointInPoly, isSiloLot, normalizeState, siloLot, lotName } from './geo.js';
+import { buildGeo, locateLot, controlPoints, metersBetween, pointInPoly, snapToBorder, isSiloLot, normalizeState, siloLot, lotName } from './geo.js';
 import { exportKml, estancias, estanciaFilter } from './kml.js';
 import { GpsCapture } from './capture.jsx';
 import { UpdateButton } from './update.jsx';
 import { cloneGeom, moveVertex, insertVertex, removeVertex, restoreLot, buildShapeChange, isLocked } from './shapes.js';
 import SatMap from './SatMap.jsx';
-import { SiloModal, LotModal, EditMapModal } from './modals.jsx';
+import { SiloModal, LotModal, EditMapModal, SiloCard } from './modals.jsx';
 import { Kpis, LotPanel, RecentPanel, SilosScreen, LotsScreen, SettingsScreen, MapsScreen } from './screens.jsx';
 
 const pref = {
@@ -53,7 +53,7 @@ function captureFix(ms = 7000) {
 }
 
 /* ---------- Primer paso: activar la ubicación ---------- */
-function GeoGate({ onDone }) {
+function GeoGate({ onDone, required, onBack, est }) {
   const [st, setSt] = useState('ask'), [busy, setBusy] = useState(false);
   function pedir() {
     if (!('geolocation' in navigator)) { setSt('nogps'); return; }
@@ -67,17 +67,40 @@ function GeoGate({ onDone }) {
     <div className="geo-gate">
       <div className="geo-gate-art" aria-hidden="true"><span className="geo-gate-ring" /><span className="geo-gate-ring r2" /><span className="geo-gate-dot"><Icon name="gps" size={30} /></span></div>
       <div className="geo-gate-txt">
-        <span className="geo-gate-step">Antes de empezar</span>
+        <span className="geo-gate-step">{est ? `${est} · ` : ''}{required ? 'Paso 2 de 2' : 'Antes de empezar'}</span>
         <h1>{st === 'denied' ? 'La ubicación está bloqueada' : st === 'nogps' ? 'Este dispositivo no tiene GPS' : 'Activá tu ubicación'}</h1>
         <p className="muted">{st === 'denied'
           ? 'Habilitala en el navegador: tocá el candado junto a la dirección → Permisos → Ubicación → Permitir. Después volvé a intentar.'
           : st === 'nogps' ? 'Podés usar la app marcando las silobolsas tocando el mapa.'
+          : required ? 'Para registrar silobolsas hace falta el GPS del celular: te ubica sobre los lotes y marca la cabecera y la cola de cada bolsa.'
           : 'SemIA usa el GPS del celular para ubicarte sobre los lotes y registrar la cabecera y la cola de cada silobolsa.'}</p>
       </div>
       <div className="geo-gate-act">
         {st !== 'nogps' && <Button variant="primary" className="block" icon="gps" onClick={pedir} disabled={busy}>{busy ? 'Buscando señal…' : st === 'denied' ? 'Volver a intentar' : 'Permitir ubicación'}</Button>}
-        <Button variant="ghost" className="block" onClick={() => { try { sessionStorage.setItem('semia.geoLater', '1'); } catch { /* */ } onDone(false); }}>{st === 'nogps' ? 'Continuar' : 'Ahora no'}</Button>
+        {required && st !== 'nogps' ? onBack && <Button variant="ghost" className="block" onClick={onBack}>Cambiar estancia</Button>
+          : <Button variant="ghost" className="block" onClick={() => { if (!required) { try { sessionStorage.setItem('semia.geoLater', '1'); } catch { /* */ } } onDone(false); }}>{st === 'nogps' ? 'Continuar' : 'Ahora no'}</Button>}
       </div>
+    </div>
+  );
+}
+
+/* ---------- Supervisor: elegir la estancia de trabajo ---------- */
+function EstanciaGate({ state, me, onPick, onLogout }) {
+  const list = estancias(state);
+  const nBy = {}; state.silos.forEach(s => { const l = siloLot(s, state.lots); if (l?.kml) nBy[l.kml] = (nBy[l.kml] || 0) + 1; });
+  return (
+    <div className="geo-gate est-gate">
+      <div className="est-gate-head"><Logo size={40} /><span className="geo-gate-step">Hola, {me.nombre || me.user} · Paso 1 de 2</span><h1>¿En qué estancia trabajás hoy?</h1><p className="muted">Vas a ver y registrar solo los lotes de la estancia elegida. Podés cambiarla desde Cuenta.</p></div>
+      <div className="est-gate-list" role="list">
+        {list.map(e => (
+          <button type="button" role="listitem" key={e.id} className="est-opt" onClick={() => onPick(e.id)}>
+            <span className="est-opt-sig mono">{e.sigla}</span>
+            <span className="est-opt-txt"><b>{e.nombre}</b><span className="muted small">{e.n} lotes · {nBy[e.id] || 0} silobolsas</span></span>
+            <Icon name="chev" size={18} className="est-opt-go" />
+          </button>
+        ))}
+      </div>
+      <div className="geo-gate-act"><Button variant="ghost" className="block" icon="logout" onClick={onLogout}>Salir</Button></div>
     </div>
   );
 }
@@ -113,7 +136,7 @@ function Login({ store, onLogged, mode }) {
 }
 
 /* ---------- Aplicación ---------- */
-function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = true }) {
+function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = true, supEst = null, onChangeEst }) {
   const toast = useToast();
   const isAdmin = me.rol === 'admin';
   const [tab, setTab] = useState('mapa');
@@ -135,7 +158,8 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
   const { fix, err: gpsErr } = useGps(gpsOn);
   const geo = useMemo(() => buildGeo(state.georef), [state.georef]);
   const estList = useMemo(() => estancias(state), [state.georef, state.lots]); // eslint-disable-line
-  const effEst = estList.some(e => e.id === estId) ? estId : 'all';
+  const effEst = supEst && estList.some(e => e.id === supEst) ? supEst : estList.some(e => e.id === estId) ? estId : 'all';
+  const estFilterOpts = !supEst && estList.length > 1; // el supervisor trabaja en una sola estancia
   const inEst = useMemo(() => estanciaFilter(state, effEst), [state.georef, effEst]); // eslint-disable-line
   const lots = state.lots;
   const shownState = useMemo(() => (effEst === 'all' ? state : { ...state, lots: state.lots.filter(inEst), silos: state.silos.filter(s => inEst(siloLot(s, state.lots))) }), [state, effEst, inEst]);
@@ -201,6 +225,8 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
     catch (e) { toast(e.message, 'error'); }
   }
 
+  const [card, setCard] = useState(null); // ficha de información de un silo
+  const showCard = useCallback(id => setCard(id), []);
   const openSilo = useCallback(id => {
     const s = state.silos.find(x => x.id === id); if (!s) return;
     setDraft({ ...s, prevId: s.id }); setSelSilo(id);
@@ -212,34 +238,44 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
     const map = pt.map(v => Math.round(v * 100) / 100);
     return { ...extra, lote: loc.lot.num, lot: loc.lot.id, map, map2: null, t: null, ang: 0, latlng: geo ? geo.toLatLng(map).map(v => +v.toFixed(7)) : null, latlng2: null, largo: null, gps2: null, fuera: !loc.inside };
   }
+  // Lotes donde se pueden registrar silobolsas (los de la estancia en uso)
+  const capLots = useMemo(() => lots.filter(l => isSiloLot(l) && inEst(l)), [lots, inEst]);
+  const gpsOk = geo && 'geolocation' in navigator && gpsErr !== 'Permiso de ubicación denegado' && gpsOn;
+  // «+»: primero se elige el lote (el GPS puede caer entre dos), después se mide la bolsa
   function onAdd(form = null) {
     setSelSilo(null); setDraft(null); setShape(null); setMapEdit(null); setMoving(null); setPick(null);
     setTab('mapa');
-    if (geo && 'geolocation' in navigator && gpsErr !== 'Permiso de ubicación denegado') { setCap({ form, a: null }); return; }
-    if (!geo) { toast('Primero cargá el KML de los lotes en Mapas', 'error', 5000); setTab('mapas'); return; }
-    setPick({ purpose: form ? 'relocate' : 'new', form: form || {} });
-    toast('GPS no disponible: tocá el lugar del silo en el mapa', 'info', 4500);
+    if (!geo) { toast(isAdmin ? 'Primero cargá el KML de los lotes en Mapas' : 'Todavía no hay lotes cargados: avisale al administrador', 'error', 5000); if (isAdmin) setTab('mapas'); return; }
+    const keep = form?.lot && capLots.some(l => l.id === form.lot) ? form.lot : null;
+    setCap({ form, a: null, lot: keep });
   }
-  // Fin de la medición: A (cabecera) y B (cola, opcional)
-  function finishCap(a, b) {
+  // distancia (m) de un punto del plano al contorno del lote; dentro = 0
+  const offLot = (p, lot) => (pointInPoly(p, lot.poly) ? 0 : snapToBorder(p, lot.poly).dist * (geo?.metersPerUnit || 1));
+  // Fin de la medición: A (cabecera) y B (cola, opcional), en el lote que eligió el supervisor
+  function finishCap(a, b, lotId) {
     const r = p => p.map(v => Math.round(v * 100) / 100);
     const mA = r(geo.toMap(a.lat, a.lng)), mB = b ? r(geo.toMap(b.lat, b.lng)) : null;
     const mid = mB ? [(mA[0] + mB[0]) / 2, (mA[1] + mB[1]) / 2] : mA;
-    const siloLots = lots.filter(isSiloLot);
-    if (!siloLots.length) { setCap(null); return toast('No hay lotes con número para registrar silobolsas', 'error'); }
-    const inside = siloLots.find(l => pointInPoly(mid, l.poly));
-    const lot = inside || locateLot(mid, siloLots).lot;
+    const lot = lots.find(l => l.id === lotId);
+    if (!lot) { setCap(null); return toast('Elegí el lote de la bolsa', 'error'); }
+    const off = offLot(mid, lot);
     const form = cap?.form || {};
     setCap(null);
     setDraft({
       ...form, origen: 'gps', lote: lot.num, lot: lot.id, map: mA, map2: mB, t: null, ang: mB ? Math.atan2(mB[1] - mA[1], mB[0] - mA[0]) : 0,
       latlng: [a.lat, a.lng], latlng2: b ? [b.lat, b.lng] : null, largo: b ? Math.round(metersBetween([a.lat, a.lng], [b.lat, b.lng]) * 10) / 10 : null,
-      gps: a, gps2: b, fuera: !inside,
+      gps: a, gps2: b, fuera: off > 40, fueraM: Math.round(off),
     });
   }
   function onPick(pt) {
-    const base = pick?.form || {};
+    const base = pick?.form || {}, lotId = pick?.lot;
     setPick(null);
+    const lot = lotId && lots.find(l => l.id === lotId);
+    if (lot) {
+      const map = pt.map(v => Math.round(v * 100) / 100), off = offLot(map, lot);
+      setDraft({ ...base, origen: 'mapa', gps: null, lote: lot.num, lot: lot.id, map, map2: null, t: null, ang: 0, latlng: geo ? geo.toLatLng(map).map(v => +v.toFixed(7)) : null, latlng2: null, largo: null, gps2: null, fuera: off > 40, fueraM: Math.round(off) });
+      return;
+    }
     setDraft(draftFromPoint(pt, { ...base, origen: 'mapa', gps: null }));
   }
   const isFree = s => !!s.map2 || !Number.isFinite(s.t);
@@ -327,9 +363,13 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
     download(exportKml(state, geo), `semia-${today()}.kml`, 'application/vnd.google-earth.kml+xml');
   }
 
-  const tabs = [
+  // El supervisor solo ve Mapa, Silos, + y Lotes (y su cuenta para cambiar de estancia o salir)
+  const tabs = isAdmin ? [
     { k: 'mapa', label: 'Mapa', icon: 'map' }, { k: 'silos', label: 'Silos', icon: 'silo' },
     { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'mapas', label: 'Mapas', icon: 'layers' }, { k: 'ajustes', label: 'Ajustes', icon: 'gear', desk: true },
+  ] : [
+    { k: 'mapa', label: 'Mapa', icon: 'map' }, { k: 'silos', label: 'Silos', icon: 'silo' },
+    { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'ajustes', label: 'Cuenta', icon: 'user' },
   ];
   function goTab(k) { setTab(k); setPick(null); if (k !== 'mapa') { setShape(null); setMapEdit(null); setCap(null); } }
   const lot = lots.find(l => l.id === selLot);
@@ -342,15 +382,15 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
         <div className="top-act">
           <span className={`gps-chip ${fix && !gpsErr ? (fix.acc <= 5 ? 'is-good' : fix.acc <= 15 ? 'is-mid' : 'is-bad') : 'is-off'}`} title={gpsLabel}><Icon name="gps" size={15} /><span>{gpsLabel}</span></span>
           <button type="button" className="round-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Cambiar tema"><Icon name={theme === 'dark' ? 'sun' : 'moon'} size={18} /></button>
-          <button type="button" className={`round-btn avatar-btn ${tab === 'ajustes' ? 'is-on' : ''}`} onClick={() => goTab('ajustes')} aria-label="Ajustes" title={`${me.nombre} (${me.rol}) · Ajustes`}>{(me.nombre || me.user).slice(0, 1).toUpperCase()}</button>
+          {isAdmin && <button type="button" className={`round-btn avatar-btn ${tab === 'ajustes' ? 'is-on' : ''}`} onClick={() => goTab('ajustes')} aria-label="Ajustes" title={`${me.nombre} (${me.rol}) · Ajustes`}>{(me.nombre || me.user).slice(0, 1).toUpperCase()}</button>}
         </div>
       </header>
 
       <nav className="nav" aria-label="Secciones">
-        <div className="nav-brand"><Logo size={30} /><div><b>SemIA</b><span>{state.estancia.nombre}</span></div></div>
+        <div className="nav-brand"><Logo size={30} /><div><b>SemIA</b><span>{effEst !== 'all' ? estList.find(e => e.id === effEst)?.nombre : state.estancia.nombre}</span></div></div>
         {tabs.map((t, i) => (
           <React.Fragment key={t.k}>
-            {i === 2 && <button type="button" className="nav-add" onClick={() => onAdd()} aria-label="Nueva silobolsa"><i><Icon name="plus" size={24} /></i><span>Nueva silobolsa</span></button>}
+            {i === 2 && <button type="button" className="nav-add" onClick={() => onAdd()} aria-label="Nueva silobolsa"><i><Icon name="plus" size={30} strokeWidth="3" /></i><span>Nueva silobolsa</span></button>}
             <button type="button" className={`nav-item ${tab === t.k ? 'is-on' : ''} ${t.desk ? 'nav-desk' : ''}`} onClick={() => goTab(t.k)} aria-current={tab === t.k ? 'page' : undefined}>
               <Icon name={t.icon} size={21} /><span>{t.label}</span>
               {t.k === 'mapas' && mapJob && (mapJob.stage === 'convert' || mapJob.stage === 'upload') && <i className="nav-pct">{Math.round(mapJob.pct)}%</i>}
@@ -367,7 +407,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
             <div className="dash-body">
               <div className="card map-card">
                 {!shape && !mapEdit && !cap && <div className="map-top">
-                  {estList.length > 1 && <div className="map-layers"><Field label="Estancia" className="map-filter"><Select value={effEst} onChange={setEstId} options={estOpts} /></Field></div>}
+                  {estFilterOpts && <div className="map-layers"><Field label="Estancia" className="map-filter"><Select value={effEst} onChange={setEstId} options={estOpts} /></Field></div>}
                   {maps.length > 0 && (
                     <div className="map-layers">
                       <Field label="Mapa a mostrar" className="map-filter"><Select value={effFilter} onChange={setMapFilter} options={[
@@ -380,7 +420,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
                   )}
                 </div>}
                 <SatMap data={shownState} silos={shownState.silos} geo={geo} fitKey={effEst} selectedLot={selLot} onSelectLot={setSelLot} selectedSilo={selSilo}
-                  onSelectSilo={id => { setSelSilo(id); }} pickMode={!!pick} onPick={onPick} gps={fix} onNeedGeoref={() => setTab('mapas')}
+                  onSelectSilo={id => { setSelSilo(id); }} pickMode={!!pick} onPick={onPick} gps={fix} onNeedGeoref={() => isAdmin && setTab('mapas')}
                   moving={moving} onMoveDraft={onMoveDraft}
                   capture={cap?.a ? { a: [cap.a.lat, cap.a.lng] } : null} editing={shape} overlays={mapEdit ? [{ id: mapEdit.id, url: mapUrls[mapEdit.id], corners: mapEdit.corners }] : overlays} overlayOpacity={mapOpacity} mapEdit={mapEdit} onMapCorners={cs => setMapEdit(me_ => ({ ...me_, corners: cs }))} onVertexMove={onVertexMove} onInsertVertex={onInsertVertex} onSelectVertex={pt => setShape(sh => ({ ...sh, sel: pt }))} />
                 {shape && (
@@ -405,27 +445,30 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
                     </div>
                   </div>
                 )}
-                {pick && <div className="map-banner"><Icon name="pin" size={18} /><span>Tocá el lugar donde está el silo</span><Button size="sm" onClick={() => setPick(null)}>Cancelar</Button></div>}
+                {pick && <div className="map-banner"><Icon name="pin" size={18} /><span>{pick.lot ? `Tocá el lugar de la bolsa en el ${lotName(lots.find(l => l.id === pick.lot)?.num)}` : 'Tocá el lugar donde está el silo'}</span><Button size="sm" onClick={() => setPick(null)}>Cancelar</Button></div>}
                 {moving && <div className="map-banner"><Icon name="move" size={18} /><span>Arrastrá <b className="mono">{moving.id}</b> desde el punto central</span><Button size="sm" onClick={() => setMoving(null)}>Cancelar</Button><Button size="sm" variant="primary" onClick={saveMove}>Guardar</Button></div>}
                 {selSilo && !cap && !moving && !shape && !mapEdit && (() => { const s = state.silos.find(x => x.id === selSilo); return s ? (
                   <div className="lot-bar silo-bar"><div className="lot-bar-main"><b className="mono">{s.id}</b><span className="muted">{s.kg != null && s.kg !== '' ? `${fmtNum(s.kg)} kg` : 'kg sin cargar'}{s.grano ? ` · ${s.grano}` : ''} · lote {s.lote}{s.largo ? ` · ${fmtNum(s.largo)} m` : ''}</span></div>
-                    {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => startMove(s.id)}>Mover</Button>}<Button size="sm" variant="primary" onClick={() => openSilo(s.id)}>Detalle</Button></div>) : null; })()}
-                {lot && !cap && !moving && !pick && !shape && !mapEdit && !selSilo && <div className="only-mobile"><LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onShape={isAdmin && geo ? startShape : null} compact /></div>}
-                {cap && <GpsCapture fix={fix} gpsErr={gpsErr} onCancel={() => setCap(null)} onDone={finishCap} onProgress={p => setCap(c => (c ? { ...c, a: p.a } : c))} />}
+                    {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => startMove(s.id)}>Mover</Button>}<Button size="sm" variant="primary" onClick={() => showCard(s.id)}>Ficha</Button></div>) : null; })()}
+                {lot && !cap && !moving && !pick && !shape && !mapEdit && !selSilo && <div className="only-mobile"><LotPanel lot={lot} state={state} geo={geo} onEdit={isAdmin ? setLotEdit : null} onShape={isAdmin && geo ? startShape : null} compact /></div>}
+                {cap && <GpsCapture fix={fix} gpsErr={gpsErr} lots={capLots} geo={geo} lotId={cap.lot} noGps={!gpsOk}
+                  onLot={id => { setCap(c => (c ? { ...c, lot: id, a: null } : c)); setSelLot(id); }}
+                  onPickMap={id => { const form = cap.form || {}; setCap(null); setPick({ purpose: 'new', form, lot: id }); }}
+                  onCancel={() => setCap(null)} onDone={finishCap} onProgress={p => setCap(c => (c ? { ...c, a: p.a } : c))} />}
               </div>
               <aside className="side-panel">
-                {lot ? <LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onShape={isAdmin ? startShape : null} onSelectSilo={id => setSelSilo(id)} /> : <RecentPanel state={shownState} onSelectSilo={id => { const s = state.silos.find(x => x.id === id); if (s) { setSelLot(s.lot); setSelSilo(id); } }} />}
+                {lot ? <LotPanel lot={lot} state={state} geo={geo} onEdit={isAdmin ? setLotEdit : null} onShape={isAdmin ? startShape : null} onSelectSilo={id => setSelSilo(id)} onOpenSilo={showCard} /> : <RecentPanel state={shownState} onSelectSilo={id => { const s = state.silos.find(x => x.id === id); if (s) { setSelLot(s.lot); setSelSilo(id); } }} />}
               </aside>
             </div>
           </div>
         )}
-        {tab === 'silos' && <SilosScreen state={state} onOpenSilo={openSilo} onExportCsv={exportCsv} onExportKml={exportKmlFile} est={effEst} estOpts={estList.length > 1 ? estOpts : null} onEst={setEstId} inEst={inEst} />}
-        {tab === 'lotes' && <LotsScreen state={state} onEditLot={setLotEdit} onShowLot={n => { setSelLot(n); setSelSilo(null); setTab('mapa'); }} est={effEst} estOpts={estList.length > 1 ? estOpts : null} onEst={setEstId} inEst={inEst} />}
+        {tab === 'silos' && <SilosScreen state={state} onOpenSilo={showCard} onExportCsv={isAdmin ? exportCsv : null} onExportKml={isAdmin ? exportKmlFile : null} est={effEst} estOpts={estFilterOpts ? estOpts : null} onEst={setEstId} inEst={inEst} />}
+        {tab === 'lotes' && <LotsScreen state={state} onEditLot={isAdmin ? setLotEdit : null} onShowLot={n => { setSelLot(n); setSelSilo(null); setTab('mapa'); }} onOpenSilo={showCard} est={effEst} estOpts={estFilterOpts ? estOpts : null} onEst={setEstId} inEst={inEst} />}
         {tab === 'mapas' && <MapsScreen state={state} me={me} job={mapJob} onPick={startMapJob} onCancel={cancelMapJob} onSend={sendMapJob}
           onJobChange={patch => setMapJob(j => (j ? { ...j, ...patch } : j))}
           onShowMap={id => { setMapFilter(id); setTab('mapa'); }} onAdjustMap={startMapEdit} onEditMap={setMapEditMeta}
           geo={geo} store={store} onState={setState} onShowLots={() => { setTab('mapa'); }} urls={mapUrls} />}
-        {tab === 'ajustes' && <SettingsScreen state={state} me={me} store={store} geo={geo} gps={fix} captureFix={captureFix} theme={theme} setTheme={setTheme} onState={setState} onLogout={onLogout} mode={store.mode} onGoMapas={() => setTab('mapas')} />}
+        {tab === 'ajustes' && <SettingsScreen estActual={effEst !== 'all' ? estList.find(e => e.id === effEst) : null} onChangeEst={onChangeEst} state={state} me={me} store={store} geo={geo} gps={fix} captureFix={captureFix} theme={theme} setTheme={setTheme} onState={setState} onLogout={onLogout} mode={store.mode} onGoMapas={() => setTab('mapas')} />}
       </main>
 
       {draft && <SiloModal draft={draft} state={state} me={me} geo={geo} store={store} onClose={() => setDraft(null)}
@@ -433,6 +476,9 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
         onRelocate={form => { setDraft(null); setTab('mapa'); setPick({ purpose: 'relocate', form: { kg: form.kg, grano: form.grano, obs: form.obs, fotoData: form.fotoData } }); }}
         onRemeasure={form => onAdd({ kg: form.kg, grano: form.grano, obs: form.obs, fotoData: form.fotoData })}
         onStartMove={startMove} />}
+      {card && state.silos.find(x => x.id === card) && <SiloCard silo={state.silos.find(x => x.id === card)} state={state} me={me} geo={geo} onClose={() => setCard(null)}
+        onEdit={id => { setCard(null); openSilo(id); }}
+        onMap={id => { const s = state.silos.find(x => x.id === id); setCard(null); setTab('mapa'); if (s) { setSelLot(s.lot); setSelSilo(id); } }} />}
       {mapEditMeta && maps.find(m => m.id === mapEditMeta) && <EditMapModal map={maps.find(m => m.id === mapEditMeta)} me={me} store={store} onClose={() => setMapEditMeta(null)} onSaved={st => { setState(st); setMapEditMeta(null); }} />}
       {lotEdit != null && lots.find(l => l.id === lotEdit) && <LotModal lot={lots.find(l => l.id === lotEdit)} state={state} me={me} geo={geo} store={store} onClose={() => setLotEdit(null)} onShape={startShape}
         onSaved={(st, num) => { setState(st); setLotEdit(null); setSelLot(num); }} />}
@@ -443,7 +489,8 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
 function App() {
   const [boot, setBoot] = useState({ phase: 'loading' });
   const [theme, setThemeRaw] = useState(pref.get('theme', 'dark'));
-  const [geoGate, setGeoGate] = useState(null); // null = revisando · 'ask' · 'ok' · 'off'
+  const [geoGate, setGeoGate] = useState(null); // null = revisando · 'ask' · 'ok' · 'off' · 'nogps'
+  const [supEst, setSupEst] = useState(() => { try { return sessionStorage.getItem('semia.estSup'); } catch { return null; } });
   useEffect(() => {
     (async () => {
       try {
@@ -466,11 +513,19 @@ function App() {
   if (boot.phase === 'loading') return <div className="splash"><Logo size={56} /><span className="muted">Cargando SemIA…</span></div>;
   const { store } = boot;
   if (!boot.me) return <Login store={store} mode={store.mode} onLogged={({ me, state }) => setBoot(b => ({ ...b, me, state: normalizeState(state) }))} />;
+  const logout = async () => { try { sessionStorage.removeItem('semia.estSup'); } catch { /* */ } setSupEst(null); await store.logout(); setBoot(b => ({ ...b, me: null, state: null })); };
+  // Supervisor: login → estancia → ubicación (obligatoria) → registro
+  const sup = boot.me.rol !== 'admin';
+  const ests = estancias(boot.state);
+  const supId = !sup ? null : ests.length === 1 ? ests[0].id : ests.some(e => e.id === supEst) ? supEst : null;
+  if (sup && ests.length > 1 && !supId) return <EstanciaGate state={boot.state} me={boot.me} onLogout={logout} onPick={id => { try { sessionStorage.setItem('semia.estSup', id); } catch { /* */ } setSupEst(id); }} />;
   if (!geoGate) return <div className="splash"><Logo size={56} /></div>;
-  if (geoGate === 'ask') return <GeoGate onDone={ok => setGeoGate(ok ? 'ok' : 'off')} />;
-  return <Shell store={store} me={boot.me} state={boot.state} theme={theme} setTheme={setTheme} gpsOn={geoGate === 'ok'}
+  const changeEst = ests.length > 1 ? () => { try { sessionStorage.removeItem('semia.estSup'); } catch { /* */ } setSupEst(null); } : null;
+  if (geoGate === 'ask' || (sup && geoGate !== 'ok' && geoGate !== 'nogps')) return <GeoGate required={sup} est={supId ? ests.find(e => e.id === supId)?.nombre : ''} onBack={changeEst} onDone={ok => setGeoGate(ok ? 'ok' : sup ? 'nogps' : 'off')} />;
+  return <Shell key={supId || 'admin'} store={store} me={boot.me} state={boot.state} theme={theme} setTheme={setTheme} gpsOn={geoGate === 'ok'}
+    supEst={supId} onChangeEst={sup ? changeEst : null}
     setState={st => setBoot(b => ({ ...b, state: normalizeState(st) }))}
-    onLogout={async () => { await store.logout(); setBoot(b => ({ ...b, me: null, state: null })); }} />;
+    onLogout={logout} />;
 }
 
 createRoot(document.getElementById('root')).render(<ToastProvider><App /><UpdateButton /></ToastProvider>);

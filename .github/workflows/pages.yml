@@ -1,5 +1,5 @@
 # SemIA · versión de prueba en GitHub Pages (sin servidor: modo local, datos en cada celular)
-# Se activa creando la variable del repositorio PAGES = 1 y eligiendo Settings → Pages → Source: GitHub Actions.
+# Requiere Settings → Pages → Source: GitHub Actions.
 name: Publicar en GitHub Pages
 
 on:
@@ -16,7 +16,6 @@ concurrency: pages
 
 jobs:
   pages:
-    if: ${{ vars.PAGES == '1' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages

@@ -53,10 +53,11 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 
 - **Lotes desde KML (Mapas → Lotes desde KML, administrador):** elegí un `.kml` o `.kmz` (Google Earth, QGIS, Pix4Dfields). Cada polígono es un lote: el número se toma del nombre (`Lote 16`, `16 - La Loma`) o de un campo `lote`; las hectáreas, de un campo `ha` o se calculan. Un polígono llamado *Perímetro / Campo / Estancia* se usa como contorno, y las líneas (caminos, cortinas) se dibujan en el plano. Antes de confirmar se ven todos los polígonos, se puede corregir el número o excluir alguno. El primer KML reemplaza el plano digitalizado; los siguientes se **agregan** (otros campos o sectores) sin tocar lo cargado, y la lista *KML cargados* permite quitar uno con sus lotes. *Reemplazar todo* reubica los silos por sus coordenadas. Con KML no hacen falta puntos de control.
 - **Versión nueva:** cuando se publica una actualización aparece un botón flotante *Nueva versión · Actualizar*.
+- **Primer paso:** después de ingresar, la app pide activar la ubicación (con «Ahora no» vuelve a preguntar al abrirla de nuevo).
 - **Nueva silobolsa (botón + de la barra):**
   1. Parate en la **cabecera** de la bolsa y tocá *Marcar cabecera (A)*: se toman lecturas durante 5 segundos y se promedian.
   2. Caminá hasta la **cola** (se ve la distancia en vivo) y tocá *Marcar cola (B)*, o *Solo un punto*.
-  3. Se abre la ficha con el lote detectado por coordenadas, el ID automático, el **largo en metros**, kg, grano, observación y foto.
+  3. Se abre la ficha con el **número detallado** (estancia · lote · bolsa), la ubicación y el largo, el **grano** (obligatorio, con botones), los **kg (opcional)**, la **foto** y las **observaciones** del supervisor.
   Sin GPS o sin lotes georreferenciados, se marca tocando el plano.
 - **Mapa (satélite):** lotes con su número (al tocar uno se ven sus hectáreas), bolsas (línea A‑B) y tu posición sobre la imagen Esri; filtro **Mapa a mostrar** para tus ortomosaicos.
 - **Filtro Estancia:** cada KML cargado es una estancia; en Mapa, Lotes y Silos se elige cuál mostrar (los indicadores también se filtran). En Lotes se busca por número o nombre.

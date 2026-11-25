@@ -177,7 +177,9 @@ switch ($action) {
       if ($li === null || !is_int($d['lots'][$li]['num'])) fail('Lote inexistente o sin silobolsas');
       $lotRec = $d['lots'][$li]; $lote = $lotRec['num']; $lotId = lotIdOf($lotRec);
       $sigla = siglaDeLote($d, $lotRec);
-      $kg = num($s['kg'] ?? null); if ($kg === null || $kg < 0) fail('Kg inválido');
+      // kg opcional (puede no conocerse al registrar la bolsa)
+      $rawKg = $s['kg'] ?? null; $kg = ($rawKg === null || $rawKg === '') ? null : num($rawKg);
+      if (($rawKg !== null && $rawKg !== '' && $kg === null) || ($kg !== null && $kg < 0)) fail('Kg inválido');
       $map = $s['map'] ?? null;
       if (!is_array($map) || count($map) !== 2 || num($map[0]) === null || num($map[1]) === null) fail('Ubicación inválida');
       $map2 = $s['map2'] ?? null;

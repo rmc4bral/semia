@@ -11,7 +11,7 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
   const warp = useRef({});
 
   useEffect(() => {
-    const m = L.map(el.current, { zoomControl: false, attributionControl: true, center: [-36.5, -60.5], zoom: 6 });
+    const m = L.map(el.current, { zoomControl: false, attributionControl: true, center: [-36.5, -60.5], zoom: 6, zoomSnap: 0.25, zoomDelta: 0.5 });
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19, attribution: 'Imágenes © Esri, Maxar, Earthstar Geographics',
     }).addTo(m);
@@ -47,7 +47,7 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
       if (sel && editing) layers.current.editPoly = pg;
       l.subs?.forEach(s => g.addLayer(L.polygon(s.poly.map(p => geo.toLatLng(p)), { className: 'sat-sub', weight: 1, fill: false, interactive: false, dashArray: '4 4' })));
     });
-    if ((!fitted.current || lastFit.current !== fitKey) && all.length && !editing) { map.current.fitBounds(L.latLngBounds(all), { padding: [20, 20] }); fitted.current = true; lastFit.current = fitKey; }
+    if ((!fitted.current || lastFit.current !== fitKey) && all.length && !editing) { map.current.fitBounds(L.latLngBounds(all), { padding: [14, 14] }); fitted.current = true; lastFit.current = fitKey; }
   }, [geo, data.lots, selectedLot, editing, fitKey]);
 
   // Manijas de edición: vértices (arrastrables) y puntos medios (agregar vértice)

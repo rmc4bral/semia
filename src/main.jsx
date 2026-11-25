@@ -52,6 +52,36 @@ function captureFix(ms = 7000) {
   });
 }
 
+/* ---------- Primer paso: activar la ubicación ---------- */
+function GeoGate({ onDone }) {
+  const [st, setSt] = useState('ask'), [busy, setBusy] = useState(false);
+  function pedir() {
+    if (!('geolocation' in navigator)) { setSt('nogps'); return; }
+    setBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      () => { pref.set('geo', 'ok'); onDone(true); },
+      e => { setBusy(false); if (e.code === 1) setSt('denied'); else { pref.set('geo', 'ok'); onDone(true); } },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  }
+  return (
+    <div className="geo-gate">
+      <div className="geo-gate-art" aria-hidden="true"><span className="geo-gate-ring" /><span className="geo-gate-ring r2" /><span className="geo-gate-dot"><Icon name="gps" size={30} /></span></div>
+      <div className="geo-gate-txt">
+        <span className="geo-gate-step">Antes de empezar</span>
+        <h1>{st === 'denied' ? 'La ubicación está bloqueada' : st === 'nogps' ? 'Este dispositivo no tiene GPS' : 'Activá tu ubicación'}</h1>
+        <p className="muted">{st === 'denied'
+          ? 'Habilitala en el navegador: tocá el candado junto a la dirección → Permisos → Ubicación → Permitir. Después volvé a intentar.'
+          : st === 'nogps' ? 'Podés usar la app marcando las silobolsas tocando el mapa.'
+          : 'SemIA usa el GPS del celular para ubicarte sobre los lotes y registrar la cabecera y la cola de cada silobolsa.'}</p>
+      </div>
+      <div className="geo-gate-act">
+        {st !== 'nogps' && <Button variant="primary" className="block" icon="gps" onClick={pedir} disabled={busy}>{busy ? 'Buscando señal…' : st === 'denied' ? 'Volver a intentar' : 'Permitir ubicación'}</Button>}
+        <Button variant="ghost" className="block" onClick={() => { try { sessionStorage.setItem('semia.geoLater', '1'); } catch { /* */ } onDone(false); }}>{st === 'nogps' ? 'Continuar' : 'Ahora no'}</Button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Login ---------- */
 function Login({ store, onLogged, mode }) {
   const [u, setU] = useState(''), [p, setP] = useState(''), [show, setShow] = useState(false);
@@ -83,7 +113,7 @@ function Login({ store, onLogged, mode }) {
 }
 
 /* ---------- Aplicación ---------- */
-function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
+function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = true }) {
   const toast = useToast();
   const isAdmin = me.rol === 'admin';
   const [tab, setTab] = useState('mapa');
@@ -102,7 +132,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
   const [estId, setEstIdRaw] = useState(pref.get('estancia', 'all'));
   const setEstId = v => { setEstIdRaw(v); pref.set('estancia', v); setSelLot(null); setSelSilo(null); };
   const [mapJob, setMapJob] = useState(null), [mapEditMeta, setMapEditMeta] = useState(null), [mapEdit, setMapEdit] = useState(null);
-  const { fix, err: gpsErr } = useGps(true);
+  const { fix, err: gpsErr } = useGps(gpsOn);
   const geo = useMemo(() => buildGeo(state.georef), [state.georef]);
   const estList = useMemo(() => estancias(state), [state.georef, state.lots]); // eslint-disable-line
   const effEst = estList.some(e => e.id === estId) ? estId : 'all';
@@ -378,7 +408,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
                 {pick && <div className="map-banner"><Icon name="pin" size={18} /><span>Tocá el lugar donde está el silo</span><Button size="sm" onClick={() => setPick(null)}>Cancelar</Button></div>}
                 {moving && <div className="map-banner"><Icon name="move" size={18} /><span>Arrastrá <b className="mono">{moving.id}</b> desde el punto central</span><Button size="sm" onClick={() => setMoving(null)}>Cancelar</Button><Button size="sm" variant="primary" onClick={saveMove}>Guardar</Button></div>}
                 {selSilo && !cap && !moving && !shape && !mapEdit && (() => { const s = state.silos.find(x => x.id === selSilo); return s ? (
-                  <div className="lot-bar silo-bar"><div className="lot-bar-main"><b className="mono">{s.id}</b><span className="muted">{fmtNum(s.kg)} kg{s.grano ? ` · ${s.grano}` : ''} · lote {s.lote}{s.largo ? ` · ${fmtNum(s.largo)} m` : ''}</span></div>
+                  <div className="lot-bar silo-bar"><div className="lot-bar-main"><b className="mono">{s.id}</b><span className="muted">{s.kg != null && s.kg !== '' ? `${fmtNum(s.kg)} kg` : 'kg sin cargar'}{s.grano ? ` · ${s.grano}` : ''} · lote {s.lote}{s.largo ? ` · ${fmtNum(s.largo)} m` : ''}</span></div>
                     {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => startMove(s.id)}>Mover</Button>}<Button size="sm" variant="primary" onClick={() => openSilo(s.id)}>Detalle</Button></div>) : null; })()}
                 {lot && !cap && !moving && !pick && !shape && !mapEdit && !selSilo && <div className="only-mobile"><LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onShape={isAdmin && geo ? startShape : null} compact /></div>}
                 {cap && <GpsCapture fix={fix} gpsErr={gpsErr} onCancel={() => setCap(null)} onDone={finishCap} onProgress={p => setCap(c => (c ? { ...c, a: p.a } : c))} />}
@@ -413,6 +443,17 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
 function App() {
   const [boot, setBoot] = useState({ phase: 'loading' });
   const [theme, setThemeRaw] = useState(pref.get('theme', 'dark'));
+  const [geoGate, setGeoGate] = useState(null); // null = revisando · 'ask' · 'ok' · 'off'
+  useEffect(() => {
+    (async () => {
+      try {
+        const p = await navigator.permissions?.query({ name: 'geolocation' });
+        if (p?.state === 'granted') return setGeoGate('ok');
+      } catch { /* sin API de permisos (iOS): se decide por lo recordado */ }
+      let later = false; try { later = sessionStorage.getItem('semia.geoLater') === '1'; } catch { /* */ }
+      setGeoGate(pref.get('geo', '') === 'ok' ? 'ok' : later ? 'off' : 'ask');
+    })();
+  }, []);
   const setTheme = t => { setThemeRaw(t); pref.set('theme', t); };
   useEffect(() => { document.documentElement.dataset.theme = theme; document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#000000' : '#F2F2F2'); }, [theme]);
   useEffect(() => {
@@ -425,7 +466,9 @@ function App() {
   if (boot.phase === 'loading') return <div className="splash"><Logo size={56} /><span className="muted">Cargando SemIA…</span></div>;
   const { store } = boot;
   if (!boot.me) return <Login store={store} mode={store.mode} onLogged={({ me, state }) => setBoot(b => ({ ...b, me, state: normalizeState(state) }))} />;
-  return <Shell store={store} me={boot.me} state={boot.state} theme={theme} setTheme={setTheme}
+  if (!geoGate) return <div className="splash"><Logo size={56} /></div>;
+  if (geoGate === 'ask') return <GeoGate onDone={ok => setGeoGate(ok ? 'ok' : 'off')} />;
+  return <Shell store={store} me={boot.me} state={boot.state} theme={theme} setTheme={setTheme} gpsOn={geoGate === 'ok'}
     setState={st => setBoot(b => ({ ...b, state: normalizeState(st) }))}
     onLogout={async () => { await store.logout(); setBoot(b => ({ ...b, me: null, state: null })); }} />;
 }

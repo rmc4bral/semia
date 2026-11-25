@@ -1078,6 +1078,8 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
 .lot-card-main { display: flex; align-items: center; gap: 10px; border: 0; background: transparent; text-align: left; cursor: pointer; padding: 0; min-width: 0; }
 .lot-card-num { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--surface-2); font-size: 17px; font-weight: 800; }
 .lot-card-info { display: flex; flex-direction: column; min-width: 0; }
+.lot-card-info b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lot-card { padding: 12px 10px 12px 12px; }
 .lot-card-info .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lot-card-bar { grid-column: 1 / -1; height: 6px; border-radius: var(--pill); background: var(--surface-2); overflow: hidden; }
 .lot-card-bar span { display: block; height: 100%; background: var(--accent); border-radius: var(--pill); }
@@ -1149,6 +1151,16 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
 .loc-box { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r); background: var(--surface-2); }
 .loc-box > .ic { color: var(--accent-fg); }
 .loc-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 13px; }
+.silo-id { display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: var(--r); background: var(--accent); color: var(--accent-ink); }
+.silo-id-num { font-size: 34px; font-weight: 800; letter-spacing: .04em; line-height: 1; }
+.silo-id-parts { display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 8px; }
+.silo-id-parts span { display: flex; flex-direction: column; gap: 1px; font-size: 11px; font-weight: 600; color: rgba(0, 0, 0, .62); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.silo-id-parts b { font-size: 15px; color: #000; }
+.chips-pick { display: flex; flex-wrap: wrap; gap: 8px; }
+.pick { height: 40px; padding: 0 16px; border-radius: var(--pill); border: 1px solid var(--line-2); background: transparent; color: var(--text); font-weight: 700; font-size: 14px; cursor: pointer; transition: background .15s, border-color .15s; }
+.pick:hover { border-color: var(--accent); }
+.pick.is-on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.pick:disabled { opacity: .6; cursor: default; }
 .loc-gps { display: flex; align-items: center; gap: 16px; padding: 14px; border-radius: var(--r); background: var(--surface-2); }
 .loc-len { display: flex; flex-direction: column; align-items: flex-start; flex: none; }
 .loc-len b { font-size: 32px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; font-feature-settings: 'tnum'; }
@@ -1178,6 +1190,20 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
 @keyframes updIn { from { transform: translate(-50%, 24px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
 @keyframes updPulse { 70% { box-shadow: 0 0 0 8px rgba(204, 255, 0, 0); } 100% { box-shadow: 0 0 0 0 rgba(204, 255, 0, 0); } }
 @media (min-width: 1024px) { .upd { left: auto; right: 24px; bottom: 24px; transform: none; animation: none; } }
+
+/* ---------- Activar ubicación ---------- */
+.geo-gate { min-height: 100%; display: grid; grid-template-rows: 1fr auto auto; gap: 28px; padding: calc(40px + var(--safe-t)) 24px calc(28px + var(--safe-b)); background: var(--bg); max-width: 480px; margin: 0 auto; }
+.geo-gate-art { position: relative; display: grid; place-items: center; min-height: 220px; }
+.geo-gate-ring { position: absolute; width: 180px; height: 180px; border-radius: 50%; border: 1.5px solid var(--accent); opacity: .35; animation: gateRing 2.4s ease-out infinite; }
+.geo-gate-ring.r2 { animation-delay: 1.2s; }
+.geo-gate-dot { position: relative; width: 84px; height: 84px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: var(--accent-ink); box-shadow: 0 0 0 10px var(--accent-soft); }
+@keyframes gateRing { from { transform: scale(.45); opacity: .6; } to { transform: scale(1.25); opacity: 0; } }
+.geo-gate-txt { display: flex; flex-direction: column; gap: 10px; }
+.geo-gate-txt h1 { font-size: 28px; line-height: 1.15; letter-spacing: -0.03em; }
+.geo-gate-txt p { font-size: 15px; line-height: 1.5; }
+.geo-gate-step { font-size: 12px; font-weight: 700; color: var(--accent-fg); }
+.geo-gate-act { display: flex; flex-direction: column; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .geo-gate-ring { animation: none; } }
 
 /* ---------- Login ---------- */
 .login { position: relative; min-height: 100%; display: grid; place-items: center; padding: 24px 16px; overflow: hidden; background: var(--bg); }

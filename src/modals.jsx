@@ -37,7 +37,10 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
   const isNew = !draft.prevId;
   const isAdmin = me.rol === 'admin';
   const canEdit = isNew || isAdmin || draft.creadoPor === me.user;
-  const [f, setF] = useState(() => ({ ...draft, lot: draft.lot || siloLot(draft, state.lots)?.id || null, kg: draft.kg ?? '', obs: draft.obs ?? '', grano: draft.grano ?? '' }));
+  const [f, setF] = useState(() => {
+    const g = draft.grano ?? '', otro = g && !GRANOS.includes(g);
+    return { ...draft, lot: draft.lot || siloLot(draft, state.lots)?.id || null, kg: draft.kg ?? '', obs: draft.obs ?? '', grano: otro ? 'Otro' : g, granoOtro: otro ? g : '' };
+  });
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const cam = useRef(null), gal = useRef(null);
@@ -70,18 +73,20 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
 
   const kgNum = parseNum(f.kg);
   const err = { kg: f.kg !== '' && (isNaN(kgNum) || kgNum < 0) ? 'Ingresá un número válido' : null };
+  const granoFinal = f.grano === 'Otro' ? (f.granoOtro || '').trim() : f.grano;
 
   async function save() {
     if (!lot) return toast('Elegí un lote', 'error');
     if (!f.map) return toast('Falta la ubicación del silo', 'error');
-    if (f.kg === '' || err.kg) return toast('Ingresá los kg del silo', 'error');
+    if (!granoFinal) return toast(f.grano === 'Otro' ? 'Escribí qué grano es' : 'Elegí el grano', 'error');
+    if (err.kg) return toast('Los kg tienen que ser un número', 'error');
     setBusy(true);
     try {
       const id = isNew || f.lot !== origLot ? nextSiloId(sigla, lot.num, state.silos, draft.prevId) : draft.prevId;
       let foto = f.fotoData === null ? null : f.foto || null;
       if (f.fotoData) foto = await store.uploadPhoto(id, f.fotoData);
       const silo = {
-        id, lote: lot.num, lot: lot.id, kg: kgNum, grano: f.grano || '', obs: (f.obs || '').trim(), foto,
+        id, lote: lot.num, lot: lot.id, kg: f.kg === '' ? null : kgNum, grano: granoFinal, obs: (f.obs || '').trim(), foto,
         map: f.map.map(v => Math.round(v * 100) / 100), t: free ? null : Math.round(f.t * 100) / 100, ang: Number.isFinite(f.ang) ? Math.round(f.ang * 1e4) / 1e4 : 0,
         map2: f.map2 ? f.map2.map(v => Math.round(v * 100) / 100) : null,
         latlng: f.latlng && f.origen === 'gps' ? f.latlng : geo ? geo.toLatLng(f.map).map(v => +v.toFixed(7)) : (draft.latlng || null),
@@ -116,39 +121,17 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
           {canEdit && <Button variant="primary" icon="check" onClick={save} disabled={busy}>{busy ? 'Guardando…' : 'Guardar'}</Button>}
         </>
       )}>
+      <div className="silo-id" aria-label={`Número de silobolsa ${f.id}`}>
+        <span className="silo-id-num mono">{f.id || '—'}</span>
+        <div className="silo-id-parts">
+          <span><b className="mono">{sigla}</b>{estanciaNombre(lot, state) || 'Estancia'}</span>
+          <span><b className="mono">{String(lot?.num ?? '').padStart(2, '0')}</b>Lote</span>
+          <span><b className="mono">{String(f.id || '').slice(-3)}</b>Bolsa</span>
+        </div>
+      </div>
       <div className="form-grid">
-        <Field label="ID de silo" hint={`${sigla}${estanciaNombre(lot, state) ? ` (${estanciaNombre(lot, state)})` : ''} · lote ${String(lot?.num ?? '').padStart(2, '0')} · bolsa ${String(f.id || '').slice(-3)}`}>
-          <div className="input input-static mono">{f.id}</div>
-        </Field>
-        <Field label="Lote">
+        <Field label="Lote" className="span-2">
           <Select value={f.lot} options={lotOpts} onChange={changeLot} disabled={!canEdit} />
-        </Field>
-        <Field label="Kg" error={err.kg}>
-          <TextInput value={f.kg} onChange={v => setF(x => ({ ...x, kg: v }))} numeric placeholder="Ej: 180000" disabled={!canEdit} />
-        </Field>
-        <Field label="Grano">
-          <Select value={f.grano} options={[{ value: '', label: 'Sin especificar' }, ...GRANOS.map(g => ({ value: g, label: g }))]} onChange={v => setF(x => ({ ...x, grano: v }))} disabled={!canEdit} />
-        </Field>
-        <Field label="Observación" className="span-2">
-          <TextArea value={f.obs} onChange={v => setF(x => ({ ...x, obs: v }))} rows={3} placeholder="Estado de la bolsa, cosecha, destino…" disabled={!canEdit} />
-        </Field>
-        <Field label="Foto" className="span-2">
-          <div className="photo-box">
-            {photoShown ? (
-              <div className="photo-prev">
-                {f.fotoData ? <img src={f.fotoData} alt="Foto del silo" /> : <PhotoView refPath={f.foto} />}
-                {canEdit && <Button size="sm" variant="ghost" icon="trash" onClick={() => setF(x => ({ ...x, fotoData: null }))}>Quitar</Button>}
-              </div>
-            ) : <span className="muted small">Sin foto</span>}
-            {canEdit && (
-              <div className="row gap-s">
-                <Button size="sm" icon="camera" onClick={() => cam.current.click()}>Tomar foto</Button>
-                <Button size="sm" variant="ghost" icon="upload" onClick={() => gal.current.click()}>Galería</Button>
-              </div>
-            )}
-            <input ref={cam} type="file" accept="image/*" capture="environment" hidden onChange={pickFile} />
-            <input ref={gal} type="file" accept="image/*" hidden onChange={pickFile} />
-          </div>
         </Field>
         <Field label="Ubicación" className="span-2">
           {f.map2 ? (
@@ -176,6 +159,40 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
               <Button size="sm" variant="ghost" icon="pin" onClick={() => onRelocate(f)}>Marcar en mapa</Button>
             </div>
           )}
+        </Field>
+        <Field label="Grano" className="span-2">
+          <div className="chips-pick" role="radiogroup" aria-label="Grano">
+            {GRANOS.map(g => (
+              <button type="button" key={g} role="radio" aria-checked={f.grano === g} className={`pick ${f.grano === g ? 'is-on' : ''}`} disabled={!canEdit} onClick={() => setF(x => ({ ...x, grano: g }))}>{g}</button>
+            ))}
+          </div>
+        </Field>
+        {f.grano === 'Otro' && (
+          <Field label="¿Qué grano?" className="span-2"><TextInput value={f.granoOtro} onChange={v => setF(x => ({ ...x, granoOtro: v.slice(0, 30) }))} placeholder="Ej: Colza, Arveja…" disabled={!canEdit} /></Field>
+        )}
+        <Field label="Kg (opcional)" className="span-2" error={err.kg} hint={!err.kg ? 'Si todavía no se conoce, dejalo vacío' : null}>
+          <TextInput value={f.kg} onChange={v => setF(x => ({ ...x, kg: v }))} numeric placeholder="Ej: 180.000" disabled={!canEdit} />
+        </Field>
+        <Field label="Foto" className="span-2">
+          <div className="photo-box">
+            {photoShown ? (
+              <div className="photo-prev">
+                {f.fotoData ? <img src={f.fotoData} alt="Foto del silo" /> : <PhotoView refPath={f.foto} />}
+                {canEdit && <Button size="sm" variant="ghost" icon="trash" onClick={() => setF(x => ({ ...x, fotoData: null }))}>Quitar</Button>}
+              </div>
+            ) : <span className="muted small">Sin foto</span>}
+            {canEdit && (
+              <div className="row gap-s">
+                <Button size="sm" icon="camera" onClick={() => cam.current.click()}>Tomar foto</Button>
+                <Button size="sm" variant="ghost" icon="upload" onClick={() => gal.current.click()}>Galería</Button>
+              </div>
+            )}
+            <input ref={cam} type="file" accept="image/*" capture="environment" hidden onChange={pickFile} />
+            <input ref={gal} type="file" accept="image/*" hidden onChange={pickFile} />
+          </div>
+        </Field>
+        <Field label="Observaciones" className="span-2" hint="Para el supervisor: estado de la bolsa, cosecha, destino…">
+          <TextArea value={f.obs} onChange={v => setF(x => ({ ...x, obs: v }))} rows={3} placeholder="Agregá la información que haga falta" disabled={!canEdit} />
         </Field>
       </div>
     </Modal>

@@ -146,7 +146,8 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
     }
     const jid = j.jid; setMapJob({ ...j, stage: 'upload', pct: 0 });
     try {
-      const out = await store.uploadMap({ nombre: j.nombre.trim(), fecha, corners, w: res.w, h: res.h, crs: res.crs, original: res.original }, res.dataUrl, me,
+      const tipo = /\.pdf$/i.test(j.file.name) ? 'PDF' : /\.tiff?$/i.test(j.file.name) ? 'GeoTIFF' : 'Imagen';
+      const out = await store.uploadMap({ nombre: j.nombre.trim(), fecha, corners, w: res.w, h: res.h, crs: res.crs, original: res.original, tipo }, res.dataUrl, me,
         p => setMapJob(x => (x && x.jid === jid ? { ...x, pct: p } : x)));
       if (jobAlive.current !== jid) { setState(out.state); return; }
       setState(out.state); setMapJob(null); setMapFilter(out.id);
@@ -390,7 +391,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
         {tab === 'mapas' && <MapsScreen state={state} me={me} job={mapJob} onPick={startMapJob} onCancel={cancelMapJob} onSend={sendMapJob}
           onJobChange={patch => setMapJob(j => (j ? { ...j, ...patch } : j))}
           onShowMap={id => { setMapFilter(id); setTab('mapa'); setView('sat'); }} onAdjustMap={startMapEdit} onEditMap={setMapEditMeta}
-          geo={geo} store={store} onState={setState} onShowLots={() => { setTab('mapa'); setView('sat'); }} />}
+          geo={geo} store={store} onState={setState} onShowLots={() => { setTab('mapa'); setView('sat'); }} urls={mapUrls} />}
         {tab === 'ajustes' && <SettingsScreen state={state} me={me} store={store} geo={geo} gps={fix} captureFix={captureFix} theme={theme} setTheme={setTheme} onState={setState} onLogout={onLogout} mode={store.mode} />}
       </main>
 

@@ -419,7 +419,7 @@ switch ($action) {
     file_put_contents("$dir/$id.$ext", $bin);
     $rec = ['id' => $id, 'nombre' => str($m['nombre'] ?? 'Mapa', 80) ?: 'Mapa', 'fecha' => cleanFecha($m['fecha'] ?? null),
       'src' => "uploads/maps/$id.$ext", 'w' => $info[0], 'h' => $info[1], 'corners' => $corners,
-      'crs' => str($m['crs'] ?? '', 40) ?: null, 'original' => is_array($m['original'] ?? null) ? array_map('intval', array_slice($m['original'], 0, 2)) : null,
+      'crs' => str($m['crs'] ?? '', 40) ?: null, 'original' => is_array($m['original'] ?? null) ? array_map('intval', array_slice($m['original'], 0, 2)) : null, 'tipo' => in_array($m['tipo'] ?? '', ['GeoTIFF', 'PDF', 'Imagen'], true) ? $m['tipo'] : null,
       'peso' => strlen($bin), 'creadoPor' => $me['user'], 'creadoEn' => gmdate('c')];
     $state = withData(function (&$d) use ($rec) { $d['maps'] = $d['maps'] ?? []; $d['maps'][] = $rec; return publicState($d); }, true);
     out(['ok' => true, 'id' => $id, 'state' => $state]);

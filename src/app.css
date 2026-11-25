@@ -36,6 +36,7 @@
   --accent-fg: #CCFF00; /* lima usada como texto o ícono */
   --accent-soft: rgba(204, 255, 0, 0.12);
   --brand-bg: #CCFF00;
+  --logo: #CCFF00;
   --danger: #FF5C7A;
   --ok: #CCFF00;
   --shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
@@ -76,6 +77,7 @@
   --accent-fg: #000000;
   --accent-soft: rgba(204, 255, 0, 0.32);
   --brand-bg: #CCFF00;
+  --logo: #000000;
   --danger: #D62E52;
   --ok: #000000;
   --shadow: 0 18px 40px rgba(0, 0, 0, 0.12);
@@ -483,7 +485,25 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
 .splash { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--bg); }
 
 /* ---------- Mapas: KML y subida con barra de proceso ---------- */
-.maps-grid { display: grid; gap: 12px; align-items: start; }
+.maps-layout { display: grid; gap: 12px; align-items: start; }
+.maps-main, .maps-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.glob-sec { overflow: hidden; display: flex; flex-direction: column; }
+.glob-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 14px 14px 12px 18px; }
+.glob-map { position: relative; height: 52dvh; min-height: 300px; background: #050505; }
+path.glob-lot { stroke: rgba(255, 255, 255, .55); stroke-dasharray: 3 4; }
+path.glob-foot { stroke: #CCFF00; fill: #CCFF00; cursor: pointer; }
+path.glob-foot.is-sel { stroke: #fff; }
+.maps-filters { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 10px; }
+.maps-list { display: flex; flex-direction: column; margin: 0 -8px; }
+.maps-item { display: flex; align-items: center; gap: 6px; padding: 6px 4px 6px 8px; border-bottom: 1px solid var(--line); border-radius: 0; }
+.maps-item:last-child { border-bottom: 0; }
+.maps-item-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 6px 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.maps-thumb { width: 52px; height: 52px; flex: none; display: grid; place-items: center; overflow: hidden; border-radius: var(--r); background: var(--surface-2); color: var(--muted); transition: box-shadow .15s; }
+.maps-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.maps-item.is-sel .maps-thumb { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.maps-info { min-width: 0; display: flex; flex-direction: column; line-height: 1.35; }
+.maps-info b, .maps-info span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.maps-act { display: flex; flex: none; }
 .dropzone { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 26px 16px; border: 1.5px dashed var(--line-2); border-radius: var(--r); background: transparent; color: var(--text); cursor: pointer; font: inherit; }
 .dropzone > .ic { width: 48px; height: 48px; padding: 12px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); }
 .dropzone:hover { border-color: var(--accent); }
@@ -570,4 +590,4 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
   .screen { padding: 4px 24px 24px; }
   .lot-bar { right: auto; width: 420px; }
 }
-@media (min-width: 900px) { .maps-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); } .kml-sec { grid-row: span 2; } }
+@media (min-width: 1100px) { .maps-layout { grid-template-columns: minmax(0, 1.5fr) minmax(340px, 1fr); } .glob-map { height: 58dvh; } }

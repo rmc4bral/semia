@@ -4,6 +4,8 @@ import { fmtFecha } from './maplayers.js';
 import { areaHa, lotCorners, migrateGeoref, pointKey } from './geo.js';
 import { PhotoView, GRANOS } from './modals.jsx';
 import { KmlImport } from './kmlImport.jsx';
+import GlobalMap from './GlobalMap.jsx';
+import { geodesicHa } from './kml.js';
 
 const sumKg = arr => arr.reduce((a, s) => a + (+s.kg || 0), 0);
 const fmtT = kg => (kg >= 1000 ? `${fmtNum(kg / 1000, kg < 100000 ? 1 : 0)} t` : `${fmtKg(kg)} kg`);
@@ -321,17 +323,74 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
 
 /* ---------- Mapas propios: subida con barra de proceso ---------- */
 const STAGES = [['convert', 'Convertir'], ['ready', 'Revisar'], ['upload', 'Subir']];
-export function MapsScreen({ state, me, job, onPick, onJobChange, onCancel, onSend, onShowMap, onAdjustMap, onEditMap, geo, store, onState, onShowLots }) {
+export function MapsScreen({ state, me, job, onPick, onJobChange, onCancel, onSend, onShowMap, onAdjustMap, onEditMap, geo, store, onState, onShowLots, urls = {} }) {
   const isAdmin = me.rol === 'admin';
   const inp = useRef(null);
   const maps = [...(state.maps || [])].sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
   const busy = job && (job.stage === 'convert' || job.stage === 'upload');
   const idx = job ? Math.max(0, STAGES.findIndex(s => s[0] === job.stage)) : -1;
   const sizeMb = job?.res ? (job.res.dataUrl.length * 0.75) / 1048576 : 0;
+  // listado general
+  const [q, setQ] = useState(''), [orden, setOrden] = useState('fecha'), [sel, setSel] = useState(null);
+  const [imgs, setImgs] = useState(true), [focus, setFocus] = useState(null);
+  const rows = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const r = (state.maps || []).map(m => ({ ...m, tipo: m.tipo || (m.crs ? 'GeoTIFF' : 'Imagen'), ha: geodesicHa(m.corners) }))
+      .filter(m => !t || `${m.nombre} ${m.tipo} ${m.crs || ''} ${fmtFecha(m.fecha)}`.toLowerCase().includes(t));
+    const cmp = { fecha: (a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')), nombre: (a, b) => a.nombre.localeCompare(b.nombre, 'es'), ha: (a, b) => b.ha - a.ha }[orden];
+    return r.sort(cmp);
+  }, [state.maps, q, orden]);
+  const totalHa = rows.reduce((a, m) => a + m.ha, 0);
+  const fechas = (state.maps || []).map(m => m.fecha).filter(Boolean).sort();
+  const pickMap = id => { setSel(id); if (id) setFocus({ id, t: Date.now() }); };
   return (
     <div className="screen maps-screen">
-      <div className="screen-head"><div><h1>Mapas</h1><p className="muted">Lotes en KML · {maps.length} {maps.length === 1 ? 'mapa propio' : 'mapas propios'} (GeoTIFF, PDF o imagen)</p></div></div>
-      <div className="maps-grid">
+      <div className="screen-head"><div><h1>Mapas</h1><p className="muted">{maps.length} {maps.length === 1 ? 'mapa cargado' : 'mapas cargados'}{fechas.length ? ` · ${fmtFecha(fechas[0])} a ${fmtFecha(fechas[fechas.length - 1])}` : ''}</p></div></div>
+      <div className="maps-layout">
+        <div className="maps-main">
+          <section className="card glob-sec">
+            <div className="glob-head">
+              <h3><Icon name="map" size={18} /> Mapa global</h3>
+              <div className="row gap-s">
+                <Segmented size="sm" value={imgs} onChange={setImgs} options={[{ value: true, label: 'Imágenes' }, { value: false, label: 'Contornos' }]} />
+                <Button size="sm" variant="ghost" icon="target" onClick={() => { setSel(null); setFocus({ id: 'all', t: Date.now() }); }} aria-label="Ver todos los mapas" />
+              </div>
+            </div>
+            <GlobalMap maps={state.maps || []} urls={urls} lots={state.lots} geo={geo} selected={sel} onSelect={id => setSel(id)} showImages={imgs} focus={focus} />
+          </section>
+          <section className="card set-sec maps-list-sec">
+            <div className="panel-head"><h3><Icon name="layers" size={18} /> Mapas cargados</h3><span className="badge">{rows.length}{rows.length !== maps.length ? ` de ${maps.length}` : ''}</span></div>
+            {maps.length > 0 && (
+              <div className="maps-filters">
+                <Field label="Buscar"><TextInput value={q} onChange={setQ} placeholder="Nombre, tipo o fecha" /></Field>
+                <Field label="Ordenar por"><Select value={orden} onChange={setOrden} options={[{ value: 'fecha', label: 'Más recientes' }, { value: 'nombre', label: 'Nombre' }, { value: 'ha', label: 'Superficie' }]} /></Field>
+              </div>
+            )}
+            <div className="maps-list" role="list">
+              {rows.map(m => (
+                <div key={m.id} role="listitem" className={`maps-item ${sel === m.id ? 'is-sel' : ''}`}>
+                  <button type="button" className="maps-item-main" onClick={() => pickMap(sel === m.id ? null : m.id)} aria-pressed={sel === m.id}>
+                    <span className="maps-thumb">{urls[m.id] ? <img src={urls[m.id]} alt="" loading="lazy" /> : <Icon name="layers" size={18} />}</span>
+                    <span className="maps-info">
+                      <b>{m.nombre}</b>
+                      <span className="muted small">{fmtFecha(m.fecha)} · {m.tipo}{m.crs ? ` ${m.crs}` : ' · ubicado a mano'}</span>
+                      <span className="muted small">{fmtNum(m.ha, m.ha < 10 ? 1 : 0)} ha{m.peso ? ` · ${fmtNum(m.peso / 1048576, 1)} MB` : ''}{m.original ? ` · ${m.original[0]}×${m.original[1]} px` : ''}</span>
+                    </span>
+                  </button>
+                  <div className="maps-act">
+                    <Button size="sm" variant="ghost" icon="sat" onClick={() => onShowMap(m.id)} aria-label={`Ver ${m.nombre} en el mapa satelital`} />
+                    {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => onAdjustMap(m.id)} aria-label={`Ajustar posición de ${m.nombre}`} />}
+                    {isAdmin && <Button size="sm" variant="ghost" icon="edit" onClick={() => onEditMap(m.id)} aria-label={`Editar o eliminar ${m.nombre}`} />}
+                  </div>
+                </div>
+              ))}
+              {!maps.length && <p className="muted small">Todavía no hay mapas cargados.{isAdmin ? ' Subí el primero desde «Subir mapa».' : ''}</p>}
+              {maps.length > 0 && !rows.length && <p className="muted small">Ningún mapa coincide con la búsqueda.</p>}
+            </div>
+            {rows.length > 1 && <p className="muted small">Superficie cubierta: {fmtNum(totalHa)} ha (sumando mapas, con superposiciones).</p>}
+          </section>
+        </div>
+        <div className="maps-side">
         {isAdmin && <KmlImport state={state} me={me} geo={geo} store={store} onState={onState} onShowLots={onShowLots} />}
         {isAdmin && (
           <section className="card set-sec">
@@ -383,22 +442,7 @@ export function MapsScreen({ state, me, job, onPick, onJobChange, onCancel, onSe
             )}
           </section>
         )}
-        <section className="card set-sec">
-          <div className="panel-head"><h3><Icon name="layers" size={18} /> Mapas cargados</h3><span className="badge">{maps.length}</span></div>
-          <div className="user-list">
-            {maps.map(m => (
-              <div className="user-row map-row" key={m.id}>
-                <span className="avatar"><Icon name="layers" size={16} /></span>
-                <span className="grow"><b>{m.nombre}</b><span className="muted small"> · {fmtFecha(m.fecha)} · {m.crs || 'ubicado a mano'}</span></span>
-                <Button size="sm" variant="ghost" icon="eye" onClick={() => onShowMap(m.id)} aria-label={`Ver ${m.nombre}`} />
-                {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => onAdjustMap(m.id)} aria-label={`Ajustar posición de ${m.nombre}`} />}
-                {isAdmin && <Button size="sm" variant="ghost" icon="edit" onClick={() => onEditMap(m.id)} aria-label={`Editar ${m.nombre}`} />}
-              </div>
-            ))}
-            {!maps.length && <p className="muted small">Todavía no hay mapas propios.</p>}
-          </div>
-          <p className="muted small">En la pestaña Mapa → Satélite elegís ver uno, todos o ninguno.</p>
-        </section>
+        </div>
       </div>
     </div>
   );

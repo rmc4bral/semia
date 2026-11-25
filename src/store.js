@@ -182,7 +182,7 @@ export function createStore(mode) {
         const id = 'm' + Date.now().toString(36);
         await idbPut('map-' + id, dataUrl); onProgress && onProgress(100);
         const d = localLoad(); d.maps = d.maps || [];
-        d.maps.push({ ...map, id, src: `idb:map-${id}`, creadoPor: me.user, creadoEn: new Date().toISOString() });
+        d.maps.push({ ...map, id, src: `idb:map-${id}`, peso: Math.round(dataUrl.length * 0.75), creadoPor: me.user, creadoEn: new Date().toISOString() });
         localSave(d); return { state: publicState(d), id };
       }
       const j = await apiUpload('uploadMap', { map, data: dataUrl }, onProgress);

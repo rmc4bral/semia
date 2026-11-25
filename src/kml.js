@@ -237,6 +237,16 @@ export function buildKmlImport(parsed, rows, state, oldGeo, meta = {}) {
   };
 }
 
+// Estancias = KML cargados. Devuelve [{ id, nombre, lotes:Set(lotKey) }] y a qué estancia pertenece cada lote
+export function estancias(state) {
+  return kmlList(state).map(k => ({ id: k.id, nombre: k.archivo.replace(/\.km[lz]$/i, ''), keys: new Set(k.lotes.map(lotKey)), n: k.lotes.length }));
+}
+export function estanciaFilter(state, id) {
+  if (!id || id === 'all') return () => true;
+  const e = estancias(state).find(x => x.id === id);
+  return e ? (lot => e.keys.has(lotKey(lot.num ?? lot))) : () => true;
+}
+
 // Cambia el nombre con que se muestra un KML cargado
 export function buildKmlRename(state, id, nombre) {
   const list = kmlList(state), n = String(nombre || '').trim().slice(0, 120);

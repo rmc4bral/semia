@@ -5,8 +5,8 @@ import { WarpLayer } from './maplayers.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, selectedSilo, onSelectSilo, pickMode, onPick, gps, onNeedGeoref, editing, onVertexMove, onInsertVertex, onSelectVertex, overlays = [], overlayOpacity = 1, mapEdit, onMapCorners, capture, moving, onMoveDraft }) {
-  const el = useRef(null), map = useRef(null), layers = useRef({}), fitted = useRef(false), editFit = useRef(null);
+export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, selectedSilo, onSelectSilo, pickMode, onPick, gps, onNeedGeoref, editing, onVertexMove, onInsertVertex, onSelectVertex, overlays = [], overlayOpacity = 1, mapEdit, onMapCorners, capture, moving, onMoveDraft, fitKey = '' }) {
+  const el = useRef(null), map = useRef(null), layers = useRef({}), fitted = useRef(false), editFit = useRef(null), lastFit = useRef(null);
   const cb = useRef({}); cb.current = { onSelectLot, onSelectSilo, onPick, pickMode, geo, selectedLot, editing, onVertexMove, onInsertVertex, onSelectVertex, onMapCorners, mapEdit, onMoveDraft };
   const warp = useRef({});
 
@@ -47,8 +47,8 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
       if (sel && editing) layers.current.editPoly = pg;
       l.subs?.forEach(s => g.addLayer(L.polygon(s.poly.map(p => geo.toLatLng(p)), { className: 'sat-sub', weight: 1, fill: false, interactive: false, dashArray: '4 4' })));
     });
-    if (!fitted.current && all.length) { map.current.fitBounds(L.latLngBounds(all), { padding: [20, 20] }); fitted.current = true; }
-  }, [geo, data.lots, selectedLot, editing]);
+    if ((!fitted.current || lastFit.current !== fitKey) && all.length && !editing) { map.current.fitBounds(L.latLngBounds(all), { padding: [20, 20] }); fitted.current = true; lastFit.current = fitKey; }
+  }, [geo, data.lots, selectedLot, editing, fitKey]);
 
   // Manijas de edición: vértices (arrastrables) y puntos medios (agregar vértice)
   useEffect(() => {

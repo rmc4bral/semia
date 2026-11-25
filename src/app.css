@@ -407,6 +407,8 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
 .screen-head p { margin-top: 2px; }
 .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .filters > .field:first-child { grid-column: 1 / -1; }
+.filters.has-est > .field:nth-child(2) { grid-column: 1 / -1; }
+.lots-filters { grid-template-columns: 1fr; }
 .list-card { padding: 6px; display: flex; flex-direction: column; gap: 2px; flex: 1; }
 .lot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
 .lot-card { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 14px; align-items: center; }
@@ -589,7 +591,10 @@ path.glob-foot.is-sel { stroke: #fff; }
   .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .form-grid .span-2 { grid-column: 1 / -1; }
   .filters { grid-template-columns: 2fr 1fr 1fr; }
-  .filters > .field:first-child { grid-column: auto; }
+  .filters > .field:first-child, .filters.has-est > .field:nth-child(2) { grid-column: auto; }
+  .filters.has-est { grid-template-columns: 1.2fr 2fr 1fr 1fr; }
+  .lots-filters { grid-template-columns: minmax(0, 420px); }
+  .lots-filters.has-est { grid-template-columns: minmax(0, 280px) minmax(0, 420px); }
   .modal-wrap { align-items: center; padding: 24px; }
   .modal { max-width: 600px; max-height: calc(100dvh - 48px); border-radius: var(--r-lg); }
   .modal::before { display: none; }

@@ -4,7 +4,7 @@ import { Logo, Icon, Button, Field, TextInput, Segmented, Select, ToastProvider,
 import { detectMode, createStore, resolvePhoto } from './store.js';
 import { fmtFecha, parseFecha, readMapFile, defaultCorners } from './maplayers.js';
 import { buildGeo, locateLot, controlPoints, metersBetween, pointInPoly, isSiloLot } from './geo.js';
-import { exportKml } from './kml.js';
+import { exportKml, estancias, estanciaFilter } from './kml.js';
 import { GpsCapture } from './capture.jsx';
 import { UpdateButton } from './update.jsx';
 import { cloneGeom, moveVertex, insertVertex, removeVertex, restoreLot, buildShapeChange, isLocked } from './shapes.js';
@@ -98,10 +98,18 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
   const [mapOpacity, setMapOpacityRaw] = useState(+pref.get('mapOpacity', '1'));
   const setMapOpacity = v => { setMapOpacityRaw(v); pref.set('mapOpacity', String(v)); };
   const [mapUrls, setMapUrls] = useState({});
+  // estancia (KML) a mostrar, compartida por Mapa, Lotes y Silos
+  const [estId, setEstIdRaw] = useState(pref.get('estancia', 'all'));
+  const setEstId = v => { setEstIdRaw(v); pref.set('estancia', v); setSelLot(null); setSelSilo(null); };
   const [mapJob, setMapJob] = useState(null), [mapEditMeta, setMapEditMeta] = useState(null), [mapEdit, setMapEdit] = useState(null);
   const { fix, err: gpsErr } = useGps(true);
   const geo = useMemo(() => buildGeo(state.georef), [state.georef]);
+  const estList = useMemo(() => estancias(state), [state.georef, state.lots]); // eslint-disable-line
+  const effEst = estList.some(e => e.id === estId) ? estId : 'all';
+  const inEst = useMemo(() => estanciaFilter(state, effEst), [state.georef, effEst]); // eslint-disable-line
   const lots = state.lots;
+  const shownState = useMemo(() => (effEst === 'all' ? state : { ...state, lots: state.lots.filter(inEst), silos: state.silos.filter(s => inEst({ num: s.lote })) }), [state, effEst, inEst]);
+  const estOpts = [{ value: 'all', label: 'Todas las estancias', meta: `${state.lots.length} lotes` }, ...estList.map(e => ({ value: e.id, label: e.nombre, meta: `${e.n} lotes` }))];
   const maps = state.maps || [];
   useEffect(() => {
     let on = true;
@@ -324,10 +332,11 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
       <main className="main">
         {tab === 'mapa' && (
           <div className="dash">
-            <Kpis state={state} />
+            <Kpis state={shownState} />
             <div className="dash-body">
               <div className="card map-card">
                 {!shape && !mapEdit && !cap && <div className="map-top">
+                  {estList.length > 1 && <div className="map-layers"><Field label="Estancia" className="map-filter"><Select value={effEst} onChange={setEstId} options={estOpts} /></Field></div>}
                   {maps.length > 0 && (
                     <div className="map-layers">
                       <Field label="Mapa a mostrar" className="map-filter"><Select value={effFilter} onChange={setMapFilter} options={[
@@ -339,7 +348,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
                     </div>
                   )}
                 </div>}
-                <SatMap data={state} silos={state.silos} geo={geo} selectedLot={selLot} onSelectLot={setSelLot} selectedSilo={selSilo}
+                <SatMap data={shownState} silos={shownState.silos} geo={geo} fitKey={effEst} selectedLot={selLot} onSelectLot={setSelLot} selectedSilo={selSilo}
                   onSelectSilo={id => { setSelSilo(id); }} pickMode={!!pick} onPick={onPick} gps={fix} onNeedGeoref={() => setTab('mapas')}
                   moving={moving} onMoveDraft={onMoveDraft}
                   capture={cap?.a ? { a: [cap.a.lat, cap.a.lng] } : null} editing={shape} overlays={mapEdit ? [{ id: mapEdit.id, url: mapUrls[mapEdit.id], corners: mapEdit.corners }] : overlays} overlayOpacity={mapOpacity} mapEdit={mapEdit} onMapCorners={cs => setMapEdit(me_ => ({ ...me_, corners: cs }))} onVertexMove={onVertexMove} onInsertVertex={onInsertVertex} onSelectVertex={pt => setShape(sh => ({ ...sh, sel: pt }))} />
@@ -374,13 +383,13 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
                 {cap && <GpsCapture fix={fix} gpsErr={gpsErr} onCancel={() => setCap(null)} onDone={finishCap} onProgress={p => setCap(c => (c ? { ...c, a: p.a } : c))} />}
               </div>
               <aside className="side-panel">
-                {lot ? <LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onShape={isAdmin ? startShape : null} onSelectSilo={id => setSelSilo(id)} /> : <RecentPanel state={state} onSelectSilo={id => { const s = state.silos.find(x => x.id === id); if (s) { setSelLot(s.lote); setSelSilo(id); } }} />}
+                {lot ? <LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onShape={isAdmin ? startShape : null} onSelectSilo={id => setSelSilo(id)} /> : <RecentPanel state={shownState} onSelectSilo={id => { const s = state.silos.find(x => x.id === id); if (s) { setSelLot(s.lote); setSelSilo(id); } }} />}
               </aside>
             </div>
           </div>
         )}
-        {tab === 'silos' && <SilosScreen state={state} onOpenSilo={openSilo} onExportCsv={exportCsv} onExportKml={exportKmlFile} />}
-        {tab === 'lotes' && <LotsScreen state={state} onEditLot={setLotEdit} onShowLot={n => { setSelLot(n); setSelSilo(null); setTab('mapa'); }} />}
+        {tab === 'silos' && <SilosScreen state={state} onOpenSilo={openSilo} onExportCsv={exportCsv} onExportKml={exportKmlFile} est={effEst} estOpts={estList.length > 1 ? estOpts : null} onEst={setEstId} inEst={inEst} />}
+        {tab === 'lotes' && <LotsScreen state={state} onEditLot={setLotEdit} onShowLot={n => { setSelLot(n); setSelSilo(null); setTab('mapa'); }} est={effEst} estOpts={estList.length > 1 ? estOpts : null} onEst={setEstId} inEst={inEst} />}
         {tab === 'mapas' && <MapsScreen state={state} me={me} job={mapJob} onPick={startMapJob} onCancel={cancelMapJob} onSend={sendMapJob}
           onJobChange={patch => setMapJob(j => (j ? { ...j, ...patch } : j))}
           onShowMap={id => { setMapFilter(id); setTab('mapa'); }} onAdjustMap={startMapEdit} onEditMap={setMapEditMeta}

@@ -80,22 +80,23 @@ export function RecentPanel({ state, onSelectSilo }) {
 }
 
 /* ---------- Pantalla Silos ---------- */
-export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml }) {
+export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est = 'all', estOpts, onEst, inEst = () => true }) {
   const [q, setQ] = useState(''), [lote, setLote] = useState('all'), [grano, setGrano] = useState('all');
   const list = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return state.silos.filter(s => (lote === 'all' || s.lote === lote) && (grano === 'all' || s.grano === grano)
+    return state.silos.filter(s => inEst({ num: s.lote }) && (lote === 'all' || s.lote === lote) && (grano === 'all' || s.grano === grano)
       && (!t || s.id.toLowerCase().includes(t) || (s.obs || '').toLowerCase().includes(t)))
       .sort((a, b) => a.id.localeCompare(b.id));
-  }, [state.silos, q, lote, grano]);
-  const lotOpts = [{ value: 'all', label: 'Todos los lotes' }, ...state.lots.filter(isSiloLot).map(l => ({ value: l.num, label: `Lote ${l.num}` }))];
+  }, [state.silos, q, lote, grano, inEst]);
+  const lotOpts = [{ value: 'all', label: 'Todos los lotes' }, ...state.lots.filter(l => isSiloLot(l) && inEst(l)).map(l => ({ value: l.num, label: `Lote ${l.num}` }))];
   return (
     <div className="screen">
       <div className="screen-head">
         <div><h1>Silobolsas</h1><p className="muted">{list.length} de {state.silos.length} · {fmtT(sumKg(list))}</p></div>
         <div className="row gap-s"><Button icon="download" onClick={onExportKml}>KML</Button><Button icon="download" onClick={onExportCsv}>CSV</Button></div>
       </div>
-      <div className="filters">
+      <div className={`filters ${estOpts ? 'has-est' : ''}`}>
+        {estOpts && <Field label="Estancia"><Select value={est} options={estOpts} onChange={v => { onEst(v); setLote('all'); }} /></Field>}
         <Field label="Buscar"><div className="input-ic"><Icon name="search" size={16} /><TextInput value={q} onChange={setQ} placeholder="ID u observación" /></div></Field>
         <Field label="Lote"><Select value={lote} options={lotOpts} onChange={setLote} /></Field>
         <Field label="Grano"><Select value={grano} options={[{ value: 'all', label: 'Todos' }, ...GRANOS.map(g => ({ value: g, label: g }))]} onChange={setGrano} /></Field>
@@ -109,16 +110,26 @@ export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml }) {
 }
 
 /* ---------- Pantalla Lotes ---------- */
-export function LotsScreen({ state, onEditLot, onShowLot }) {
+export function LotsScreen({ state, onEditLot, onShowLot, est = 'all', estOpts, onEst, inEst = () => true }) {
+  const [q, setQ] = useState('');
+  const t = q.trim().toLowerCase();
+  const shown = state.lots.filter(l => inEst(l) && (!t || String(l.num).toLowerCase() === t || String(l.num).toLowerCase().startsWith(t) || (l.nombre || '').toLowerCase().includes(t)));
   const kgBy = {}, nBy = {};
   state.silos.forEach(s => { kgBy[s.lote] = (kgBy[s.lote] || 0) + (+s.kg || 0); nBy[s.lote] = (nBy[s.lote] || 0) + 1; });
   const max = Math.max(1, ...Object.values(kgBy));
   return (
     <div className="screen">
-      <div className="screen-head"><div><h1>Lotes</h1><p className="muted">{state.lots.length} lotes · {fmtNum(state.lots.reduce((a, l) => a + l.ha, 0))} ha</p></div></div>
+      <div className="screen-head"><div><h1>Lotes</h1><p className="muted">{shown.length}{shown.length !== state.lots.length ? ` de ${state.lots.length}` : ''} lotes · {fmtNum(shown.reduce((a, l) => a + l.ha, 0))} ha</p></div></div>
+      {state.lots.length > 0 && (
+        <div className={`filters lots-filters ${estOpts ? 'has-est' : ''}`}>
+          {estOpts && <Field label="Estancia"><Select value={est} options={estOpts} onChange={onEst} /></Field>}
+          <Field label="Buscar lote"><div className="input-ic"><Icon name="search" size={16} /><TextInput value={q} onChange={setQ} placeholder="Número o nombre" /></div></Field>
+        </div>
+      )}
       {!state.lots.length && <div className="empty"><Icon name="lots" size={28} /><p>No hay lotes cargados. Cargá el KML en la pestaña Mapas.</p></div>}
+      {state.lots.length > 0 && !shown.length && <div className="empty"><Icon name="search" size={28} /><p>Ningún lote coincide.</p></div>}
       <div className="lot-grid">
-        {state.lots.map(l => (
+        {shown.map(l => (
           <div className={`card lot-card ${isSiloLot(l) ? '' : 'is-casco'}`} key={String(l.num)}>
             <button type="button" className="lot-card-main" onClick={() => onShowLot(l.num)}>
               <span className="lot-card-num">{isSiloLot(l) ? l.num : String(l.num).slice(0, 2).toUpperCase()}</span>

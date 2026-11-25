@@ -59,6 +59,7 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
   3. Se abre la ficha con el lote detectado por coordenadas, el ID automático, el **largo en metros**, kg, grano, observación y foto.
   Sin GPS o sin lotes georreferenciados, se marca tocando el plano.
 - **Mapa (satélite):** lotes con su número (al tocar uno se ven sus hectáreas), bolsas (línea A‑B) y tu posición sobre la imagen Esri; filtro **Mapa a mostrar** para tus ortomosaicos.
+- **Filtro Estancia:** cada KML cargado es una estancia; en Mapa, Lotes y Silos se elige cuál mostrar (los indicadores también se filtran). En Lotes se busca por número o nombre.
 - **Lotes con nombre:** un lote puede llamarse con letras (ej. *Casco*, donde está el personal); esos lotes no reciben silobolsas.
 - **Ajustar forma (admin):** cada lote se ajusta por separado (los vecinos no se mueven). Las bolsas ubicadas por GPS quedan donde se midieron.
 - **Mover (admin):** tocar el silo → *Mover* → arrastrar el punto central; la bolsa A‑B se traslada completa.

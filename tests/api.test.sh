@@ -53,7 +53,7 @@ chk gps-largo "$R" '"largo":44.5'
 chk gps-b-fix "$R" '"gps2":{"lat":-35.9004'
 chk gps-map2-malo "$(curl -s -b $A "${J[@]}" -d '{"silo":{"lote":16,"kg":1,"map":[1,1],"map2":[1]}}' $B/api.php?action=saveSilo)" 'fin de la bolsa'
 OPS=$(curl -s -b $O "${J[@]}" -d '{"silo":{"lote":3,"kg":7000,"map":[300,800],"map2":[320,800],"largo":40}}' $B/api.php?action=saveSilo)
-OPID=$(echo "$OPS" | grep -o '"id":"RB03[0-9]*","lote":3,"kg":7000' | cut -d'"' -f4)
+OPID=$(echo "$OPS" | grep -o '"id":"RB03[0-9]*","lote":3,"lot":"3","kg":7000' | cut -d'"' -f4)
 chk op-no-mueve-b "$(curl -s -b $O "${J[@]}" -d "{\"prevId\":\"$OPID\",\"silo\":{\"id\":\"$OPID\",\"lote\":3,\"kg\":7000,\"map\":[300,800],\"map2\":[330,810]}}" $B/api.php?action=saveSilo)" 'Solo el administrador puede mover'
 chk op-edita-kg "$(curl -s -b $O "${J[@]}" -d "{\"prevId\":\"$OPID\",\"silo\":{\"id\":\"$OPID\",\"lote\":3,\"kg\":7500,\"map\":[300,800],\"map2\":[320,800],\"largo\":40}}" $B/api.php?action=saveSilo)" '"kg":7500'
 # Lotes desde KML
@@ -68,6 +68,16 @@ chk kml-silo "$R" '"id":"RB16001","lote":16,[^}]*"map":\[150,50\]'
 chk kml-lineas "$R" '"lines":\[{"name":"Camino"'
 chk kml-sin-poly0 "$(echo "$R" | grep -c poly0)" '^0$'
 chk kml-silo-huerfano "$R" "\"id\":\"RB05001\",\"lote\":3"
+# Dos estancias con el mismo número de lote y sigla propia
+EST='{"change":{"lots":[{"num":31,"ha":10,"kml":"kaa","poly":[[10,10],[100,10],[100,100],[10,100]]},{"num":31,"ha":12,"kml":"kbb","poly":[[110,10],[200,10],[200,100],[110,100]]},{"num":"Casco","ha":2,"kml":"kbb","poly":[[210,10],[220,10],[220,20]]}],"outline":[[10,10],[220,10],[220,100],[10,100]],"georef":{"lat0":-35.9,"lng0":-60.4,"s":0.2,"ox":100,"oy":50,"kmls":[{"id":"kaa","archivo":"Baguales.kmz","nombre":"Rincón de Baguales","sigla":"RB","lotes":[31]},{"id":"kbb","archivo":"Los Gatos.kml","nombre":"Los Gatos","sigla":"LG","lotes":[31,"Casco"]}]}}}'
+R=$(curl -s -b $A "${J[@]}" -d "$EST" $B/api.php?action=importKml)
+chk est-ids "$R" '"id":"kbb:31","num":31'
+chk est-sigla "$R" '"sigla":"LG"'
+chk est-casco "$R" '"id":"kbb:Casco","num":"Casco"'
+chk est-silo-LG "$(curl -s -b $A "${J[@]}" -d '{"silo":{"lot":"kbb:31","lote":31,"kg":1000,"map":[150,50]}}' $B/api.php?action=saveSilo)" '"id":"LG31001","lote":31,"lot":"kbb:31"'
+chk est-silo-RB "$(curl -s -b $A "${J[@]}" -d '{"silo":{"lot":"kaa:31","lote":31,"kg":1000,"map":[50,50]}}' $B/api.php?action=saveSilo)" '"id":"RB31001","lote":31,"lot":"kaa:31"'
+chk est-casco-sin-silos "$(curl -s -b $A "${J[@]}" -d '{"silo":{"lot":"kbb:Casco","lote":0,"kg":1,"map":[215,15]}}' $B/api.php?action=saveSilo)" 'sin silobolsas'
+chk est-lote-dup "$(curl -s -b $A "${J[@]}" -d '{"lot":{"_origId":"kaa:31","num":31,"ha":10}}' $B/api.php?action=saveLot)" '"ok":true'
 chk borrar "$(curl -s -b $A "${J[@]}" -d '{"id":"RB05001"}' $B/api.php?action=deleteSilo)" '"ok":true'
 chk mapa-borrar "$(curl -s -b $A "${J[@]}" -d "{\"id\":\"$MID\"}" $B/api.php?action=deleteMap)" '"maps":\[\]'
 code=$(curl -s -o /dev/null -w '%{http_code}' $B/api.php?action=nada); chk accion-desconocida "$code" 404

@@ -1105,6 +1105,8 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
 .set-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .set-stats > div { display: flex; flex-direction: column; gap: 2px; }
 .set-stats b { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; font-feature-settings: 'tnum'; }
+.est-sig { min-width: 44px; height: 32px; padding: 0 8px; flex: none; display: grid; place-items: center; border-radius: var(--pill); background: var(--accent); color: var(--accent-ink); font: 800 12px/1 var(--mono); letter-spacing: .06em; }
+.est-edit { flex-wrap: wrap; align-items: flex-end; }
 .set-danger { padding-top: 12px; border-top: 1px dashed var(--line-2); }
 @media (min-width: 900px) { .set-group { grid-template-columns: 260px minmax(0, 1fr); gap: 32px; } }
 .set-sec { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
@@ -1226,6 +1228,11 @@ path.glob-foot.is-sel { stroke: #fff; }
 .spinner.sm { width: 14px; height: 14px; border-width: 2px; }
 .nav-pct { position: absolute; top: 6px; right: calc(50% - 26px); font-style: normal; font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: var(--pill); background: var(--accent); color: var(--accent-ink); }
 .kml-files { display: flex; flex-direction: column; }
+.kml-est, .kml-ren { display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap; width: 100%; }
+.kml-ren { flex: 1; min-width: 0; align-items: flex-end; }
+.kml-sigla { width: 120px; flex: none; }
+.kml-sigla .input { font-family: var(--mono); font-weight: 700; letter-spacing: .08em; }
+.sig { margin-left: 6px; padding: 1px 7px; border-radius: var(--pill); background: var(--accent); color: var(--accent-ink); font: 700 11px/1.6 var(--mono); vertical-align: middle; }
 .kml-file { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .kml-file:last-child { border-bottom: 0; }
 .kml-file-ic { width: 36px; height: 36px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: var(--accent-ink); }

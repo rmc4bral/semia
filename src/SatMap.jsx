@@ -34,13 +34,13 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
     const g = layers.current.lots; g.clearLayers();
     if (!geo) return;
     const all = [];
-    const src = editing ? editing.geom.lots.map(gl => ({ ...data.lots.find(l => l.num === gl.num), poly: gl.poly, subs: gl.subs.map(s => ({ ...data.lots.find(l => l.num === gl.num).subs.find(x => x.id === s.id), poly: s.poly })) })) : data.lots;
+    const src = editing ? editing.geom.lots.filter(gl => data.lots.some(l => l.id === gl.id)).map(gl => { const o = data.lots.find(l => l.id === gl.id); return { ...o, poly: gl.poly, subs: gl.subs.map(s => ({ ...(o.subs || []).find(x => x.id === s.id), poly: s.poly })) }; }) : data.lots;
     src.forEach(l => {
       const ll = l.poly.map(p => geo.toLatLng(p)); all.push(...ll);
-      const sel = editing ? l.num === editing.lot : l.num === selectedLot;
+      const sel = editing ? l.id === editing.lot : l.id === selectedLot;
       const pg = L.polygon(ll, { className: `sat-lot ${sel ? 'is-sel' : ''} ${editing && !sel ? 'is-dim' : ''} ${typeof l.num === 'string' ? 'is-casco' : ''}`, weight: sel ? 2 : 1, fillOpacity: sel ? (editing ? 0.1 : 0.2) : 0.04, interactive: !editing });
       if (!editing) {
-        pg.on('click', e => { L.DomEvent.stopPropagation(e); const c = cb.current; if (c.pickMode) c.onPick(c.geo.toMap(e.latlng.lat, e.latlng.lng)); else c.onSelectLot(c.selectedLot === l.num ? null : l.num); });
+        pg.on('click', e => { L.DomEvent.stopPropagation(e); const c = cb.current; if (c.pickMode) c.onPick(c.geo.toMap(e.latlng.lat, e.latlng.lng)); else c.onSelectLot(c.selectedLot === l.id ? null : l.id); });
         pg.bindTooltip(sel ? `<b>${esc(l.num)}</b><span> · ${esc(l.ha)} ha</span>` : `<b>${esc(l.num)}</b>`, { permanent: true, direction: 'center', className: `sat-label ${sel ? 'is-sel' : ''}` });
       }
       g.addLayer(pg);
@@ -55,7 +55,7 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
     const g = layers.current.edit; g.clearLayers();
     if (!editing) editFit.current = null;
     if (!geo || !editing) return;
-    const lot = editing.geom.lots.find(l => l.num === editing.lot); if (!lot) return;
+    const lot = editing.geom.lots.find(l => l.id === editing.lot); if (!lot) return;
     if (editFit.current !== editing.lot) { map.current.fitBounds(L.latLngBounds(lot.poly.map(p => geo.toLatLng(p))), { padding: [40, 40], maxZoom: 17 }); editFit.current = editing.lot; }
     lot.poly.forEach((p, i) => {
       const q = lot.poly[(i + 1) % lot.poly.length], mid = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];

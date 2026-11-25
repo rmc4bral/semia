@@ -1,5 +1,6 @@
 // SemIA · capa de datos: servidor (api.php) o modo local (localStorage + IndexedDB)
 import seed from './seed.json';
+import { lotIdOf } from './geo.js';
 import { sha256 } from './sha256.js';
 
 const LS_KEY = 'semia.data.v1';
@@ -92,7 +93,7 @@ const isAdmin = me => me && me.rol === 'admin';
 function applyShapes(d, change) {
   const near = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 0.6;
   (change.lots || []).forEach(nl => {
-    const l = d.lots.find(x => x.num === nl.num); if (!l) return;
+    const l = d.lots.find(x => lotIdOf(x) === String(nl.id ?? nl.num)) || d.lots.find(x => x.num === nl.num); if (!l) return;
     if (!l.poly0) l.poly0 = l.poly;
     l.poly = nl.poly; l.label = nl.label;
     (nl.subs || []).forEach(ns => { const s = l.subs.find(x => x.id === ns.id); if (s) { if (!s.poly0) s.poly0 = s.poly; s.poly = ns.poly; s.label = ns.label; } });
@@ -161,10 +162,15 @@ export function createStore(mode) {
     async saveLot(lot, me) {
       if (local) {
         if (!isAdmin(me)) throw new Error('Solo el administrador puede editar lotes');
-        const d = localLoad(); const i = d.lots.findIndex(l => l.num === lot._origNum);
+        const d = localLoad(); const i = d.lots.findIndex(l => lotIdOf(l) === String(lot._origId ?? lot._origNum));
         if (i < 0) throw new Error('Lote inexistente');
-        if (lot.num !== lot._origNum && d.lots.some(l => l.num === lot.num)) throw new Error(`Ya existe el lote ${lot.num}`);
-        const { _origNum, ...clean } = lot; d.lots[i] = { ...d.lots[i], ...clean }; localSave(d); return publicState(d);
+        const old = d.lots[i], kml = old.kml || null;
+        if (lot.num !== old.num && d.lots.some((l, j) => j !== i && (l.kml || null) === kml && String(l.num).toLowerCase() === String(lot.num).toLowerCase())) throw new Error(`Ya existe el lote ${lot.num} en esa estancia`);
+        const { _origNum, _origId, ...clean } = lot;
+        const oldId = lotIdOf(old), nl = { ...old, ...clean, kml }; nl.id = kml ? `${kml}:${nl.num}` : String(nl.num);
+        d.lots[i] = nl;
+        if (nl.id !== oldId) d.silos.forEach(x => { if (x.lot === oldId) { x.lot = nl.id; x.lote = nl.num; } });
+        localSave(d); return publicState(d);
       }
       return (await api('saveLot', { lot })).state;
     },
@@ -223,8 +229,9 @@ export function createStore(mode) {
         d.lots = change.lots.map(l => ({ ...l, subs: l.subs || [] })); d.outline = change.outline; d.decor = { lines: change.lines || [] };
         d.georef = { ...g, points: [], kml: { ...(g.kml || {}), lotes: change.lots.length }, kmls: g.kmls || [] };
         const nums = d.lots.map(l => l.num).filter(n => typeof n === 'number');
-        (change.silos || []).forEach(u => { const x = d.silos.find(s => s.id === u.id); if (x) Object.assign(x, { lote: u.lote, map: u.map, map2: u.map2 || null, t: u.t, ang: u.ang, latlng: u.latlng || x.latlng, latlng2: u.latlng2 || x.latlng2 || null }); });
-        d.silos.forEach(x => { if (!nums.includes(x.lote)) x.lote = nums[0]; });
+        (change.silos || []).forEach(u => { const x = d.silos.find(s => s.id === u.id); if (x) Object.assign(x, { lote: u.lote, lot: u.lot || x.lot || null, map: u.map, map2: u.map2 || null, t: u.t, ang: u.ang, latlng: u.latlng || x.latlng, latlng2: u.latlng2 || x.latlng2 || null }); });
+        const ids = d.lots.filter(l => typeof l.num === 'number').map(l => l.id || lotIdOf(l));
+        d.silos.forEach(x => { if (!ids.includes(x.lot)) { const l = d.lots.find(y => y.num === x.lote && typeof y.num === 'number') || d.lots.find(y => typeof y.num === 'number'); if (l) { x.lote = l.num; x.lot = lotIdOf(l); } } });
         localSave(d); return publicState(d);
       }
       return (await api('importKml', { change })).state;

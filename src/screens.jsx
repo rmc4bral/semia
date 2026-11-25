@@ -1,9 +1,10 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Button, Field, TextInput, Select, Segmented, Icon, useToast, fmtKg, fmtNum, fmtDate } from './ui.jsx';
 import { fmtFecha } from './maplayers.js';
-import { areaHa, lotCorners, migrateGeoref, pointKey, isSiloLot, lotName } from './geo.js';
+import { areaHa, lotCorners, migrateGeoref, pointKey, isSiloLot, lotName, siloLot, estanciaNombre } from './geo.js';
 import { PhotoView, GRANOS } from './modals.jsx';
 import { KmlImport } from './kmlImport.jsx';
+import { buildKmlRename } from './kml.js';
 import GlobalMap from './GlobalMap.jsx';
 import { geodesicHa } from './kml.js';
 
@@ -11,7 +12,7 @@ const sumKg = arr => arr.reduce((a, s) => a + (+s.kg || 0), 0);
 const fmtT = kg => (kg >= 1000 ? `${fmtNum(kg / 1000, kg < 100000 ? 1 : 0)} t` : `${fmtKg(kg)} kg`);
 
 export function Kpis({ state }) {
-  const lotsWith = new Set(state.silos.map(s => s.lote)).size, nSilo = state.lots.filter(isSiloLot).length;
+  const lotsWith = new Set(state.silos.map(s => s.lot)).size, nSilo = state.lots.filter(isSiloLot).length;
   const ha = state.lots.reduce((a, l) => a + (+l.ha || 0), 0);
   const kg = sumKg(state.silos);
   const items = [
@@ -29,21 +30,21 @@ export function Kpis({ state }) {
 
 export function LotPanel({ lot, state, geo, onEdit, onShape, onSelectSilo, compact }) {
   if (!lot) return null;
-  const silos = state.silos.filter(s => s.lote === lot.num);
+  const silos = state.silos.filter(s => s.lot === lot.id);
   const kg = sumKg(silos);
   const measured = areaHa(lot.poly, geo);
   if (compact) {
     return (
       <div className="lot-bar">
         <div className="lot-bar-main"><b>{lotName(lot.num)}{lot.nombre ? <span className="muted"> · {lot.nombre}</span> : null}</b><span className="muted">{fmtNum(lot.ha, 1)} ha{isSiloLot(lot) ? ` · ${silos.length} silo${silos.length === 1 ? '' : 's'} · ${fmtT(kg)}` : ' · sin silobolsas'}</span></div>
-        {onShape && <Button size="sm" variant="ghost" icon="edit" onClick={() => onShape(lot.num)}>Ajustar</Button>}
-        <Button variant="ghost" icon="gear" onClick={() => onEdit(lot.num)} aria-label="Configurar lote" />
+        {onShape && <Button size="sm" variant="ghost" icon="edit" onClick={() => onShape(lot.id)}>Ajustar</Button>}
+        <Button variant="ghost" icon="gear" onClick={() => onEdit(lot.id)} aria-label="Configurar lote" />
       </div>
     );
   }
   return (
     <section className="panel-sec">
-      <div className="panel-head"><h3>{lotName(lot.num)}{lot.nombre ? <span className="muted"> · {lot.nombre}</span> : null}</h3><div className="row gap-s">{onShape && <Button size="sm" variant="ghost" icon="edit" onClick={() => onShape(lot.num)}>Ajustar forma</Button>}<Button size="sm" variant="ghost" icon="gear" onClick={() => onEdit(lot.num)}>Configurar</Button></div></div>
+      <div className="panel-head"><h3>{lotName(lot.num)}{lot.nombre ? <span className="muted"> · {lot.nombre}</span> : null}</h3><div className="row gap-s">{onShape && <Button size="sm" variant="ghost" icon="edit" onClick={() => onShape(lot.id)}>Ajustar forma</Button>}<Button size="sm" variant="ghost" icon="gear" onClick={() => onEdit(lot.id)}>Configurar</Button></div></div>
       <div className="stat-row">
         <div><span className="muted small">Hectáreas</span><b>{lot.ha}</b></div>
         <div><span className="muted small">Silos</span><b>{silos.length}</b></div>
@@ -84,11 +85,11 @@ export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est =
   const [q, setQ] = useState(''), [lote, setLote] = useState('all'), [grano, setGrano] = useState('all');
   const list = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return state.silos.filter(s => inEst({ num: s.lote }) && (lote === 'all' || s.lote === lote) && (grano === 'all' || s.grano === grano)
+    return state.silos.filter(s => inEst(siloLot(s, state.lots)) && (lote === 'all' || s.lot === lote) && (grano === 'all' || s.grano === grano)
       && (!t || s.id.toLowerCase().includes(t) || (s.obs || '').toLowerCase().includes(t)))
       .sort((a, b) => a.id.localeCompare(b.id));
   }, [state.silos, q, lote, grano, inEst]);
-  const lotOpts = [{ value: 'all', label: 'Todos los lotes' }, ...state.lots.filter(l => isSiloLot(l) && inEst(l)).map(l => ({ value: l.num, label: `Lote ${l.num}` }))];
+  const lotOpts = [{ value: 'all', label: 'Todos los lotes' }, ...state.lots.filter(l => isSiloLot(l) && inEst(l)).map(l => ({ value: l.id, label: `Lote ${l.num}`, meta: estanciaNombre(l, state) }))];
   return (
     <div className="screen">
       <div className="screen-head">
@@ -115,7 +116,7 @@ export function LotsScreen({ state, onEditLot, onShowLot, est = 'all', estOpts, 
   const t = q.trim().toLowerCase();
   const shown = state.lots.filter(l => inEst(l) && (!t || String(l.num).toLowerCase() === t || String(l.num).toLowerCase().startsWith(t) || (l.nombre || '').toLowerCase().includes(t)));
   const kgBy = {}, nBy = {};
-  state.silos.forEach(s => { kgBy[s.lote] = (kgBy[s.lote] || 0) + (+s.kg || 0); nBy[s.lote] = (nBy[s.lote] || 0) + 1; });
+  state.silos.forEach(s => { kgBy[s.lot] = (kgBy[s.lot] || 0) + (+s.kg || 0); nBy[s.lot] = (nBy[s.lot] || 0) + 1; });
   const max = Math.max(1, ...Object.values(kgBy));
   return (
     <div className="screen">
@@ -130,15 +131,15 @@ export function LotsScreen({ state, onEditLot, onShowLot, est = 'all', estOpts, 
       {state.lots.length > 0 && !shown.length && <div className="empty"><Icon name="search" size={28} /><p>Ningún lote coincide.</p></div>}
       <div className="lot-grid">
         {shown.map(l => (
-          <div className={`card lot-card ${isSiloLot(l) ? '' : 'is-casco'}`} key={String(l.num)}>
-            <button type="button" className="lot-card-main" onClick={() => onShowLot(l.num)}>
+          <div className={`card lot-card ${isSiloLot(l) ? '' : 'is-casco'}`} key={l.id}>
+            <button type="button" className="lot-card-main" onClick={() => onShowLot(l.id)}>
               <span className="lot-card-num">{isSiloLot(l) ? l.num : String(l.num).slice(0, 2).toUpperCase()}</span>
-              <span className="lot-card-info"><b>{isSiloLot(l) ? `${fmtNum(l.ha, 1)} ha` : l.num}</b><span className="muted small">{isSiloLot(l) ? (l.nombre || (l.subs?.length ? l.subs.map(s => s.id).join(' · ') : 'Sin subdivisiones')) : `${fmtNum(l.ha, 1)} ha${l.nombre ? ` · ${l.nombre}` : ''}`}</span></span>
+              <span className="lot-card-info"><b>{isSiloLot(l) ? `${fmtNum(l.ha, 1)} ha` : l.num}</b><span className="muted small">{[estOpts && est === 'all' ? estanciaNombre(l, state) : '', isSiloLot(l) ? (l.nombre || (l.subs?.length ? l.subs.map(s => s.id).join(' · ') : '')) : `${fmtNum(l.ha, 1)} ha${l.nombre ? ` · ${l.nombre}` : ''}`].filter(Boolean).join(' · ') || 'Sin subdivisiones'}</span></span>
             </button>
-            <Button variant="ghost" icon="gear" onClick={() => onEditLot(l.num)} aria-label={`Configurar ${lotName(l.num)}`} />
+            <Button variant="ghost" icon="gear" onClick={() => onEditLot(l.id)} aria-label={`Configurar ${lotName(l.num)}`} />
             {isSiloLot(l) ? <>
-              <div className="lot-card-bar"><span style={{ width: `${((kgBy[l.num] || 0) / max) * 100}%` }} /></div>
-              <div className="lot-card-foot muted small"><span>{nBy[l.num] || 0} silos</span><span>{fmtT(kgBy[l.num] || 0)}</span></div>
+              <div className="lot-card-bar"><span style={{ width: `${((kgBy[l.id] || 0) / max) * 100}%` }} /></div>
+              <div className="lot-card-foot muted small"><span>{nBy[l.id] || 0} silos</span><span>{fmtT(kgBy[l.id] || 0)}</span></div>
             </> : <div className="lot-card-foot muted small"><span>Sin silobolsas</span></div>}
           </div>
         ))}
@@ -160,6 +161,29 @@ function LotMini({ lot, vi, n }) {
       {v && <circle cx={v[0]} cy={v[1]} r="4.5" />}
       <text x="41" y="10">N</text><text x="5" y="10" className="geo-mini-n">{n}</text>
     </svg>
+  );
+}
+
+// Fila editable de una estancia (KML): nombre y sigla de los IDs de silobolsa
+function EstanciaRow({ k, state, me, store, onState, isAdmin, lotes }) {
+  const toast = useToast();
+  const [f, setF] = useState(null);
+  async function save() {
+    try { onState(await store.importKml(buildKmlRename(state, k.id, f), me)); setF(null); toast(`Estancia ${f.nombre} guardada`, 'ok'); } catch (e) { toast(e.message, 'error'); }
+  }
+  if (f) return (
+    <div className="set-row est-edit">
+      <Field label="Estancia" className="grow"><TextInput value={f.nombre} onChange={v => setF(x => ({ ...x, nombre: v.slice(0, 60) }))} /></Field>
+      <Field label="Sigla" className="kml-sigla" hint={`Ej: ${f.sigla || 'XX'}31001`}><TextInput value={f.sigla} onChange={v => setF(x => ({ ...x, sigla: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) }))} /></Field>
+      <div className="row gap-s"><Button size="sm" onClick={() => setF(null)}>Cancelar</Button><Button size="sm" variant="primary" icon="check" onClick={save}>Guardar</Button></div>
+    </div>
+  );
+  return (
+    <div className="set-row">
+      <span className="est-sig">{k.sigla}</span>
+      <div className="grow"><b>{k.nombre}</b><span className="muted small">{lotes} lote{lotes === 1 ? '' : 's'} · IDs {k.sigla}{'{lote}{bolsa}'} · {k.archivo}</span></div>
+      {isAdmin && <Button size="sm" variant="ghost" icon="edit" onClick={() => setF({ nombre: k.nombre, sigla: k.sigla })} aria-label={`Editar ${k.nombre}`} />}
+    </div>
   );
 }
 
@@ -236,7 +260,7 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
     try { const data = JSON.parse(await file.text()); await run(() => store.importData(data, me), 'Datos importados'); } catch { toast('El archivo no es un JSON válido', 'error'); }
   }
 
-  const kmls = state.georef?.kmls || (state.georef?.mode === 'kml' ? [state.georef.kml] : []);
+  const kmls = state.georef?.kmls || [];
   const [newUser, setNewUser] = useState(false);
 
   return (
@@ -259,12 +283,20 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
           <Field label="Tema"><Segmented value={theme} onChange={setTheme} options={[{ value: 'dark', label: 'Oscuro', icon: 'moon' }, { value: 'light', label: 'Claro', icon: 'sun' }]} /></Field>
         </Group>
 
-        <Group id="estancia" icon="map" title="Estancia" desc="La sigla forma el ID de cada silobolsa.">
-          <div className="form-grid">
-            <Field label="Nombre"><TextInput value={est.nombre} onChange={v => setEst(x => ({ ...x, nombre: v }))} disabled={!isAdmin} /></Field>
-            <Field label="Sigla para IDs" hint={`Ejemplo: ${est.sigla || 'RB'}16001`}><TextInput value={est.sigla} onChange={v => setEst(x => ({ ...x, sigla: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) }))} disabled={!isAdmin} /></Field>
+        <Group id="estancia" icon="map" title="Estancias" desc="Cada KML es una estancia con su sigla: los silos de Los Gatos se numeran LG + lote + bolsa (LG31010).">
+          {kmls.length > 0 && (
+            <div className="set-list">
+              {kmls.map(k => <EstanciaRow key={k.id} k={k} state={state} me={me} store={store} onState={onState} isAdmin={isAdmin} lotes={state.lots.filter(l => l.kml === k.id).length} />)}
+            </div>
+          )}
+          {!kmls.length && <p className="muted small">Todavía no hay estancias: cargá un KML en la pestaña Mapas.</p>}
+          <div className="set-sub">
+            <div className="form-grid">
+              <Field label="Nombre del establecimiento" hint="Se muestra arriba, junto al logo"><TextInput value={est.nombre} onChange={v => setEst(x => ({ ...x, nombre: v }))} disabled={!isAdmin} /></Field>
+              <Field label="Sigla por defecto" hint="Para lotes que no vienen de un KML"><TextInput value={est.sigla} onChange={v => setEst(x => ({ ...x, sigla: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) }))} disabled={!isAdmin} /></Field>
+            </div>
+            {isAdmin && (est.nombre !== state.estancia.nombre || est.sigla !== state.estancia.sigla) && <div className="row end"><Button variant="primary" icon="check" onClick={() => { if (!est.nombre.trim() || !est.sigla) return toast('Completá nombre y sigla', 'error'); run(() => store.saveEstancia(est, me), 'Guardado'); }}>Guardar</Button></div>}
           </div>
-          {isAdmin && (est.nombre !== state.estancia.nombre || est.sigla !== state.estancia.sigla) && <div className="row end"><Button variant="primary" icon="check" onClick={() => { if (!est.nombre.trim() || !est.sigla) return toast('Completá nombre y sigla', 'error'); run(() => store.saveEstancia(est, me), 'Estancia guardada'); }}>Guardar</Button></div>}
         </Group>
 
         {isAdmin && (

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Button, Field, TextInput, TextArea, Select, Icon, useToast, fmtKg, fmtDate, fmtNum, parseNum } from './ui.jsx';
-import { nextSiloId, snapToBorder, areaHa, pointInPoly, isSiloLot, parseLotCode, lotName } from './geo.js';
+import { nextSiloId, snapToBorder, areaHa, pointInPoly, isSiloLot, parseLotCode, lotName, siloLot, siglaOf, estanciaNombre } from './geo.js';
 import { resolvePhoto } from './store.js';
 import { fmtFecha, parseFecha } from './maplayers.js';
 
@@ -37,27 +37,29 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
   const isNew = !draft.prevId;
   const isAdmin = me.rol === 'admin';
   const canEdit = isNew || isAdmin || draft.creadoPor === me.user;
-  const [f, setF] = useState(() => ({ ...draft, kg: draft.kg ?? '', obs: draft.obs ?? '', grano: draft.grano ?? '' }));
+  const [f, setF] = useState(() => ({ ...draft, lot: draft.lot || siloLot(draft, state.lots)?.id || null, kg: draft.kg ?? '', obs: draft.obs ?? '', grano: draft.grano ?? '' }));
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const cam = useRef(null), gal = useRef(null);
-  const sigla = state.estancia.sigla || 'RB';
-  const lotOpts = state.lots.filter(isSiloLot).map(l => ({ value: l.num, label: `Lote ${l.num}`, meta: `${l.ha} ha` }));
-  const lot = state.lots.find(l => l.num === f.lote);
+  const multi = (state.georef?.kmls || []).length > 1;
+  const lotOpts = state.lots.filter(isSiloLot).map(l => ({ value: l.id, label: `Lote ${l.num}`, meta: [multi ? estanciaNombre(l, state) : '', `${l.ha} ha`].filter(Boolean).join(' · ') }));
+  const lot = state.lots.find(l => l.id === f.lot);
+  const sigla = siglaOf(lot, state); // cada estancia tiene su sigla: LG31010 = Los Gatos · lote 31 · bolsa 010
+  const origLot = draft.lot || siloLot(draft, state.lots)?.id;
 
-  // ID automático según lote
+  // ID automático según estancia y lote
   useEffect(() => {
-    if (isNew || f.lote !== draft.lote) setF(x => ({ ...x, id: nextSiloId(sigla, x.lote, state.silos, draft.prevId) }));
+    if (isNew || f.lot !== origLot) setF(x => ({ ...x, id: lot ? nextSiloId(sigla, lot.num, state.silos, draft.prevId) : '' }));
     else setF(x => ({ ...x, id: draft.prevId }));
-  }, [f.lote]); // eslint-disable-line
+  }, [f.lot]); // eslint-disable-line
 
   const free = !!f.map2 || !Number.isFinite(f.t); // ubicado por GPS: no se pega al borde
-  const changeLot = num => {
-    const l = state.lots.find(x => x.num === num);
-    if (free) { setF(x => ({ ...x, lote: num, fuera: false })); return; }
+  const changeLot = lid => {
+    const l = state.lots.find(x => x.id === lid); if (!l) return;
+    if (free) { setF(x => ({ ...x, lot: lid, lote: l.num, fuera: false })); return; }
     const base = f.rawMap || f.map;
-    const sn = base && l ? snapToBorder(base, l.poly) : null;
-    setF(x => ({ ...x, lote: num, ...(sn ? { map: sn.point, t: sn.t, ang: sn.angle } : {}) }));
+    const sn = base ? snapToBorder(base, l.poly) : null;
+    setF(x => ({ ...x, lot: lid, lote: l.num, ...(sn ? { map: sn.point, t: sn.t, ang: sn.angle } : {}) }));
   };
 
   const pickFile = async e => {
@@ -75,11 +77,11 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
     if (f.kg === '' || err.kg) return toast('Ingresá los kg del silo', 'error');
     setBusy(true);
     try {
-      const id = isNew || f.lote !== draft.lote ? nextSiloId(sigla, f.lote, state.silos, draft.prevId) : draft.prevId;
+      const id = isNew || f.lot !== origLot ? nextSiloId(sigla, lot.num, state.silos, draft.prevId) : draft.prevId;
       let foto = f.fotoData === null ? null : f.foto || null;
       if (f.fotoData) foto = await store.uploadPhoto(id, f.fotoData);
       const silo = {
-        id, lote: f.lote, kg: kgNum, grano: f.grano || '', obs: (f.obs || '').trim(), foto,
+        id, lote: lot.num, lot: lot.id, kg: kgNum, grano: f.grano || '', obs: (f.obs || '').trim(), foto,
         map: f.map.map(v => Math.round(v * 100) / 100), t: free ? null : Math.round(f.t * 100) / 100, ang: Number.isFinite(f.ang) ? Math.round(f.ang * 1e4) / 1e4 : 0,
         map2: f.map2 ? f.map2.map(v => Math.round(v * 100) / 100) : null,
         latlng: f.latlng && f.origen === 'gps' ? f.latlng : geo ? geo.toLatLng(f.map).map(v => +v.toFixed(7)) : (draft.latlng || null),
@@ -115,11 +117,11 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
         </>
       )}>
       <div className="form-grid">
-        <Field label="ID de silo" hint={`${sigla} · lote ${String(f.lote).padStart(2, '0')} · bolsa ${String(f.id || '').slice(-3)}`}>
+        <Field label="ID de silo" hint={`${sigla}${estanciaNombre(lot, state) ? ` (${estanciaNombre(lot, state)})` : ''} · lote ${String(lot?.num ?? '').padStart(2, '0')} · bolsa ${String(f.id || '').slice(-3)}`}>
           <div className="input input-static mono">{f.id}</div>
         </Field>
         <Field label="Lote">
-          <Select value={f.lote} options={lotOpts} onChange={changeLot} disabled={!canEdit} />
+          <Select value={f.lot} options={lotOpts} onChange={changeLot} disabled={!canEdit} />
         </Field>
         <Field label="Kg" error={err.kg}>
           <TextInput value={f.kg} onChange={v => setF(x => ({ ...x, kg: v }))} numeric placeholder="Ej: 180000" disabled={!canEdit} />
@@ -186,7 +188,7 @@ export function LotModal({ lot, state, me, geo, store, onClose, onSaved, onShape
   const isAdmin = me.rol === 'admin';
   const [f, setF] = useState(() => ({ num: String(lot.num), nombre: lot.nombre || '', ha: String(lot.ha), obs: lot.obs || '', subs: (lot.subs || []).map(s => ({ ...s, ha: String(s.ha) })) }));
   const [busy, setBusy] = useState(false);
-  const silos = state.silos.filter(s => s.lote === lot.num);
+  const silos = state.silos.filter(s => s.lot === lot.id);
   const kg = silos.reduce((a, s) => a + (+s.kg || 0), 0);
   const measured = useMemo(() => areaHa(lot.poly, geo), [lot, geo]);
   const subSum = f.subs.reduce((a, s) => a + (parseNum(s.ha) || 0), 0);
@@ -200,14 +202,14 @@ export function LotModal({ lot, state, me, geo, store, onClose, onSaved, onShape
     if (subs.some(s => !(s.ha > 0))) return toast('Revisá las hectáreas de las subdivisiones', 'error');
     setBusy(true);
     try {
-      const st = await store.saveLot({ _origNum: lot.num, num, ha, nombre: f.nombre.trim(), obs: f.obs.trim(), subs }, me);
-      toast(`${lotName(num)} guardado`, 'ok'); onSaved(st, num);
+      const st = await store.saveLot({ _origNum: lot.num, _origId: lot.id, num, ha, nombre: f.nombre.trim(), obs: f.obs.trim(), subs }, me);
+      toast(`${lotName(num)} guardado`, 'ok'); onSaved(st, lot.kml ? `${lot.kml}:${num}` : String(num));
     } catch (e) { toast(e.message, 'error'); } finally { setBusy(false); }
   }
 
   return (
     <Modal title={lotName(lot.num)} subtitle={lot.nombre || (isSiloLot(lot) ? 'Configuración del lote' : 'Lote sin silobolsas')} onClose={onClose}
-      footer={<>{isAdmin && onShape && <Button variant="ghost" icon="edit" className="foot-left" onClick={() => onShape(lot.num)}>Ajustar forma</Button>}<Button onClick={onClose}>{isAdmin ? 'Cancelar' : 'Cerrar'}</Button>{isAdmin && <Button variant="primary" icon="check" onClick={save} disabled={busy}>Guardar</Button>}</>}>
+      footer={<>{isAdmin && onShape && <Button variant="ghost" icon="edit" className="foot-left" onClick={() => onShape(lot.id)}>Ajustar forma</Button>}<Button onClick={onClose}>{isAdmin ? 'Cancelar' : 'Cerrar'}</Button>{isAdmin && <Button variant="primary" icon="check" onClick={save} disabled={busy}>Guardar</Button>}</>}>
       <div className="stat-row">
         <div><span className="muted small">Silobolsas</span><b>{silos.length}</b></div>
         <div><span className="muted small">Kg almacenados</span><b>{fmtKg(kg)}</b></div>

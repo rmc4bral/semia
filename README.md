@@ -64,7 +64,8 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 - **Ajustar forma (admin):** cada lote se ajusta por separado (los vecinos no se mueven). Las bolsas ubicadas por GPS quedan donde se midieron.
 - **Mover (admin):** tocar el silo → *Mover* → arrastrar el punto central; la bolsa A‑B se traslada completa.
 - **Mapas propios:** GeoTIFF (se ubica solo), PDF, JPG/PNG/WebP con barra de proceso.
-- **ID:** `RB16001` = RB (estancia) + 16 (lote) + 001 (bolsa). La sigla se cambia en Ajustes.
+- **Estancias:** cada KML es una estancia con nombre y sigla propia (al cargarlo se propone desde el nombre: *Los Gatos* → `LG`). Un mismo número de lote puede existir en estancias distintas.
+- **ID:** `LG31010` = LG (sigla de la estancia) + 31 (lote) + 010 (bolsa). Nombre y sigla se editan en Ajustes → Estancias o en Mapas; los IDs ya cargados no cambian.
 - **Exportar (Silos):** **KML** con lotes y bolsas (para Google Earth / QGIS) y **CSV** con cabecera, cola y largo.
 - **Ajustes** (tu inicial arriba a la derecha): Mi cuenta, Apariencia, Estancia, Usuarios, Lotes y ubicación, Datos.
 - **Mapas y KML cargados:** cada uno se puede renombrar o eliminar desde la pestaña Mapas.

@@ -285,3 +285,33 @@ export function parseLotCode(v) {
 }
 export const lotKey = num => (typeof num === 'number' ? `n${num}` : `s${String(num).toLowerCase()}`);
 export const sortLots = (a, b) => (isSiloLot(a) && isSiloLot(b) ? a.num - b.num : isSiloLot(a) ? -1 : isSiloLot(b) ? 1 : String(a.num).localeCompare(String(b.num), 'es'));
+
+/* ---------- Identidad de lotes y estancias ----------
+   Un mismo número puede repetirse en estancias distintas (lote 31 de Baguales y de Los Gatos):
+   cada lote tiene un id único («k…:31» si viene de un KML, «31» si es del plano) y cada silo guarda «lot» (ese id). */
+export const lotIdOf = l => (l.id != null ? String(l.id) : l.kml ? `${l.kml}:${l.num}` : String(l.num));
+export function siglaDe(nombre) {
+  const w = String(nombre || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().match(/[A-Z]+/g) || [];
+  const main = w.filter(x => !['DE', 'DEL', 'Y'].includes(x));
+  return (main.length > 1 ? main.map(x => x[0]).join('') : (main[0] || w[0] || 'XX').slice(0, 2)).slice(0, 4);
+}
+// Completa ids, estancia de cada lote y lote de cada silo (datos guardados con versiones anteriores)
+export function normalizeState(st) {
+  if (!st) return st;
+  const kmls = Array.isArray(st.georef?.kmls) ? st.georef.kmls : st.georef?.mode === 'kml' ? [{ id: 'k1', archivo: st.georef.kml?.archivo || 'KML', fecha: st.georef.kml?.fecha || null, lotes: (st.lots || []).map(l => l.num) }] : [];
+  // la primera estancia de datos anteriores conserva la sigla general (RB) para no cambiar la numeración
+  const ks = kmls.map((k, i) => { const nombre = k.nombre || String(k.archivo || 'Estancia').replace(/\.km[lz]$/i, '').replace(/[_-]+/g, ' ').trim(); return { ...k, nombre, sigla: k.sigla || (i === 0 && st.estancia?.sigla) || siglaDe(nombre) }; });
+  const lots = (st.lots || []).map(l => { const kml = l.kml || (ks.find(k => (k.lotes || []).includes(l.num))?.id ?? null); const x = { ...l, kml }; return { ...x, id: lotIdOf(x) }; });
+  const byId = new Set(lots.map(l => l.id));
+  const silos = (st.silos || []).map(s => (s.lot && byId.has(s.lot) ? s : { ...s, lot: (lots.find(l => l.num === s.lote) || {}).id || null }));
+  return { ...st, lots, silos, georef: st.georef ? { ...st.georef, ...(ks.length ? { kmls: ks } : {}) } : st.georef };
+}
+export const siloLot = (s, lots) => lots.find(l => l.id === s.lot) || lots.find(l => l.num === s.lote) || null;
+export function siglaOf(lot, state) {
+  const k = lot?.kml && (state.georef?.kmls || []).find(x => x.id === lot.kml);
+  return k?.sigla || state.estancia?.sigla || 'RB';
+}
+export function estanciaNombre(lot, state) {
+  const k = lot?.kml && (state.georef?.kmls || []).find(x => x.id === lot.kml);
+  return k?.nombre || '';
+}

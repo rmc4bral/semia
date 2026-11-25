@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Logo, Icon, Button, Field, TextInput, Segmented, Select, ToastProvider, useToast, fmtNum } from './ui.jsx';
 import { detectMode, createStore, resolvePhoto } from './store.js';
 import { fmtFecha, parseFecha, readMapFile, defaultCorners } from './maplayers.js';
-import { buildGeo, locateLot, controlPoints, metersBetween, pointInPoly, isSiloLot } from './geo.js';
+import { buildGeo, locateLot, controlPoints, metersBetween, pointInPoly, isSiloLot, normalizeState, siloLot, lotName } from './geo.js';
 import { exportKml, estancias, estanciaFilter } from './kml.js';
 import { GpsCapture } from './capture.jsx';
 import { UpdateButton } from './update.jsx';
@@ -108,8 +108,8 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
   const effEst = estList.some(e => e.id === estId) ? estId : 'all';
   const inEst = useMemo(() => estanciaFilter(state, effEst), [state.georef, effEst]); // eslint-disable-line
   const lots = state.lots;
-  const shownState = useMemo(() => (effEst === 'all' ? state : { ...state, lots: state.lots.filter(inEst), silos: state.silos.filter(s => inEst({ num: s.lote })) }), [state, effEst, inEst]);
-  const estOpts = [{ value: 'all', label: 'Todas las estancias', meta: `${state.lots.length} lotes` }, ...estList.map(e => ({ value: e.id, label: e.nombre, meta: `${e.n} lotes` }))];
+  const shownState = useMemo(() => (effEst === 'all' ? state : { ...state, lots: state.lots.filter(inEst), silos: state.silos.filter(s => inEst(siloLot(s, state.lots))) }), [state, effEst, inEst]);
+  const estOpts = [{ value: 'all', label: 'Todas las estancias', meta: `${state.lots.length} lotes` }, ...estList.map(e => ({ value: e.id, label: e.nombre, meta: `${e.sigla} · ${e.n} lotes` }))];
   const maps = state.maps || [];
   useEffect(() => {
     let on = true;
@@ -180,7 +180,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
   function draftFromPoint(pt, extra) {
     const loc = locateLot(pt, lots.filter(isSiloLot));
     const map = pt.map(v => Math.round(v * 100) / 100);
-    return { ...extra, lote: loc.lot.num, map, map2: null, t: null, ang: 0, latlng: geo ? geo.toLatLng(map).map(v => +v.toFixed(7)) : null, latlng2: null, largo: null, gps2: null, fuera: !loc.inside };
+    return { ...extra, lote: loc.lot.num, lot: loc.lot.id, map, map2: null, t: null, ang: 0, latlng: geo ? geo.toLatLng(map).map(v => +v.toFixed(7)) : null, latlng2: null, largo: null, gps2: null, fuera: !loc.inside };
   }
   function onAdd(form = null) {
     setSelSilo(null); setDraft(null); setShape(null); setMapEdit(null); setMoving(null); setPick(null);
@@ -202,7 +202,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
     const form = cap?.form || {};
     setCap(null);
     setDraft({
-      ...form, origen: 'gps', lote: lot.num, map: mA, map2: mB, t: null, ang: mB ? Math.atan2(mB[1] - mA[1], mB[0] - mA[0]) : 0,
+      ...form, origen: 'gps', lote: lot.num, lot: lot.id, map: mA, map2: mB, t: null, ang: mB ? Math.atan2(mB[1] - mA[1], mB[0] - mA[0]) : 0,
       latlng: [a.lat, a.lng], latlng2: b ? [b.lat, b.lng] : null, largo: b ? Math.round(metersBetween([a.lat, a.lng], [b.lat, b.lng]) * 10) / 10 : null,
       gps: a, gps2: b, fuera: !inside,
     });
@@ -236,7 +236,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
       const mid = moving.map2 ? [(moving.map[0] + moving.map2[0]) / 2, (moving.map[1] + moving.map2[1]) / 2] : moving.map;
       const inLot = lots.find(l => pointInPoly(mid, l.poly));
       upd = { ...s, lote: s.lote, map: r(moving.map), map2: r(moving.map2), t: null, latlng: ll(moving.map) || s.latlng, latlng2: moving.map2 ? ll(moving.map2) : null };
-      if (inLot && inLot.num !== s.lote) toast(`El silo quedó dentro del lote ${inLot.num}; cambiá el lote desde su ficha si corresponde`, 'info', 5000);
+      if (inLot && inLot.id !== s.lot) toast(`El silo quedó dentro de ${lotName(inLot.num)}; cambiá el lote desde su ficha si corresponde`, 'info', 5000);
     } else {
       upd = { ...s, map: r(moving.map), t: Math.round(moving.t * 100) / 100, ang: Math.round(moving.ang * 1e4) / 1e4, latlng: ll(moving.map) || s.latlng };
     }
@@ -250,7 +250,8 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
     if (!geo) { toast('Primero cargá al menos 4 puntos de control en Ajustes', 'error'); setTab('ajustes'); return; }
     setLotEdit(null); setDraft(null); setSelSilo(null); setMoving(null); setPick(null);
     setTab('mapa'); setSelLot(num);
-    setShape({ lot: num, geom: cloneGeom(state), hist: [], sel: null, locked: controlPoints(state.georef).filter(p => p.lote === num).map(p => p.map) });
+    const L0 = lots.find(l => l.id === num);
+    setShape({ lot: num, num: L0?.num, geom: cloneGeom(state), hist: [], sel: null, locked: controlPoints(state.georef).filter(p => p.lote === L0?.num).map(p => p.map) });
   }
   const pushGeom = (g, extra = {}) => setShape(sh => ({ ...sh, geom: g, hist: [...sh.hist.slice(-40), sh.geom], ...extra }));
   function onVertexMove(from, to) {
@@ -264,7 +265,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
     pushGeom(r.geom, { sel: null });
   }
   function onRestoreShape() {
-    const lot = lots.find(l => l.num === shape.lot);
+    const lot = lots.find(l => l.id === shape.lot);
     if (!lot.poly0) return toast('Este lote conserva su forma original', 'info');
     pushGeom(restoreLot(shape.geom, lot), { sel: null });
   }
@@ -301,13 +302,13 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
     { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'mapas', label: 'Mapas', icon: 'layers' }, { k: 'ajustes', label: 'Ajustes', icon: 'gear', desk: true },
   ];
   function goTab(k) { setTab(k); setPick(null); if (k !== 'mapa') { setShape(null); setMapEdit(null); setCap(null); } }
-  const lot = lots.find(l => l.num === selLot);
+  const lot = lots.find(l => l.id === selLot);
   const gpsLabel = gpsErr ? gpsErr : fix ? `GPS ±${fmtNum(fix.acc)} m` : 'Buscando GPS…';
 
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand"><Logo size={32} /><div className="brand-txt"><b>SemIA</b><span>{state.estancia.nombre}</span></div></div>
+        <div className="brand"><Logo size={32} /><div className="brand-txt"><b>SemIA</b><span>{effEst !== 'all' ? estList.find(e => e.id === effEst)?.nombre : state.estancia.nombre}</span></div></div>
         <div className="top-act">
           <span className={`gps-chip ${fix && !gpsErr ? (fix.acc <= 5 ? 'is-good' : fix.acc <= 15 ? 'is-mid' : 'is-bad') : 'is-off'}`} title={gpsLabel}><Icon name="gps" size={15} /><span>{gpsLabel}</span></span>
           <button type="button" className="round-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Cambiar tema"><Icon name={theme === 'dark' ? 'sun' : 'moon'} size={18} /></button>
@@ -354,7 +355,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
                   capture={cap?.a ? { a: [cap.a.lat, cap.a.lng] } : null} editing={shape} overlays={mapEdit ? [{ id: mapEdit.id, url: mapUrls[mapEdit.id], corners: mapEdit.corners }] : overlays} overlayOpacity={mapOpacity} mapEdit={mapEdit} onMapCorners={cs => setMapEdit(me_ => ({ ...me_, corners: cs }))} onVertexMove={onVertexMove} onInsertVertex={onInsertVertex} onSelectVertex={pt => setShape(sh => ({ ...sh, sel: pt }))} />
                 {shape && (
                   <div className="map-banner edit-bar">
-                    <div className="edit-bar-txt"><Icon name="edit" size={18} /><span><b>Ajustando lote {shape.lot}</b> · arrastrá los vértices; <b>+</b> agrega uno. Cada lote se ajusta por separado: los vecinos no se mueven.{shape.locked.length ? ' Los puntos GPS quedan fijos.' : ''}</span></div>
+                    <div className="edit-bar-txt"><Icon name="edit" size={18} /><span><b>Ajustando {lotName(shape.num)}</b> · arrastrá los vértices; <b>+</b> agrega uno. Cada lote se ajusta por separado: los vecinos no se mueven.{shape.locked.length ? ' Los puntos GPS quedan fijos.' : ''}</span></div>
                     <div className="edit-bar-act">
                       <Button size="sm" variant="ghost" icon="rotl" disabled={!shape.hist.length} onClick={() => setShape(sh => ({ ...sh, geom: sh.hist[sh.hist.length - 1], hist: sh.hist.slice(0, -1), sel: null }))}>Deshacer</Button>
                       <Button size="sm" variant="ghost" icon="trash" disabled={!shape.sel} onClick={onRemoveVertex}>Quitar vértice</Button>
@@ -383,7 +384,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
                 {cap && <GpsCapture fix={fix} gpsErr={gpsErr} onCancel={() => setCap(null)} onDone={finishCap} onProgress={p => setCap(c => (c ? { ...c, a: p.a } : c))} />}
               </div>
               <aside className="side-panel">
-                {lot ? <LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onShape={isAdmin ? startShape : null} onSelectSilo={id => setSelSilo(id)} /> : <RecentPanel state={shownState} onSelectSilo={id => { const s = state.silos.find(x => x.id === id); if (s) { setSelLot(s.lote); setSelSilo(id); } }} />}
+                {lot ? <LotPanel lot={lot} state={state} geo={geo} onEdit={setLotEdit} onShape={isAdmin ? startShape : null} onSelectSilo={id => setSelSilo(id)} /> : <RecentPanel state={shownState} onSelectSilo={id => { const s = state.silos.find(x => x.id === id); if (s) { setSelLot(s.lot); setSelSilo(id); } }} />}
               </aside>
             </div>
           </div>
@@ -398,12 +399,12 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme }) {
       </main>
 
       {draft && <SiloModal draft={draft} state={state} me={me} geo={geo} store={store} onClose={() => setDraft(null)}
-        onSaved={(st, id) => { setState(st); setDraft(null); setSelSilo(id); if (id) { const s = st.silos.find(x => x.id === id); if (s) setSelLot(s.lote); } }}
+        onSaved={(st, id) => { setState(st); setDraft(null); setSelSilo(id); if (id) { const s = normalizeState(st).silos.find(x => x.id === id); if (s) setSelLot(s.lot); } }}
         onRelocate={form => { setDraft(null); setTab('mapa'); setPick({ purpose: 'relocate', form: { kg: form.kg, grano: form.grano, obs: form.obs, fotoData: form.fotoData } }); }}
         onRemeasure={form => onAdd({ kg: form.kg, grano: form.grano, obs: form.obs, fotoData: form.fotoData })}
         onStartMove={startMove} />}
       {mapEditMeta && maps.find(m => m.id === mapEditMeta) && <EditMapModal map={maps.find(m => m.id === mapEditMeta)} me={me} store={store} onClose={() => setMapEditMeta(null)} onSaved={st => { setState(st); setMapEditMeta(null); }} />}
-      {lotEdit != null && lots.find(l => l.num === lotEdit) && <LotModal lot={lots.find(l => l.num === lotEdit)} state={state} me={me} geo={geo} store={store} onClose={() => setLotEdit(null)} onShape={startShape}
+      {lotEdit != null && lots.find(l => l.id === lotEdit) && <LotModal lot={lots.find(l => l.id === lotEdit)} state={state} me={me} geo={geo} store={store} onClose={() => setLotEdit(null)} onShape={startShape}
         onSaved={(st, num) => { setState(st); setLotEdit(null); setSelLot(num); }} />}
     </div>
   );
@@ -418,14 +419,14 @@ function App() {
     (async () => {
       const mode = await detectMode(); const store = createStore(mode);
       const s = await store.session();
-      setBoot({ phase: 'ready', store, me: s?.me || null, state: s?.state || null });
+      setBoot({ phase: 'ready', store, me: s?.me || null, state: normalizeState(s?.state || null) });
     })();
   }, []);
   if (boot.phase === 'loading') return <div className="splash"><Logo size={56} /><span className="muted">Cargando SemIA…</span></div>;
   const { store } = boot;
-  if (!boot.me) return <Login store={store} mode={store.mode} onLogged={({ me, state }) => setBoot(b => ({ ...b, me, state }))} />;
+  if (!boot.me) return <Login store={store} mode={store.mode} onLogged={({ me, state }) => setBoot(b => ({ ...b, me, state: normalizeState(state) }))} />;
   return <Shell store={store} me={boot.me} state={boot.state} theme={theme} setTheme={setTheme}
-    setState={st => setBoot(b => ({ ...b, state: st }))}
+    setState={st => setBoot(b => ({ ...b, state: normalizeState(st) }))}
     onLogout={async () => { await store.logout(); setBoot(b => ({ ...b, me: null, state: null })); }} />;
 }
 

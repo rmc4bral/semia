@@ -1,4 +1,6 @@
-# SemIA · Registro de silobolsas
+# acopia · Registro de silobolsas
+
+> Antes se llamaba SemIA. Por ahora sigue en este repositorio (`rmc4bral/semia`); la migración a uno propio queda para más adelante.
 
 App web móvil (React + HTML5 + CSS + PHP) para registrar silobolsas en la **Est. Rincón de Baguales**: los lotes se cargan desde un **KML** con sus límites reales y cada bolsa se ubica con el **GPS del celular** marcando su cabecera y su cola.
 
@@ -7,7 +9,7 @@ Tema: negro `#000000`, lima `#CCFF00`, gris `#999999` y claro `#F2F2F2`; modo os
 ## Estructura
 
 ```
-SemIA/
+acopia/
 ├─ public_html/          ← ESTO es lo que se sube a Hostinger
 │  ├─ index.html         página única
 │  ├─ script.js          app React compilada (no editar a mano: se genera desde src/)

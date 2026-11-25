@@ -1,6 +1,6 @@
 <?php
 /**
- * SemIA · API de registro de silobolsas
+ * acopia · API de registro de silobolsas
  * PHP 7.4+ · almacenamiento en data.json con bloqueo de archivo
  */
 declare(strict_types=1);

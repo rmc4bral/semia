@@ -1,4 +1,4 @@
-// SemIA · mapas propios: capa Leaflet con deformación proyectiva por 4 esquinas y lectura de archivos
+// acopia · mapas propios: capa Leaflet con deformación proyectiva por 4 esquinas y lectura de archivos
 import L from 'leaflet';
 import { homography } from './geo.js';
 

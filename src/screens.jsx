@@ -301,7 +301,7 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type })); a.download = name;
     document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
-  const exportJson = () => { const { users, ...rest } = state; download(`semia-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(rest, null, 1), 'application/json'); };
+  const exportJson = () => { const { users, ...rest } = state; download(`acopia-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(rest, null, 1), 'application/json'); };
   async function importJson(e) {
     const file = e.target.files?.[0]; e.target.value = ''; if (!file) return;
     try { const data = JSON.parse(await file.text()); await run(() => store.importData(data, me), 'Datos importados'); } catch { toast('El archivo no es un JSON válido', 'error'); }

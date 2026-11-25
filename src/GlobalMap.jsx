@@ -1,4 +1,4 @@
-// SemIA · mapa global: todos los mapas cargados sobre el satélite, con su contorno y los lotes
+// acopia · mapa global: todos los mapas cargados sobre el satélite, con su contorno y los lotes
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import { WarpLayer } from './maplayers.js';

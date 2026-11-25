@@ -1,4 +1,4 @@
-// SemIA · edición manual de la forma de los lotes
+// acopia · edición manual de la forma de los lotes
 // Cada lote se ajusta por separado (hay caminos y cortinas entre lotes): no se mueven los vecinos.
 import { dist, snapToBorder, poleLabel, lotIdOf } from './geo.js';
 

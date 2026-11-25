@@ -1,4 +1,4 @@
-// SemIA · lector de GeoTIFF (se carga solo cuando se sube un mapa: tiff.js)
+// acopia · lector de GeoTIFF (se carga solo cuando se sube un mapa: tiff.js)
 import { fromBlob } from 'geotiff';
 import { toLatLng, crsName } from './proj.js';
 

@@ -1,4 +1,4 @@
-// SemIA · importar lotes desde KML / KMZ (vista previa, numeración y confirmación)
+// acopia · importar lotes desde KML / KMZ (vista previa, numeración y confirmación)
 import React, { useMemo, useRef, useState } from 'react';
 import { Button, Field, TextInput, Segmented, Icon, useToast, fmtNum, fmtDate } from './ui.jsx';
 import { readKmlFile, parseKml, buildKmlImport, buildKmlRemove, buildKmlRename, kmlList } from './kml.js';

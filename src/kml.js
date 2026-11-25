@@ -1,4 +1,4 @@
-// SemIA · lotes desde KML / KMZ (Google Earth, QGIS, Pix4Dfields…)
+// acopia · lotes desde KML / KMZ (Google Earth, QGIS, Pix4Dfields…)
 // Los lotes quedan en coordenadas reales: el mapa usa una proyección local exacta
 // (x → este, y → sur) escalada para que el campo mida ~900 unidades.
 import { signedArea, pointInPoly, poleLabel, snapToBorder, kmlGeo, parseLotCode, lotKey, sortLots, isSiloLot, normalizeState, siglaDe } from './geo.js';
@@ -300,7 +300,7 @@ export function exportKml(state0, geo) {
     return `<Placemark><name>${xesc(s.id)}</name><description>${xesc(`${s.kg ?? ''} kg ${s.grano || ''}`.trim())}</description><styleUrl>#silo</styleUrl><ExtendedData>${data}</ExtendedData>${geom}</Placemark>`;
   }).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>SemIA · ${xesc(state.estancia?.nombre)}</name>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>acopia · ${xesc(state.estancia?.nombre)}</name>
 <Style id="lote"><LineStyle><color>ff00ffcc</color><width>2</width></LineStyle><PolyStyle><color>2200ffcc</color></PolyStyle></Style>
 <Style id="silo"><LineStyle><color>ffffffff</color><width>6</width></LineStyle><IconStyle><color>ff00ffcc</color></IconStyle></Style>
 <Folder><name>Lotes</name>

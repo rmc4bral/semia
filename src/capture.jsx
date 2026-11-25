@@ -1,4 +1,4 @@
-// SemIA · ubicación de silobolsa por GPS: cabecera (A) y cola (B) de la bolsa
+// acopia · ubicación de silobolsa por GPS: cabecera (A) y cola (B) de la bolsa
 import React, { useEffect, useRef, useState } from 'react';
 import { Icon, Button, fmtNum } from './ui.jsx';
 import { metersBetween, pointInPoly, snapToBorder, locateLot } from './geo.js';

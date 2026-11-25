@@ -1,4 +1,4 @@
-# SemIA · prueba y publica en Hostinger en cada push a main
+# acopia · prueba y publica en Hostinger en cada push a main
 name: Probar y publicar
 
 on:

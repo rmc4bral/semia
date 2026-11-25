@@ -662,7 +662,7 @@ svg.leaflet-image-layer.leaflet-interactive path {
 	}
 
 /* ==========================================================
-   SemIA · estilos (app web móvil)
+   acopia · estilos (app web móvil)
    Paleta: #CCFF00 (lima) · #000000 (negro) · #999999 (gris) · #F2F2F2 (claro)
    Formas: tarjetas 22px · controles 14px · botones y chips en píldora
    ========================================================== */
@@ -862,7 +862,7 @@ p { margin: 0; }
 .topbar { grid-area: top; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: var(--safe-t) 16px 0; background: var(--bg); }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand-txt { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
-.brand-txt b { font-size: 18px; letter-spacing: -0.02em; }
+.brand-txt b { font-size: 20px; font-weight: 800; letter-spacing: -0.05em; line-height: 1; }
 .brand-txt span { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top-act { display: flex; align-items: center; gap: 8px; }
 .logo { flex: none; }
@@ -1267,7 +1267,7 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
 :root[data-theme='light'] .login-art path { stroke: #000; stroke-opacity: .08; }
 .login-card { position: relative; width: min(390px, 100%); display: flex; flex-direction: column; gap: 16px; padding: 28px 22px; border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow); }
 .login-brand { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
-.login-brand h1 { font-size: 30px; letter-spacing: -0.04em; }
+.login-brand h1 { font-size: 34px; font-weight: 800; letter-spacing: -0.06em; }
 .splash { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background: var(--bg); }
 
 /* ---------- Mapas: KML y subida con barra de proceso ---------- */
@@ -1366,7 +1366,7 @@ path.glob-foot.is-sel { stroke: #fff; }
   .nav { flex-direction: column; align-items: stretch; gap: 4px; padding: 20px 14px 18px; border-top: 0; border-right: 1px solid var(--line); }
   .nav-brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 22px; }
   .nav-brand div { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
-  .nav-brand b { font-size: 18px; letter-spacing: -0.02em; }
+  .nav-brand b { font-size: 20px; font-weight: 800; letter-spacing: -0.05em; }
   .nav-brand span { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .nav-add { order: -1; width: auto; height: 50px; margin: 0 0 14px; padding: 0 18px; border-radius: var(--pill); display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 14px; box-shadow: none; border: 0; }
   .nav-add .ic { width: 22px; height: 22px; }

@@ -1,4 +1,4 @@
-// SemIA · conversión de coordenadas proyectadas a lat/lng (WGS84 / GRS80)
+// acopia · conversión de coordenadas proyectadas a lat/lng (WGS84 / GRS80)
 // Soporta EPSG:4326, 3857, UTM WGS84 (326xx norte / 327xx sur),
 // POSGAR 2007 y POSGAR 98 fajas 1–7 (EPSG 5343–5349 y 22171–22177).
 

@@ -1,4 +1,4 @@
-// SemIA · aviso flotante «Nueva versión · Actualizar»
+// acopia · aviso flotante «Nueva versión · Actualizar»
 import React, { useEffect, useState } from 'react';
 import { Icon } from './ui.jsx';
 

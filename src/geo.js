@@ -1,4 +1,4 @@
-// SemIA · utilidades geométricas (coordenadas del mapa: x → este, y → sur)
+// acopia · utilidades geométricas (coordenadas del mapa: x → este, y → sur)
 
 export const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 

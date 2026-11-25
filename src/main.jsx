@@ -73,7 +73,7 @@ function GeoGate({ onDone, required, onBack, est }) {
           ? 'Habilitala en el navegador: tocá el candado junto a la dirección → Permisos → Ubicación → Permitir. Después volvé a intentar.'
           : st === 'nogps' ? 'Podés usar la app marcando las silobolsas tocando el mapa.'
           : required ? 'Para registrar silobolsas hace falta el GPS del celular: te ubica sobre los lotes y marca la cabecera y la cola de cada bolsa.'
-          : 'SemIA usa el GPS del celular para ubicarte sobre los lotes y registrar la cabecera y la cola de cada silobolsa.'}</p>
+          : 'acopia usa el GPS del celular para ubicarte sobre los lotes y registrar la cabecera y la cola de cada silobolsa.'}</p>
       </div>
       <div className="geo-gate-act">
         {st !== 'nogps' && <Button variant="primary" className="block" icon="gps" onClick={pedir} disabled={busy}>{busy ? 'Buscando señal…' : st === 'denied' ? 'Volver a intentar' : 'Permitir ubicación'}</Button>}
@@ -119,7 +119,7 @@ function Login({ store, onLogged, mode }) {
         {Array.from({ length: 9 }, (_, i) => <path key={i} d={`M-20 ${60 + i * 38} Q 200 ${20 + i * 38} 420 ${80 + i * 38}`} />)}
       </svg></div>
       <form className="login-card" onSubmit={submit}>
-        <div className="login-brand"><Logo size={48} /><div><h1>SemIA</h1><p className="muted">Registro de silobolsas</p></div></div>
+        <div className="login-brand"><Logo size={48} /><div><h1>acopia</h1><p className="muted">Registro de silobolsas</p></div></div>
         <Field label="Usuario"><TextInput value={u} onChange={setU} autoCapitalize="none" autoComplete="username" placeholder="usuario" /></Field>
         <Field label="Contraseña">
           <div className="input-ic right">
@@ -360,7 +360,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
   }
   function exportKmlFile() {
     if (!geo && !state.silos.some(s => s.latlng)) return toast('Los lotes no tienen coordenadas: cargá un KML o los puntos de control', 'error');
-    download(exportKml(state, geo), `semia-${today()}.kml`, 'application/vnd.google-earth.kml+xml');
+    download(exportKml(state, geo), `acopia-${today()}.kml`, 'application/vnd.google-earth.kml+xml');
   }
 
   // El supervisor solo ve Mapa, Silos, + y Lotes (y su cuenta para cambiar de estancia o salir)
@@ -378,7 +378,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand"><Logo size={32} /><div className="brand-txt"><b>SemIA</b><span>{effEst !== 'all' ? estList.find(e => e.id === effEst)?.nombre : state.estancia.nombre}</span></div></div>
+        <div className="brand"><Logo size={32} /><div className="brand-txt"><b>acopia</b><span>{effEst !== 'all' ? estList.find(e => e.id === effEst)?.nombre : state.estancia.nombre}</span></div></div>
         <div className="top-act">
           <span className={`gps-chip ${fix && !gpsErr ? (fix.acc <= 5 ? 'is-good' : fix.acc <= 15 ? 'is-mid' : 'is-bad') : 'is-off'}`} title={gpsLabel}><Icon name="gps" size={15} /><span>{gpsLabel}</span></span>
           <button type="button" className="round-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Cambiar tema"><Icon name={theme === 'dark' ? 'sun' : 'moon'} size={18} /></button>
@@ -387,7 +387,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
       </header>
 
       <nav className="nav" aria-label="Secciones">
-        <div className="nav-brand"><Logo size={30} /><div><b>SemIA</b><span>{effEst !== 'all' ? estList.find(e => e.id === effEst)?.nombre : state.estancia.nombre}</span></div></div>
+        <div className="nav-brand"><Logo size={30} /><div><b>acopia</b><span>{effEst !== 'all' ? estList.find(e => e.id === effEst)?.nombre : state.estancia.nombre}</span></div></div>
         {tabs.map((t, i) => (
           <React.Fragment key={t.k}>
             {i === 2 && <button type="button" className="nav-add" onClick={() => onAdd()} aria-label="Nueva silobolsa"><i><Icon name="plus" size={30} strokeWidth="3" /></i><span>Nueva silobolsa</span></button>}
@@ -510,7 +510,7 @@ function App() {
       setBoot({ phase: 'ready', store, me: s?.me || null, state: normalizeState(s?.state || null) });
     })();
   }, []);
-  if (boot.phase === 'loading') return <div className="splash"><Logo size={56} /><span className="muted">Cargando SemIA…</span></div>;
+  if (boot.phase === 'loading') return <div className="splash"><Logo size={56} /><span className="muted">Cargando acopia…</span></div>;
   const { store } = boot;
   if (!boot.me) return <Login store={store} mode={store.mode} onLogged={({ me, state }) => setBoot(b => ({ ...b, me, state: normalizeState(state) }))} />;
   const logout = async () => { try { sessionStorage.removeItem('semia.estSup'); } catch { /* */ } setSupEst(null); await store.logout(); setBoot(b => ({ ...b, me: null, state: null })); };

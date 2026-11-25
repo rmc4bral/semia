@@ -1,4 +1,4 @@
-// SemIA · capa de datos: servidor (api.php) o modo local (localStorage + IndexedDB)
+// acopia · capa de datos: servidor (api.php) o modo local (localStorage + IndexedDB)
 import seed from './seed.json';
 import { lotIdOf } from './geo.js';
 import { sha256 } from './sha256.js';

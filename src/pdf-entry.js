@@ -1,4 +1,4 @@
-// SemIA · lector de PDF (se carga solo al subir un mapa en PDF: pdf.js + pdf.worker.js)
+// acopia · lector de PDF (se carga solo al subir un mapa en PDF: pdf.js + pdf.worker.js)
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.min.mjs';
 
 pdfjs.GlobalWorkerOptions.workerSrc = 'pdf.worker.js';

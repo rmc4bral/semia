@@ -5,9 +5,27 @@
  */
 declare(strict_types=1);
 
-const DATA_FILE   = __DIR__ . '/data.json';
+/*
+ * DATOS FUERA DE LA WEB: cada despliegue (Git de Hostinger) reemplaza la carpeta del sitio,
+ * así que la base, las fotos, los mapas y los respaldos viven en una carpeta hermana
+ * (…/acopia.app/acopia-datos/ junto a public_html/), que ningún despliegue toca ni es accesible por URL.
+ * Se puede fijar otra ruta con la variable de entorno ACOPIA_DATA.
+ */
+function dataDirPath(): string {
+  $env = getenv('ACOPIA_DATA');
+  if ($env) { $d = rtrim($env, '/'); if (!is_dir($d)) @mkdir($d, 0750, true); return $d; }
+  $out = dirname(__DIR__) . '/acopia-datos';
+  if ((is_dir($out) || @mkdir($out, 0750, true)) && is_writable($out)) return $out;
+  // último recurso (hosting sin permiso fuera de la web): adentro, protegido por .htaccess
+  $in = __DIR__ . '/datos';
+  if (!is_dir($in)) @mkdir($in, 0750, true);
+  return $in;
+}
+define('DATA_DIR', dataDirPath());
+const DATA_FILE   = DATA_DIR . '/data.json';
 const SEED_FILE   = __DIR__ . '/data.seed.json'; // plantilla inicial (versionada en git)
-const UPLOAD_DIR  = __DIR__ . '/uploads';
+const UPLOAD_DIR  = DATA_DIR . '/uploads';
+const BACKUP_DIR  = DATA_DIR . '/backups';
 const MAX_PHOTO   = 4 * 1024 * 1024; // 4 MB
 const MAX_BODY    = 40 * 1024 * 1024;
 const MAX_MAP     = 25 * 1024 * 1024; // imagen de mapa ya reducida en el navegador
@@ -16,6 +34,22 @@ header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('Cache-Control: no-store');
 header('Referrer-Policy: same-origin');
+
+// Migración: datos que hayan quedado dentro de la web (versiones anteriores) pasan a la carpeta de datos
+function moveTree(string $from, string $to): void {
+  if (!is_dir($from)) return;
+  if (!is_dir($to)) @mkdir($to, 0750, true);
+  foreach (scandir($from) ?: [] as $f) {
+    if ($f === '.' || $f === '..' || $f === '.htaccess') continue;
+    $a = "$from/$f"; $b = "$to/$f";
+    if (is_dir($a)) moveTree($a, $b); elseif (!file_exists($b)) @rename($a, $b);
+  }
+}
+if (DATA_DIR !== __DIR__ && file_exists(__DIR__ . '/data.json')) {
+  if (file_exists(DATA_FILE)) @copy(DATA_FILE, DATA_DIR . '/data.antes-de-migrar-' . gmdate('Ymd-His') . '.json');
+  @rename(__DIR__ . '/data.json', DATA_FILE);
+}
+if (DATA_DIR !== __DIR__) { moveTree(__DIR__ . '/uploads', UPLOAD_DIR); moveTree(__DIR__ . '/backups', BACKUP_DIR); }
 
 // Primera instalación: crear data.json desde la plantilla. Los despliegues nunca lo pisan.
 if (!file_exists(DATA_FILE)) {
@@ -48,11 +82,15 @@ function withData(callable $fn, bool $write = false) {
   if ($write) {
     $data['updatedAt'] = gmdate('c');
     $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-    // respaldo diario
-    $bk = __DIR__ . '/backups';
-    if (is_dir($bk) || @mkdir($bk, 0755)) {
+    // respaldo diario (se guardan los últimos 60 días)
+    $bk = BACKUP_DIR;
+    if (is_dir($bk) || @mkdir($bk, 0750, true)) {
       $f = $bk . '/data-' . gmdate('Y-m-d') . '.json';
-      if (!file_exists($f)) @file_put_contents($f, $raw);
+      if (!file_exists($f)) {
+        @file_put_contents($f, $raw);
+        $old = glob($bk . '/data-*.json') ?: []; sort($old);
+        foreach (array_slice($old, 0, max(0, count($old) - 60)) as $o) @unlink($o);
+      }
     }
     ftruncate($fh, 0); rewind($fh); fwrite($fh, $json); fflush($fh);
   }
@@ -117,6 +155,27 @@ if ($method === 'POST') checkCsrf();
 switch ($action) {
   case 'ping':
     out(['ok' => true, 'app' => 'semia', 'version' => 1]);
+
+  case 'file': {
+    // fotos y mapas: viven fuera de la web; se entregan solo con sesión iniciada
+    if (!me()) { http_response_code(401); exit; }
+    $p = (string)($_GET['p'] ?? '');
+    if (!preg_match('#^(maps/[a-z0-9]+|[A-Z0-9]+-[a-f0-9]{8})\.(jpg|png|webp)$#', $p, $m)) { http_response_code(404); exit; }
+    $f = UPLOAD_DIR . '/' . $p;
+    if (!is_file($f)) { http_response_code(404); exit; }
+    header('Content-Type: ' . ['jpg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp'][$m[2]]);
+    header('Cache-Control: private, max-age=31536000, immutable');
+    header('Content-Length: ' . filesize($f));
+    readfile($f); exit;
+  }
+
+  case 'health': {
+    // diagnóstico para el administrador: dónde están los datos y si están a salvo de los despliegues
+    $m = me(); if (!$m || $m['rol'] !== 'admin') fail('Solo administradores', 403);
+    $bks = glob(BACKUP_DIR . '/data-*.json') ?: [];
+    out(['ok' => true, 'fueraDeLaWeb' => DATA_DIR !== __DIR__ && strpos(DATA_DIR, __DIR__ . '/') !== 0,
+      'carpeta' => basename(DATA_DIR), 'respaldos' => count($bks), 'ultimoRespaldo' => $bks ? basename(max($bks)) : null]);
+  }
 
   case 'session':
     $m = me();
@@ -503,7 +562,7 @@ switch ($action) {
   case 'deleteMap': {
     requireAdmin(); $id = (string)(body()['id'] ?? '');
     $state = withData(function (&$d) use ($id) {
-      foreach (($d['maps'] ?? []) as $x) if ($x['id'] === $id && preg_match('#^uploads/maps/[a-z0-9]+\.(jpg|png|webp)$#', $x['src'])) @unlink(__DIR__ . '/' . $x['src']);
+      foreach (($d['maps'] ?? []) as $x) if ($x['id'] === $id && preg_match('#^uploads/maps/[a-z0-9]+\.(jpg|png|webp)$#', $x['src'])) @unlink(DATA_DIR . '/' . $x['src']);
       $d['maps'] = array_values(array_filter($d['maps'] ?? [], fn($x) => $x['id'] !== $id));
       return publicState($d);
     }, true);

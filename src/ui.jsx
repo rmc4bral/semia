@@ -41,6 +41,7 @@ const P = {
   shift: 'M12 4 4 12h4.5v7h7v-7H20Z',
   enter: 'M20 5v7a3 3 0 0 1-3 3H5m0 0 4-4m-4 4 4 4',
   mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm-7 9a7 7 0 0 0 14 0M12 19v2',
+  navi: 'M12 3 19 20 12 16 5 20Z',
   layers: 'm12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5',
 };
 export function Icon({ name, size = 20, className = '', ...rest }) {

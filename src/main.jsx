@@ -10,6 +10,7 @@ import { UpdateButton } from './update.jsx';
 import { cloneGeom, moveVertex, insertVertex, removeVertex, restoreLot, buildShapeChange, isLocked } from './shapes.js';
 import SatMap from './SatMap.jsx';
 import { SiloModal, LotModal, EditMapModal, SiloCard } from './modals.jsx';
+import { meters, bearing, dirName, nearestSilos, nearestOnSeg, siloLL, fmtDist, fmtWalk, trailLength, greeting } from './nav.js';
 import { Kpis, LotPanel, RecentPanel, SilosScreen, LotsScreen, SettingsScreen, MapsScreen } from './screens.jsx';
 
 const pref = {
@@ -24,7 +25,7 @@ function useGps(enabled) {
     if (!enabled) return;
     if (!('geolocation' in navigator)) { setErr('Este dispositivo no tiene GPS disponible'); return; }
     const id = navigator.geolocation.watchPosition(
-      p => { const f = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, ts: Date.now() }; lastLiveFix = f; setFix(f); setErr(null); },
+      p => { const f = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, ts: Date.now(), heading: Number.isFinite(p.coords.heading) ? p.coords.heading : null, speed: Number.isFinite(p.coords.speed) ? p.coords.speed : null }; lastLiveFix = f; setFix(f); setErr(null); },
       e => setErr(e.code === 1 ? 'Permiso de ubicación denegado' : 'Sin señal GPS'),
       { enableHighAccuracy: true, maximumAge: 4000, timeout: 25000 });
     return () => navigator.geolocation.clearWatch(id);
@@ -81,6 +82,46 @@ function GeoGate({ onDone, required, onBack, est }) {
           : <Button variant="ghost" className="block" onClick={() => { if (!required) { try { sessionStorage.setItem('semia.geoLater', '1'); } catch { /* */ } } onDone(false); }}>{st === 'nogps' ? 'Continuar' : 'Ahora no'}</Button>}
       </div>
     </div>
+  );
+}
+
+/* ---------- Navegación a pie (estilo Google Maps) ---------- */
+function NavHud({ d, onEnd, onCenter, onDest, onCard }) {
+  const dest = d.dest, arrived = dest && dest.d < 12;
+  const rel = dest ? (d.heading != null ? dest.b - d.heading : dest.b) : 0; // con rumbo: relativa a hacia dónde caminás
+  const walked = trailLength(d.trail || []);
+  return (
+    <>
+      <div className={`nav-top ${arrived ? 'is-arrived' : ''}`} role="status" aria-live="polite">
+        {dest ? (arrived ? <>
+          <span className="nav-arrow is-ok"><Icon name="check" size={26} /></span>
+          <div className="nav-top-txt"><b>Llegaste a {dest.id}</b><span>{dest.s.grano || 'Silobolsa'} · lote {dest.s.lote}</span></div>
+          <button type="button" className="nav-top-btn" onClick={() => onCard(dest.id)}>Ficha</button>
+        </> : <>
+          <span className="nav-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" style={{ transform: `rotate(${Math.round(rel)}deg)` }}><path d="M12 3 19 20 12 16 5 20Z" fill="currentColor" /></svg></span>
+          <div className="nav-top-txt"><b>{fmtDist(dest.d)}</b><span>hasta <b className="mono">{dest.id}</b> · {d.heading == null ? `${dirName(dest.b)} · ` : ''}{fmtWalk(dest.d)}</span></div>
+        </>) : (
+          <div className="nav-top-txt"><b>Navegación</b><span>{d.near.length ? 'Elegí a qué silobolsa ir' : 'No hay silobolsas cargadas cerca'}</span></div>
+        )}
+      </div>
+      <div className="nav-panel">
+        {d.near.length > 0 && <>
+          <span className="nav-sec">Silobolsas cercanas</span>
+          <div className="nav-near">
+            {d.near.map(n => (
+              <button type="button" key={n.id} className={`nav-near-row ${dest?.id === n.id ? 'is-dest' : ''}`} onClick={() => onDest(n.id)}>
+                <b className="mono">{n.id}</b><span>{n.s.grano || '—'} · lote {n.s.lote}</span><em>{fmtDist(n.d)}</em>
+              </button>
+            ))}
+          </div>
+        </>}
+        <div className="navi-foot">
+          <span className="nav-walk"><Icon name="navi" size={14} />Recorrido {fmtDist(walked)}</span>
+          {!d.follow && <Button size="sm" icon="gps" onClick={onCenter}>Centrar</Button>}
+          <Button size="sm" variant="primary" onClick={onEnd}>Terminar</Button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -155,6 +196,22 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
   const setEstId = v => { setEstIdRaw(v); setSelLot(null); setSelSilo(null); };
   const [mapJob, setMapJob] = useState(null), [mapEditMeta, setMapEditMeta] = useState(null), [mapEdit, setMapEdit] = useState(null);
   const { fix, err: gpsErr } = useGps(gpsOn);
+  // Navegación a pie (estilo Google Maps): destino, recorrido, rumbo y seguimiento de la cámara
+  const [nav, setNav] = useState(null); // { dest: id|null, trail: [[lat,lng]], heading, follow, t0 }
+  useEffect(() => {
+    if (!nav || !fix || fix.acc > 30) return;
+    const p = [fix.lat, fix.lng];
+    setNav(n => {
+      if (!n) return n;
+      const last = n.trail[n.trail.length - 1];
+      const moved = last ? meters(last, p) : Infinity;
+      let heading = n.heading;
+      if (fix.heading != null && (fix.speed || 0) > 0.6) heading = fix.heading;
+      else if (last && moved >= 3) heading = bearing(last, p);
+      return moved >= 3 ? { ...n, heading, trail: [...n.trail, p].slice(-2000) } : heading !== n.heading ? { ...n, heading } : n;
+    });
+  }, [fix?.ts]); // eslint-disable-line
+  const startNav = dest => { setCap(null); setPick(null); setMoving(null); setNav({ dest: dest || null, trail: fix ? [[fix.lat, fix.lng]] : [], heading: null, follow: true, t0: Date.now() }); setSelSilo(null); setTab('mapa'); };
   const geo = useMemo(() => buildGeo(state.georef), [state.georef]);
   const estList = useMemo(() => estancias(state), [state.georef, state.lots]); // eslint-disable-line
   const effEst = supEst && estList.some(e => e.id === supEst) ? supEst : estList.some(e => e.id === estId) ? estId : 'all';
@@ -240,9 +297,25 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
   // Lotes donde se pueden registrar silobolsas (los de la estancia en uso)
   const capLots = useMemo(() => lots.filter(l => isSiloLot(l) && inEst(l)), [lots, inEst]);
   const gpsOk = geo && 'geolocation' in navigator && gpsErr !== 'Permiso de ubicación denegado' && gpsOn;
+  // datos de navegación para el mapa (y separación con las bolsas vecinas al marcar)
+  const here = fix ? [fix.lat, fix.lng] : null;
+  const navData = useMemo(() => {
+    if (!here || !geo) return null;
+    const silosV = shownState.silos;
+    if (nav) {
+      const near = nearestSilos(here, silosV, geo, 3);
+      let dest = null;
+      const ds = nav.dest && state.silos.find(x => x.id === nav.dest), ll = ds && siloLL(ds, geo);
+      if (ll) { const at = nearestOnSeg(here, ll.a, ll.b); dest = { id: ds.id, at, d: meters(here, at), b: bearing(here, at), s: ds }; }
+      return { on: true, me: here, heading: nav.heading, trail: nav.trail, follow: nav.follow, near, dest };
+    }
+    if (cap?.lot) return { on: false, me: here, near: nearestSilos(here, silosV, geo, 2) };
+    return null;
+  }, [here?.[0], here?.[1], nav, cap?.lot, shownState, geo]); // eslint-disable-line
+
   // «+»: primero se elige el lote (el GPS puede caer entre dos), después se mide la bolsa
   function onAdd(form = null) {
-    setSelSilo(null); setDraft(null); setShape(null); setMapEdit(null); setMoving(null); setPick(null);
+    setSelSilo(null); setDraft(null); setShape(null); setMapEdit(null); setMoving(null); setPick(null); setNav(null);
     setTab('mapa');
     if (!geo) { toast(isAdmin ? 'Primero cargá el KML de los lotes en Mapas' : 'Todavía no hay lotes cargados: avisale al administrador', 'error', 5000); if (isAdmin) setTab('mapas'); return; }
     const keep = form?.lot && capLots.some(l => l.id === form.lot) ? form.lot : null;
@@ -405,6 +478,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
       <main className="main">
         {tab === 'mapa' && (
           <div className="dash">
+            {(() => { const g = greeting(me.nombre || me.user); return <p className="greet">{g.g}{g.first ? <>, <b>{g.first}</b></> : ''}</p>; })()}
             <Kpis state={shownState} />
             <div className="dash-body">
               <div className="card map-card">
@@ -421,7 +495,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
                     </div>
                   )}
                 </div>}
-                <SatMap data={shownState} silos={shownState.silos} geo={geo} fitKey={effEst} selectedLot={selLot} onSelectLot={setSelLot} selectedSilo={selSilo}
+                <SatMap nav={navData} onUserPan={() => setNav(n => (n && n.follow ? { ...n, follow: false } : n))} data={shownState} silos={shownState.silos} geo={geo} fitKey={effEst} selectedLot={selLot} onSelectLot={setSelLot} selectedSilo={selSilo}
                   onSelectSilo={id => { setSelSilo(id); }} pickMode={!!pick} onPick={onPick} gps={fix} onNeedGeoref={() => isAdmin && setTab('mapas')}
                   moving={moving} onMoveDraft={onMoveDraft}
                   capture={cap?.a ? { a: [cap.a.lat, cap.a.lng] } : null} editing={shape} overlays={mapEdit ? [{ id: mapEdit.id, url: mapUrls[mapEdit.id], corners: mapEdit.corners }] : overlays} overlayOpacity={mapOpacity} mapEdit={mapEdit} onMapCorners={cs => setMapEdit(me_ => ({ ...me_, corners: cs }))} onVertexMove={onVertexMove} onInsertVertex={onInsertVertex} onSelectVertex={pt => setShape(sh => ({ ...sh, sel: pt }))} />
@@ -447,13 +521,17 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
                     </div>
                   </div>
                 )}
+                {nav && navData?.on && <NavHud d={navData} onEnd={() => setNav(null)} onCenter={() => setNav(n => ({ ...n, follow: true }))} onDest={id => setNav(n => ({ ...n, dest: id }))} onCard={showCard} />}
+                {!nav && !cap && !pick && !moving && !shape && !mapEdit && geo && gpsOk && (
+                  <button type="button" className="nav-start" onClick={() => startNav(null)} aria-label="Navegar"><Icon name="navi" size={18} />Navegar</button>
+                )}
                 {pick && <div className="map-banner"><Icon name="pin" size={18} /><span>{pick.lot ? `Tocá el lugar de la bolsa en el ${lotName(lots.find(l => l.id === pick.lot)?.num)}` : 'Tocá el lugar donde está el silo'}</span><Button size="sm" onClick={() => setPick(null)}>Cancelar</Button></div>}
                 {moving && <div className="map-banner"><Icon name="move" size={18} /><span>Arrastrá <b className="mono">{moving.id}</b> desde el punto central</span><Button size="sm" onClick={() => setMoving(null)}>Cancelar</Button><Button size="sm" variant="primary" onClick={saveMove}>Guardar</Button></div>}
                 {selSilo && !cap && !moving && !shape && !mapEdit && (() => { const s = state.silos.find(x => x.id === selSilo); return s ? (
                   <div className="lot-bar silo-bar"><div className="lot-bar-main"><b className="mono">{s.id}</b><span className="muted">{s.kg != null && s.kg !== '' ? `${fmtNum(s.kg)} kg` : 'kg sin cargar'}{s.grano ? ` · ${s.grano}` : ''} · lote {s.lote}{s.largo ? ` · ${fmtNum(s.largo)} m` : ''}</span></div>
-                    {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => startMove(s.id)}>Mover</Button>}<Button size="sm" variant="primary" onClick={() => showCard(s.id)}>Ficha</Button></div>) : null; })()}
+                    {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => startMove(s.id)}>Mover</Button>}{gpsOk && <Button size="sm" icon="navi" onClick={() => startNav(s.id)}>Ir</Button>}<Button size="sm" variant="primary" onClick={() => showCard(s.id)}>Ficha</Button></div>) : null; })()}
                 {lot && !cap && !moving && !pick && !shape && !mapEdit && !selSilo && <div className="only-mobile"><LotPanel lot={lot} state={state} geo={geo} onEdit={isAdmin ? setLotEdit : null} onShape={isAdmin && geo ? startShape : null} compact /></div>}
-                {cap && <GpsCapture fix={fix} gpsErr={gpsErr} lots={capLots} geo={geo} lotId={cap.lot} noGps={!gpsOk}
+                {cap && <GpsCapture near={navData && !navData.on ? navData.near : []} fix={fix} gpsErr={gpsErr} lots={capLots} geo={geo} lotId={cap.lot} noGps={!gpsOk}
                   onLot={id => { setCap(c => (c ? { ...c, lot: id, a: null } : c)); setSelLot(id); }}
                   onPickMap={id => { const form = cap.form || {}; setCap(null); setPick({ purpose: 'new', form, lot: id }); }}
                   onCancel={() => setCap(null)} onDone={finishCap} onProgress={p => setCap(c => (c ? { ...c, a: p.a } : c))} />}

@@ -610,6 +610,44 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
 .card-obs { font-weight: 500; white-space: pre-wrap; line-height: 1.45; }
 .card-photo { display: block; width: 100%; max-height: 280px; object-fit: cover; border-radius: var(--r); margin-top: 14px; }
 
+/* ---------- Saludo ---------- */
+.greet { margin: 2px 0 -4px; padding-left: 4px; font-size: 17px; font-weight: 500; letter-spacing: -0.02em; color: var(--muted); flex: none; }
+.greet b { color: var(--text); font-weight: 600; }
+
+/* ---------- Navegación a pie (estilo Google Maps) ---------- */
+.nav-start { position: absolute; right: 10px; top: 104px; z-index: 500; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border: 0; border-radius: var(--r); background: var(--bg); color: var(--text); font: 600 13px var(--font); box-shadow: var(--shadow); cursor: pointer; }
+.nav-start .ic { color: var(--accent-fg); }
+.nav-top { position: absolute; left: 10px; right: 10px; top: 10px; z-index: 600; display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow); }
+.nav-top.is-arrived { background: var(--bg); color: var(--text); border: 1px solid var(--accent-fg); }
+.nav-arrow { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: var(--r); background: rgba(0, 0, 0, .12); }
+.nav-arrow svg { transition: transform .4s ease; }
+.nav-arrow.is-ok { background: var(--accent); color: var(--accent-ink); }
+.nav-top-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.nav-top-txt > b { font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.15; font-feature-settings: 'tnum'; }
+.nav-top-txt > span { font-size: 13px; font-weight: 500; opacity: .8; }
+.nav-top-btn { height: 36px; padding: 0 12px; border: 1px solid currentColor; border-radius: var(--r); background: transparent; color: inherit; font: 600 13px var(--font); cursor: pointer; }
+.nav-panel { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 600; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow); }
+.nav-sec { font-size: 12px; font-weight: 600; color: var(--muted); }
+.nav-near { display: flex; flex-direction: column; }
+.nav-near-row { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 10px; padding: 8px 2px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.nav-near-row:last-child { border-bottom: 0; }
+.nav-near-row span { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-near-row em { font-style: normal; font-weight: 600; font-feature-settings: 'tnum'; }
+.nav-near-row.is-dest b, .nav-near-row.is-dest em { color: var(--accent-fg); }
+.navi-foot { display: flex; align-items: center; gap: 8px; padding-top: 2px; }
+.nav-walk { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; font-size: 12px; font-weight: 600; color: var(--muted); font-feature-settings: 'tnum'; }
+.nav-me { background: none; border: 0; }
+.nav-me svg { display: block; transition: transform .4s ease; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .5)); }
+.nav-me svg path { fill: var(--accent); stroke: #000; stroke-width: 2; stroke-linejoin: round; }
+.nav-me-dot { display: block; width: 18px; height: 18px; margin: 11px; border-radius: 50%; background: var(--accent); border: 3px solid #000; box-shadow: 0 0 0 6px rgba(204, 255, 0, .25); }
+.sat-trail { stroke: var(--accent); stroke-opacity: .55; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.sat-route { stroke: var(--accent); fill: none; stroke-linecap: round; }
+.sat-dest { stroke: var(--accent); fill: #000; fill-opacity: .6; }
+.sat-gap { stroke: #fff; stroke-opacity: .85; fill: none; }
+.leaflet-tooltip.sat-gap-lbl { padding: 2px 6px; border: 0; border-radius: 6px; background: rgba(0, 0, 0, .78); color: #fff; font: 600 11px var(--font); box-shadow: none; }
+.leaflet-tooltip.sat-gap-lbl::before { display: none; }
+.satmap.is-nav .leaflet-control-zoom { display: none; }
+
 /* ---------- Teclados propios de Acopia ---------- */
 .num-field { position: relative; }
 .num-input { padding-right: 52px; font-feature-settings: 'tnum'; font-weight: 600; }

@@ -14,11 +14,12 @@ function updClip(m, pane, polys) {
   pane.style.display = ''; pane.style.clipPath = cp; pane.style.webkitClipPath = cp;
 }
 
+const fmtD = d => (d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1).replace('.', ',')} km`);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, selectedSilo, onSelectSilo, pickMode, onPick, gps, onNeedGeoref, editing, onVertexMove, onInsertVertex, onSelectVertex, overlays = [], overlayOpacity = 1, mapEdit, onMapCorners, capture, moving, onMoveDraft, fitKey = '' }) {
+export default function SatMap({ nav, onUserPan, data, silos, geo, selectedLot, onSelectLot, selectedSilo, onSelectSilo, pickMode, onPick, gps, onNeedGeoref, editing, onVertexMove, onInsertVertex, onSelectVertex, overlays = [], overlayOpacity = 1, mapEdit, onMapCorners, capture, moving, onMoveDraft, fitKey = '' }) {
   const el = useRef(null), map = useRef(null), layers = useRef({}), fitted = useRef(false), editFit = useRef(null), lastFit = useRef(null);
-  const cb = useRef({}); cb.current = { onSelectLot, onSelectSilo, onPick, pickMode, geo, selectedLot, editing, onVertexMove, onInsertVertex, onSelectVertex, onMapCorners, mapEdit, onMoveDraft };
+  const cb = useRef({}); cb.current = { onUserPan, onSelectLot, onSelectSilo, onPick, pickMode, geo, selectedLot, editing, onVertexMove, onInsertVertex, onSelectVertex, onMapCorners, mapEdit, onMoveDraft };
   const warp = useRef({});
   const colorEl = useRef(null), lotLL = useRef([]);
 
@@ -37,7 +38,9 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
     m.on('zoomend viewreset', upd);
     m.on('zoomstart', () => { colorPane.style.opacity = '0'; });
     m.on('zoomend', () => { colorPane.style.opacity = ''; });
-    layers.current = { cap: L.layerGroup().addTo(m), lots: L.layerGroup().addTo(m), silos: L.layerGroup().addTo(m), gps: L.layerGroup().addTo(m), edit: L.layerGroup().addTo(m), maps: L.layerGroup().addTo(m), mapEdit: L.layerGroup().addTo(m) };
+    layers.current = { cap: L.layerGroup().addTo(m), lots: L.layerGroup().addTo(m), silos: L.layerGroup().addTo(m), gps: L.layerGroup().addTo(m), nav: L.layerGroup().addTo(m), edit: L.layerGroup().addTo(m), maps: L.layerGroup().addTo(m), mapEdit: L.layerGroup().addTo(m) };
+    // si el usuario mueve el mapa a mano, la navegación deja de seguirlo (hasta tocar «Centrar»)
+    m.on('dragstart', () => cb.current.onUserPan?.());
     m.on('click', e => {
       const c = cb.current;
       if (c.editing || c.mapEdit) return;
@@ -194,8 +197,34 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
     if (!geo && !fitted.current) { map.current.setView([gps.lat, gps.lng], 15); fitted.current = true; }
   }, [gps, geo]);
 
+  // Navegación: recorrido, flecha de rumbo, ruta al destino y distancias a los silos cercanos
+  useEffect(() => {
+    const g = layers.current.nav; if (!g) return;
+    g.clearLayers();
+    if (!nav?.me) return;
+    const me = nav.me;
+    if (nav.trail?.length > 1) g.addLayer(L.polyline(nav.trail, { className: 'sat-trail', weight: 4, interactive: false }));
+    for (const n of nav.near || []) {
+      if (nav.dest && n.id === nav.dest.id) continue;
+      const ln = L.polyline([me, n.at], { className: 'sat-gap', weight: 1.5, dashArray: '4 5', interactive: false });
+      ln.bindTooltip(fmtD(n.d), { permanent: true, direction: 'center', className: 'sat-gap-lbl', interactive: false });
+      g.addLayer(ln);
+    }
+    if (nav.dest) {
+      g.addLayer(L.polyline([me, nav.dest.at], { className: 'sat-route', weight: 5, interactive: false }));
+      g.addLayer(L.circleMarker(nav.dest.at, { radius: 9, className: 'sat-dest', weight: 3, interactive: false }));
+    }
+    if (nav.on) {
+      const h = nav.heading;
+      const html = h == null ? '<span class="nav-me-dot"></span>'
+        : `<svg viewBox="0 0 40 40" width="40" height="40" style="transform:rotate(${Math.round(h)}deg)"><path d="M20 4 33 34 20 27 7 34Z"/></svg>`;
+      g.addLayer(L.marker(me, { icon: L.divIcon({ className: 'nav-me', html, iconSize: [40, 40], iconAnchor: [20, 20] }), interactive: false, keyboard: false, zIndexOffset: 1000 }));
+      if (nav.follow) { const m = map.current; m.setView(me, Math.max(m.getZoom(), 17), { animate: true }); }
+    }
+  }, [nav]); // eslint-disable-line
+
   return (
-    <div className={`satmap ${pickMode ? 'is-picking' : ''}`}>
+    <div className={`satmap ${pickMode ? 'is-picking' : ''} ${nav?.on ? 'is-nav' : ''}`}>
       <div ref={el} className="satmap-el" />
       {!geo && !editing && !mapEdit && !overlays.length && (
         <div className="sat-note">

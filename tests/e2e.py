@@ -322,6 +322,23 @@ with sync_playwright() as p:
     set_kg(page, '210000', 'kml'); page.click('.modal .pick:has-text("Maíz")'); page.click('.modal-foot .btn-primary'); page.wait_for_selector('.modal', state='detached')
     s_ = page.request.get(URL + '/api.php?action=state').json()['state']['silos'][0]
     check(mdist(s_['latlng2'], (-35.9455, -60.3852)) < 0.5 and 50 < s_['largo'] < 62, f"kml: cola y largo exactos ({s_['largo']} m)")
+    # saludo según la hora y navegación a pie
+    g = page.inner_text('.greet')
+    check(any(g.startswith(x) for x in ('Buenos días', 'Buenas tardes', 'Buenas noches')) and ', ' in g, f'inicio: saludo según la hora ({g})')
+    ctx.set_geolocation({'latitude': -35.9470, 'longitude': -60.3860, 'accuracy': 4}); page.wait_for_timeout(1200)
+    page.click('.nav-start'); page.wait_for_selector('.nav-top')
+    check(page.locator('.nav-near-row').count() >= 1 and 'm' in page.inner_text('.nav-near-row em'), f"navegar: silobolsas cercanas con distancia ({page.inner_text('.nav-near-row em')})")
+    check(page.locator('path.sat-gap').count() >= 1 and page.locator('.sat-gap-lbl').count() >= 1, 'navegar: líneas con la separación a los silos')
+    page.locator('.nav-near-row').first.click(); page.wait_for_timeout(500)
+    tt = page.inner_text('.nav-top')
+    check(page.locator('path.sat-route').count() == 1 and ' m' in tt and 'a pie' in tt and s_['id'] in tt, f'navegar: ruta, distancia y tiempo hasta el silo ({tt[:60]})')
+    ctx.set_geolocation({'latitude': -35.9462, 'longitude': -60.3856, 'accuracy': 4}); page.wait_for_timeout(1500)
+    check(page.locator('.nav-me svg').count() == 1, 'navegar: flecha con el rumbo al caminar')
+    check(page.locator('path.sat-trail').count() == 1, 'navegar: dibuja el recorrido')
+    ctx.set_geolocation({'latitude': s_['latlng'][0], 'longitude': s_['latlng'][1], 'accuracy': 4}); page.wait_for_timeout(1500)
+    check('Llegaste' in page.inner_text('.nav-top'), 'navegar: aviso de llegada')
+    layout_checks(page, 'navegación')
+    page.click('.navi-foot button:has-text("Terminar")'); check(page.locator('.nav-top').count() == 0, 'navegar: terminar')
     # agregar un segundo KML sin perder lo cargado
     KML2 = TMP / 'campo2.kml'
     KML2.write_text(f"""<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>

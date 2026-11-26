@@ -37,7 +37,7 @@ export function borderInfo(ll, lot, geo) {
   return { m: sn.dist * (geo.metersPerUnit || 1), inside: pointInPoly(p, lot.poly) };
 }
 
-export function GpsCapture({ fix, gpsErr, lots = [], geo, lotId, onLot, noGps, onPickMap, onCancel, onDone, onProgress }) {
+export function GpsCapture({ near: vecinas = [], fix, gpsErr, lots = [], geo, lotId, onLot, noGps, onPickMap, onCancel, onDone, onProgress }) {
   const [a, setA] = useState(null), [busy, setBusy] = useState(null), [err, setErr] = useState(null);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
@@ -126,6 +126,7 @@ export function GpsCapture({ fix, gpsErr, lots = [], geo, lotId, onLot, noGps, o
           </div>
         )}
         {bi && <p className={`cap-border ${!bi.inside && bi.m > 40 ? 'is-far' : ''}`}><Icon name="lots" size={14} />{!bi.inside && bi.m > 40 ? `Estás a ${fmtNum(bi.m)} m afuera del lote ${lot.num}: revisá el lote elegido` : `A ${fmtNum(bi.m)} m del contorno del lote ${lot.num}`}</p>}
+        {vecinas.length > 0 && <p className="cap-border"><Icon name="silo" size={14} />Bolsa vecina: <b className="mono">{vecinas[0].id}</b>&nbsp;a {vecinas[0].d < 1000 ? `${fmtNum(vecinas[0].d)} m` : `${fmtNum(vecinas[0].d / 1000, 1)} km`}{vecinas[1] ? ` · ${vecinas[1].id} a ${fmtNum(vecinas[1].d)} m` : ''}</p>}
         {live && live.acc > 15 && !busy && <p className="cap-warn"><Icon name="alert" size={14} />Señal débil: esperá unos segundos al aire libre para mejorar la precisión.</p>}
         {err && <div className="form-err"><Icon name="alert" size={16} />{err}</div>}
         <button type="button" className="cap-btn" onClick={mark} disabled={!!busy}>

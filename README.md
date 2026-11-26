@@ -74,6 +74,9 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 - **Exportar (Silos):** **KML** con lotes y bolsas (para Google Earth / QGIS) y **CSV** con cabecera, cola y largo.
 - **Ajustes** (tu inicial arriba a la derecha): Mi cuenta, Apariencia, Estancia, Usuarios, Lotes y ubicación, Datos.
 - **Mapas y KML cargados:** cada uno se puede renombrar o eliminar desde la pestaña Mapas.
+- **Navegar (estilo Google Maps):** botón *Navegar* en el mapa o *Ir* en la barra de un silo. Flecha con el rumbo, el mapa sigue al usuario (*Centrar* si se lo movió), cartel con distancia, dirección y tiempo a pie hasta la silobolsa, aviso de llegada, recorrido dibujado y líneas con la distancia a las silobolsas más cercanas. Al marcar una bolsa nueva se muestra a cuántos metros están las vecinas.
+- **Saludo:** «Buenos días / Buenas tardes / Buenas noches, Nombre» según la hora.
+- **Teclados propios:** numérico para kg (con toneladas debajo) y hectáreas; de texto en español para observaciones, con tecla *Sistema* para usar el teclado del celular (dictado por voz). Solo en pantallas táctiles.
 - **Enter = Guardar:** en cualquier formulario (lotes, silos, estancias, usuarios, contraseña) Enter guarda sin tocar el botón, que sigue disponible.
 - **Tarjeta de cada silo** (tocándolo en Silos, Lotes o el mapa): ID, lugar (cabecera, cola y largo), estancia, lote, grano, kg, fecha de registro y usuario que lo registró, más foto y observaciones.
 - **Roles:** el supervisor registra silos y edita los suyos; el administrador además mueve, elimina, edita lotes, carga KML y gestiona usuarios.

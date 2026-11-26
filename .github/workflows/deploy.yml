@@ -29,8 +29,41 @@ jobs:
           (cd /tmp/srv && php -S 127.0.0.1:8000 >/dev/null 2>&1 &) && sleep 1
           bash tests/api.test.sh http://127.0.0.1:8000
 
+  rama-hostinger:
+    # Deja en la rama «hostinger» solo la web lista (contenido de public_html/).
+    # Hostinger (hPanel → GIT) clona esa rama en la carpeta de acopia.app y la actualiza con el webhook.
+    # Nunca lleva data.json, uploads/ ni backups/: los datos del servidor no se tocan.
+    needs: probar
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency: rama-hostinger
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Publicar public_html/ en la rama hostinger
+        run: |
+          set -e
+          git config user.name "acopia-bot"
+          git config user.email "acopia-bot@users.noreply.github.com"
+          rm -rf /tmp/web && mkdir /tmp/web
+          if git ls-remote --exit-code --heads origin hostinger >/dev/null; then
+            git worktree add /tmp/web origin/hostinger -B hostinger
+          else
+            git worktree add --orphan -b hostinger /tmp/web
+          fi
+          # reemplazar todo menos .git (los datos del servidor no están en git)
+          find /tmp/web -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -r public_html/. /tmp/web/
+          rm -f /tmp/web/data.json
+          cd /tmp/web
+          git add -A
+          if git diff --cached --quiet; then echo "Sin cambios en la web"; exit 0; fi
+          git commit -q -m "Web ${GITHUB_SHA::7}"
+          git push origin hostinger
+
   publicar:
-    # Hostinger despliega por su integración Git; el FTP queda opcional (variable USAR_FTP=1)
+    # Opcional por FTP (variable USAR_FTP=1); lo normal es el Git de Hostinger con la rama hostinger
     if: ${{ vars.USAR_FTP == '1' }}
     needs: probar
     runs-on: ubuntu-latest

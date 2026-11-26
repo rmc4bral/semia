@@ -52,7 +52,7 @@ export const LOGO_PATH = 'M0.08 22.33Q0.16 23.37 0.56 23.72Q0.96 24.07 1.52 24.3
 export const LOGO_W = 107.10;
 export function Logo({ size = 32 }) {
   return (
-    <svg width={Math.round(size * LOGO_W / 100)} height={size} viewBox={`0 0 ${LOGO_W} 100`} aria-label="acopia" role="img" className="logo">
+    <svg width={Math.round(size * LOGO_W / 100)} height={size} viewBox={`0 0 ${LOGO_W} 100`} aria-label="Acopia" role="img" className="logo">
       <path d={LOGO_PATH} fill="var(--logo)" />
     </svg>
   );

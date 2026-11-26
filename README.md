@@ -1,4 +1,4 @@
-# acopia · Registro de silobolsas
+# Acopia · Registro de silobolsas
 
 > Antes se llamaba SemIA. Por ahora sigue en este repositorio (`rmc4bral/semia`); la migración a uno propio queda para más adelante.
 

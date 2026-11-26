@@ -248,8 +248,8 @@ with sync_playwright() as p:
         page.fill('.maps-filters input', ''); layout_checks(page, tag + ' mapas')
         page.click('.glob-head button:has-text("Contornos")'); page.wait_for_timeout(200)
         check(page.locator('.glob-map .warp-img').count() == 0, f'{tag}: mapa global solo contornos')
-        page.click('.nav button:has-text("Mapa")')
-        page.click('.nav button:has-text("Mapa")'); page.wait_for_selector('.satmap'); layout_checks(page, tag + ' mapa final')
+        page.click('.nav button:has-text("Inicio")')
+        page.click('.nav button:has-text("Inicio")'); page.wait_for_selector('.satmap'); layout_checks(page, tag + ' mapa final')
         check(not bucket, f'{tag}: sin errores de consola {bucket[:3]}')
         ctx.close()
 
@@ -317,7 +317,7 @@ with sync_playwright() as p:
     check([l['num'] for l in st['lots']] == [1, 2, 3, 2, 5, 'Casco'] and len(st['georef']['kmls']) == 2, f"kml: agregados ({[l['num'] for l in st['lots']]})")
     check(st['georef']['kmls'][1]['nombre'] == 'Los Gatos' and st['georef']['kmls'][1]['sigla'] == 'LG', 'estancia: Los Gatos registrada con sigla LG')
     # bolsa en el lote 2 de Los Gatos → ID LG02001
-    page.click('.nav button:has-text("Mapa")'); page.wait_for_selector('path.sat-lot')
+    page.click('.nav button:has-text("Inicio")'); page.wait_for_selector('path.sat-lot')
     ctx.set_geolocation({'latitude': -35.975, 'longitude': -60.395, 'accuracy': 3}); page.wait_for_timeout(1200)
     page.click('.nav-add'); page.wait_for_selector('.cap-lots'); page.click('.cap-lot.is-sug'); page.click('.cap-btn'); page.wait_for_selector('.cap-dist', timeout=15000)
     page.click('.cap-foot button:has-text("Solo un punto")')
@@ -342,12 +342,20 @@ with sync_playwright() as p:
     check(page.locator('.lot-card').count() == 3, 'estancia: la pestaña Lotes respeta el filtro')
     page.fill('.lots-filters input', 'cas'); page.wait_for_timeout(150)
     check(page.locator('.lot-card').count() == 1, 'estancia: buscar lote por nombre')
+    page.locator('.lots-filters input').press('Enter'); page.wait_for_timeout(300)
+    check(page.locator('.modal').count() == 0, 'enter: en un buscador no dispara nada')
     page.fill('.lots-filters input', '')
+    # Enter guarda: hectáreas de un lote
+    page.locator('.lot-card').first.locator('button[aria-label^="Configurar"]').click(); page.wait_for_selector('.modal')
+    ha = page.locator('.modal .field:has-text("Hectáreas") input'); ha.fill('123,5'); ha.press('Enter')
+    page.wait_for_selector('.modal', state='detached', timeout=5000)
+    st2 = page.request.get(URL + '/api.php?action=state').json()['state']
+    check(any(abs(float(l.get('ha') or 0) - 123.5) < 0.01 for l in st2['lots']), 'enter: guarda las hectáreas sin tocar Guardar')
     page.locator('.lots-filters .select').click(); page.click('.select-opt:has-text("Todas las estancias")'); page.wait_for_timeout(200)
     check(page.locator('.lot-card').count() == 6, 'estancia: todas = 6 lotes')
     page.click('.nav button:has-text("Silos")'); page.wait_for_selector('.filters')
     check(page.locator('.filters .field:has-text("Estancia")').count() == 1, 'estancia: filtro también en Silos')
-    page.click('.nav button:has-text("Mapa")'); page.wait_for_selector('path.sat-lot')
+    page.click('.nav button:has-text("Inicio")'); page.wait_for_selector('path.sat-lot')
     check(next(x for x in st['silos'] if x['id'] == 'RB02001')['largo'] == s_['largo'], 'kml: la bolsa cargada no cambió')
     # supervisor: login → estancia → ubicación → solo Mapa, Silos, + y Lotes
     r = page.request.post(URL + '/api.php?action=saveUser', data=json.dumps({'u': {'user': 'juan', 'nombre': 'Juan Pérez', 'pass': 'juan123', 'rol': 'operador'}}), headers={'Content-Type': 'application/json'})
@@ -363,7 +371,7 @@ with sync_playwright() as p:
     check('Paso 2 de 2' in sp.inner_text('.geo-gate') and sp.locator('.geo-gate button:has-text("Ahora no")').count() == 0, 'supervisor: la ubicación es obligatoria (sin «Ahora no»)')
     sctx.grant_permissions(['geolocation']); sp.click('.geo-gate button:has-text("Permitir ubicación")'); sp.wait_for_selector('.satmap'); sp.wait_for_timeout(800)
     navs = [t.strip() for t in sp.locator('.nav .nav-item:visible').all_inner_texts()]
-    check(navs == ['Mapa', 'Silos', 'Lotes', 'Cuenta'] and sp.locator('.avatar-btn').count() == 0, f'supervisor: menú reducido {navs}')
+    check(navs == ["Inicio", "Silos", "Lotes", "Cuenta"] and sp.title() == "Acopia · Inicio" and sp.locator('.avatar-btn').count() == 0, f'supervisor: menú reducido {navs}')
     check(sp.locator('.map-layers .field:has-text("Estancia")').count() == 0 and sp.locator('path.sat-lot').count() == 3, 'supervisor: solo ve los lotes de su estancia, sin filtro')
     ab = sp.locator('.nav-add').bounding_box(); check(ab['width'] >= 68, f'supervisor: botón + más grande ({ab["width"]:.0f}px)')
     sp.click('.nav-add'); sp.wait_for_selector('.cap-lots')

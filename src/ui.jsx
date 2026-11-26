@@ -58,6 +58,27 @@ export function Logo({ size = 32 }) {
   );
 }
 
+/* Enter = Guardar: en cualquier campo de texto, Enter aprieta el botón de guardar del mismo bloque
+   (el botón marcado con data-enter, o el principal). El botón sigue estando para quien prefiera tocarlo. */
+const ENTER_STOP = '.modal, .set-group, .set-sec, .cap-sheet, .kml-file, .map-banner, .lot-bar';
+export function useEnterToSave() {
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.defaultPrevented) return;
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement) || ['checkbox', 'radio', 'file', 'button', 'submit'].includes(t.type)) return;
+      if (t.closest('form') || t.closest('[data-noenter]')) return; // el ingreso ya envía su formulario
+      for (let el = t.parentElement; el && !el.matches('.screen, .main, body'); el = el.parentElement) {
+        const btn = el.querySelector('[data-enter]:not(:disabled)') || el.querySelector('.btn-primary:not(:disabled)');
+        if (btn) { e.preventDefault(); btn.click(); return; }
+        if (el.matches(ENTER_STOP)) return;
+      }
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+}
+
 export function Button({ variant = 'default', icon, children, className = '', size, ...rest }) {
   return (
     <button type="button" className={`btn btn-${variant} ${size ? 'btn-' + size : ''} ${!children ? 'btn-icon' : ''} ${className}`} {...rest}>

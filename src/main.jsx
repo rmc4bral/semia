@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Logo, Icon, Button, Field, TextInput, Segmented, Select, ToastProvider, useToast, fmtNum } from './ui.jsx';
+import { Logo, Icon, Button, Field, TextInput, Segmented, Select, ToastProvider, useToast, fmtNum, useEnterToSave } from './ui.jsx';
 import { detectMode, createStore, resolvePhoto } from './store.js';
 import { fmtFecha, parseFecha, readMapFile, defaultCorners } from './maplayers.js';
 import { buildGeo, locateLot, controlPoints, metersBetween, pointInPoly, snapToBorder, isSiloLot, normalizeState, siloLot, lotName } from './geo.js';
@@ -146,14 +146,13 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
   const [shape, setShape] = useState(null); // { lot, geom, hist, sel, locked }
   const [cap, setCap] = useState(null); // medición GPS en curso { form, a }
   // mapas propios
-  const [mapFilter, setMapFilterRaw] = useState(pref.get('mapFilter', 'all'));
-  const setMapFilter = v => { setMapFilterRaw(v); pref.set('mapFilter', v); };
+  const [mapFilter, setMapFilter] = useState('all'); // Inicio abre siempre con el mapa general
   const [mapOpacity, setMapOpacityRaw] = useState(+pref.get('mapOpacity', '1'));
   const setMapOpacity = v => { setMapOpacityRaw(v); pref.set('mapOpacity', String(v)); };
   const [mapUrls, setMapUrls] = useState({});
   // estancia (KML) a mostrar, compartida por Mapa, Lotes y Silos
-  const [estId, setEstIdRaw] = useState(pref.get('estancia', 'all'));
-  const setEstId = v => { setEstIdRaw(v); pref.set('estancia', v); setSelLot(null); setSelSilo(null); };
+  const [estId, setEstIdRaw] = useState('all'); // vista general: todas las estancias
+  const setEstId = v => { setEstIdRaw(v); setSelLot(null); setSelSilo(null); };
   const [mapJob, setMapJob] = useState(null), [mapEditMeta, setMapEditMeta] = useState(null), [mapEdit, setMapEdit] = useState(null);
   const { fix, err: gpsErr } = useGps(gpsOn);
   const geo = useMemo(() => buildGeo(state.georef), [state.georef]);
@@ -209,7 +208,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
       const out = await store.uploadMap({ nombre: j.nombre.trim(), fecha, corners, w: res.w, h: res.h, crs: res.crs, original: res.original, tipo }, res.dataUrl, me,
         p => setMapJob(x => (x && x.jid === jid ? { ...x, pct: p } : x)));
       if (jobAlive.current !== jid) { setState(out.state); return; }
-      setState(out.state); setMapJob(null); setMapFilter(out.id);
+      setState(out.state); setMapJob(null); setMapFilter('all');
       toast(`Mapa «${j.nombre.trim()}» subido`, 'ok');
       if (!res.corners) { const m = out.state.maps.find(x => x.id === out.id); setTab('mapa'); setMapEdit({ id: out.id, corners: m.corners.map(c => [...c]), orig: m.corners }); }
     } catch (e) { setMapJob(x => (x && x.jid === jid ? { ...x, stage: 'error', error: e.message } : x)); toast(e.message, 'error'); }
@@ -365,12 +364,15 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
 
   // El supervisor solo ve Mapa, Silos, + y Lotes (y su cuenta para cambiar de estancia o salir)
   const tabs = isAdmin ? [
-    { k: 'mapa', label: 'Mapa', icon: 'map' }, { k: 'silos', label: 'Silos', icon: 'silo' },
+    { k: 'mapa', label: 'Inicio', icon: 'map' }, { k: 'silos', label: 'Silos', icon: 'silo' },
     { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'mapas', label: 'Mapas', icon: 'layers' }, { k: 'ajustes', label: 'Ajustes', icon: 'gear', desk: true },
   ] : [
-    { k: 'mapa', label: 'Mapa', icon: 'map' }, { k: 'silos', label: 'Silos', icon: 'silo' },
+    { k: 'mapa', label: 'Inicio', icon: 'map' }, { k: 'silos', label: 'Silos', icon: 'silo' },
     { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'ajustes', label: 'Cuenta', icon: 'user' },
   ];
+  // pestaña del navegador: solo «Acopia · menú activo»
+  const tabLabel = (tabs.find(t => t.k === tab) || {}).label;
+  useEffect(() => { document.title = tabLabel ? `Acopia · ${tabLabel}` : 'Acopia'; }, [tabLabel]);
   function goTab(k) { setTab(k); setPick(null); if (k !== 'mapa') { setShape(null); setMapEdit(null); setCap(null); } }
   const lot = lots.find(l => l.id === selLot);
   const gpsLabel = gpsErr ? gpsErr : fix ? `GPS ±${fmtNum(fix.acc)} m` : 'Buscando GPS…';
@@ -487,6 +489,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
 }
 
 function App() {
+  useEnterToSave();
   const [boot, setBoot] = useState({ phase: 'loading' });
   const [theme, setThemeRaw] = useState(pref.get('theme', 'dark'));
   const [geoGate, setGeoGate] = useState(null); // null = revisando · 'ask' · 'ok' · 'off' · 'nogps'

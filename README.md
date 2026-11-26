@@ -63,7 +63,7 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
   2. Caminá hasta la **cola** (se ve la distancia en vivo) y tocá *Marcar cola (B)*, o *Solo un punto*.
   3. Se abre la ficha con el **número detallado** (estancia · lote · bolsa), la ubicación y el largo, el **grano** (obligatorio, con botones), los **kg (opcional)**, la **foto** y las **observaciones** del supervisor.
   Sin GPS o sin lotes georreferenciados, se marca tocando el plano.
-- **Mapa (satélite):** lotes con su número (al tocar uno se ven sus hectáreas), bolsas (línea A‑B) y tu posición sobre la imagen Esri; filtro **Mapa a mostrar** para tus ortomosaicos.
+- **Inicio (mapa general):** lotes con su número (al tocar uno se ven sus hectáreas), bolsas (línea A‑B) y tu posición sobre la imagen Esri; filtro **Mapa a mostrar** para tus ortomosaicos.
 - **Filtro Estancia:** cada KML cargado es una estancia; en Mapa, Lotes y Silos se elige cuál mostrar (los indicadores también se filtran). En Lotes se busca por número o nombre.
 - **Lotes con nombre:** un lote puede llamarse con letras (ej. *Casco*, donde está el personal); esos lotes no reciben silobolsas.
 - **Ajustar forma (admin):** cada lote se ajusta por separado (los vecinos no se mueven). Las bolsas ubicadas por GPS quedan donde se midieron.
@@ -74,6 +74,7 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 - **Exportar (Silos):** **KML** con lotes y bolsas (para Google Earth / QGIS) y **CSV** con cabecera, cola y largo.
 - **Ajustes** (tu inicial arriba a la derecha): Mi cuenta, Apariencia, Estancia, Usuarios, Lotes y ubicación, Datos.
 - **Mapas y KML cargados:** cada uno se puede renombrar o eliminar desde la pestaña Mapas.
+- **Enter = Guardar:** en cualquier formulario (lotes, silos, estancias, usuarios, contraseña) Enter guarda sin tocar el botón, que sigue disponible.
 - **Tarjeta de cada silo** (tocándolo en Silos, Lotes o el mapa): ID, lugar (cabecera, cola y largo), estancia, lote, grano, kg, fecha de registro y usuario que lo registró, más foto y observaciones.
 - **Roles:** el supervisor registra silos y edita los suyos; el administrador además mueve, elimina, edita lotes, carga KML y gestiona usuarios.
 

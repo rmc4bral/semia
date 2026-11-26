@@ -28,6 +28,8 @@ async function idbDel(key) { const db = await idb(); return new Promise(res => {
 export async function resolvePhoto(ref) {
   if (!ref) return null;
   if (ref.startsWith('idb:')) { try { return (await idbGet(ref.slice(4))) || null; } catch { return null; } }
+  // fotos y mapas del servidor: viven fuera de la web y se piden a la API (con sesión)
+  if (ref.startsWith('uploads/')) return `api.php?action=file&p=${encodeURIComponent(ref.slice(8))}`;
   return ref;
 }
 

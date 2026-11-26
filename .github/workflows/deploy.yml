@@ -28,6 +28,8 @@ jobs:
           mkdir -p /tmp/srv && cp -r public_html/. /tmp/srv/
           (cd /tmp/srv && php -S 127.0.0.1:8000 >/dev/null 2>&1 &) && sleep 1
           bash tests/api.test.sh http://127.0.0.1:8000
+      - name: Los datos sobreviven a un despliegue de Hostinger
+        run: bash tests/deploy.test.sh
 
   rama-hostinger:
     # Deja en la rama «hostinger» solo la web lista (contenido de public_html/).

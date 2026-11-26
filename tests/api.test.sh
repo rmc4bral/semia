@@ -41,7 +41,11 @@ chk op-no-forma "$(curl -s -b $O "${J[@]}" -d "$SH" $B/api.php?action=saveShapes
 M=$(curl -s -b $A "${J[@]}" -d "{\"map\":{\"nombre\":\"Vuelo octubre\",\"fecha\":\"2026-10-20\",\"corners\":$CORN,\"crs\":\"UTM 21S\"},\"data\":\"data:image/jpeg;base64,$IMG\"}" $B/api.php?action=uploadMap)
 chk mapa-subir "$M" '"src":"uploads/maps/m'
 MID=$(echo "$M" | grep -o '"id":"m[a-z0-9]*"' | head -1 | cut -d'"' -f4)
-chk mapa-archivo "$(curl -s -o /dev/null -w '%{http_code}' $B/$(echo "$M" | grep -o 'uploads/maps/[a-z0-9]*\.jpg' | head -1))" 200
+MP=$(echo "$M" | grep -o 'uploads/maps/[a-z0-9]*\.jpg' | head -1 | cut -c9-)
+chk mapa-archivo "$(curl -s -b $A -o /dev/null -w '%{http_code}' "$B/api.php?action=file&p=$MP")" 200
+chk mapa-sin-sesion "$(curl -s -o /dev/null -w '%{http_code}' "$B/api.php?action=file&p=$MP")" 401
+chk archivo-ruta-mala "$(curl -s -b $A -o /dev/null -w '%{http_code}' "$B/api.php?action=file&p=../data.json")" 404
+chk datos-fuera-web "$(curl -s -b $A $B/api.php?action=health)" '"fueraDeLaWeb":true'
 chk mapa-editar "$(curl -s -b $A "${J[@]}" -d "{\"map\":{\"id\":\"$MID\",\"nombre\":\"Vuelo 2\",\"fecha\":\"2026-10-21\",\"corners\":[[-35.8,-60.4],[-35.8,-60.3],[-35.9,-60.3],[-35.9,-60.4]]}}" $B/api.php?action=saveMap)" '"nombre":"Vuelo 2"'
 chk mapa-esquinas-malas "$(curl -s -b $A "${J[@]}" -d "{\"map\":{\"id\":\"$MID\",\"corners\":[[1,2]]}}" $B/api.php?action=saveMap)" '4 esquinas'
 chk mapa-no-imagen "$(curl -s -b $A "${J[@]}" -d "{\"map\":{\"corners\":$CORN},\"data\":\"data:image/png;base64,PD9waHAgZWNobyAxOw==\"}" $B/api.php?action=uploadMap)" 'no permitido'

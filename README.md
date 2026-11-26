@@ -77,6 +77,16 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 - **Tarjeta de cada silo** (tocándolo en Silos, Lotes o el mapa): ID, lugar (cabecera, cola y largo), estancia, lote, grano, kg, fecha de registro y usuario que lo registró, más foto y observaciones.
 - **Roles:** el supervisor registra silos y edita los suyos; el administrador además mueve, elimina, edita lotes, carga KML y gestiona usuarios.
 
+## Producción: acopia.app (Hostinger)
+
+En cada push a `main`, GitHub Actions prueba todo y deja la web lista en la rama **`hostinger`** (solo el contenido de `public_html/`, sin `data.json`, `uploads/` ni `backups/`).
+
+1. hPanel → acopia.app → **Archivos**: vaciar la carpeta `public_html` del dominio (borrar `default.php`).
+2. hPanel → **Avanzado → GIT**: repositorio `https://github.com/rmc4bral/semia.git`, rama `hostinger`, directorio vacío → *Crear*, y después *Implementar*.
+3. En la misma pantalla, **Implementación automática** → copiar la URL del webhook → GitHub → *Settings → Webhooks → Add webhook* (Payload URL = esa URL, evento *Just the push event*).
+4. hPanel → **Seguridad → SSL**: certificado activo para acopia.app (el GPS y la cámara exigen HTTPS). PHP 8.1 o superior.
+5. Primer ingreso con el usuario administrador de `data.seed.json` y **cambiar la contraseña** en Ajustes → Mi cuenta (el repositorio es público).
+
 ## Repositorio y despliegue automático
 
 Cada `push` a `main` corre las pruebas y, si pasan, publica `public_html/` en Hostinger por FTP

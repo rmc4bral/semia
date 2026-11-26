@@ -46,9 +46,17 @@ export function GpsCapture({ fix, gpsErr, lots = [], geo, lotId, onLot, noGps, o
   const lot = lots.find(l => l.id === lotId) || null;
   const step = !lot ? 0 : a ? 2 : 1;
   const dist = a && live ? metersBetween([a.lat, a.lng], [live.lat, live.lng]) : null;
-  // lote sugerido por el GPS: solo como ayuda, el supervisor siempre lo confirma
-  const sug = live && geo && lots.length ? (() => { const r = locateLot(geo.toMap(live.lat, live.lng), lots); return r && (r.inside || r.snap.dist * (geo.metersPerUnit || 1) < 60) ? r.lot.id : null; })() : null;
+  // lotes ordenados por distancia al GPS (0 = estás adentro): ayuda, el supervisor siempre confirma
+  const mpu = geo?.metersPerUnit || 1;
+  const near = live && geo && lots.length ? (() => {
+    const p = geo.toMap(live.lat, live.lng);
+    return lots.map(l => ({ l, d: pointInPoly(p, l.poly) ? 0 : snapToBorder(p, l.poly).dist * mpu }))
+      .sort((x, y) => x.d - y.d).filter(x => x.d < 3000).slice(0, 3);
+  })() : [];
+  const sug = near[0]?.l.id || null;
+  const nearIds = new Set(near.map(n => n.l.id));
   const bi = step > 0 ? borderInfo(live, lot, geo) : null;
+  const fmtD = d => (d === 0 ? 'Estás adentro' : d < 1000 ? `a ${fmtNum(d)} m` : `a ${fmtNum(d / 1000, 1)} km`);
 
   async function mark() {
     setErr(null); setBusy({ pct: 0, n: 0 });
@@ -61,7 +69,7 @@ export function GpsCapture({ fix, gpsErr, lots = [], geo, lotId, onLot, noGps, o
   }
 
   if (step === 0) {
-    const sorted = [...lots].sort((x, y) => (x.id === sug ? -1 : y.id === sug ? 1 : 0));
+    const all = [...lots].sort((x, y) => (+x.num || 0) - (+y.num || 0));
     return (
       <div className="cap-sheet" role="dialog" aria-label="Elegir lote de la silobolsa">
         <div className="cap-top">
@@ -69,16 +77,28 @@ export function GpsCapture({ fix, gpsErr, lots = [], geo, lotId, onLot, noGps, o
           {!noGps && <span className={`cap-acc ${accClass(live?.acc)}`}><Icon name="gps" size={14} />{live ? `±${fmtNum(live.acc)} m` : gpsErr || 'Buscando GPS…'}</span>}
         </div>
         <h2 className="cap-title">¿En qué lote está la bolsa?</h2>
-        <p className="cap-sub">Elegilo vos: el GPS puede moverse o caer entre dos lotes.{sug ? ' El marcado es el que indica tu ubicación.' : ''}</p>
-        {lots.length ? (
-          <div className="cap-lots" role="radiogroup" aria-label="Lote">
-            {sorted.map(l => (
-              <button type="button" key={l.id} role="radio" aria-checked="false" className={`cap-lot ${l.id === sug ? 'is-sug' : ''}`} onClick={() => onLot(l.id)}>
-                <b>{l.num}</b><span>{l.id === sug ? 'Estás acá' : `${fmtNum(l.ha, 0)} ha`}</span>
+        {near.length > 0 && <>
+          <span className="cap-sec">Cerca tuyo</span>
+          <div className="cap-near">
+            {near.map((n, i) => (
+              <button type="button" key={n.l.id} className={`cap-near-row ${i === 0 ? 'is-first' : ''}`} onClick={() => onLot(n.l.id)}>
+                <b className="cap-near-num">{n.l.num}</b>
+                <span className="cap-near-txt"><b>{fmtD(n.d)}</b><span>{fmtNum(n.l.ha, 0)} ha</span></span>
+                <Icon name="chev" size={18} className="cap-near-go" />
               </button>
             ))}
           </div>
-        ) : <p className="form-err"><Icon name="alert" size={16} />No hay lotes con número en esta estancia.</p>}
+        </>}
+        {lots.length ? <>
+          <span className="cap-sec">{near.length ? 'Otro lote' : noGps ? 'Lotes' : 'Lotes · esperando tu ubicación'}</span>
+          <div className="cap-lots" role="radiogroup" aria-label="Todos los lotes">
+            {all.map(l => (
+              <button type="button" key={l.id} role="radio" aria-checked="false" className={`cap-lot ${l.id === sug ? 'is-sug' : nearIds.has(l.id) ? 'is-near' : ''}`} onClick={() => onLot(l.id)} aria-label={`Lote ${l.num}`}>
+                <b>{l.num}</b>
+              </button>
+            ))}
+          </div>
+        </> : <p className="form-err"><Icon name="alert" size={16} />No hay lotes con número en esta estancia.</p>}
         <div className="cap-foot"><Button variant="ghost" onClick={onCancel}>Cancelar</Button></div>
       </div>
     );

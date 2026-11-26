@@ -165,13 +165,14 @@ export function LotsScreen({ state, onEditLot, onShowLot, onOpenSilo, est = 'all
           <div className={`card lot-card ${isSiloLot(l) ? '' : 'is-casco'}`} key={l.id}>
             <button type="button" className="lot-card-main" onClick={() => (isSiloLot(l) ? setSel(l.id) : onShowLot(l.id))}>
               <span className="lot-card-num">{isSiloLot(l) ? l.num : String(l.num).slice(0, 2).toUpperCase()}</span>
-              <span className="lot-card-info"><b>{isSiloLot(l) ? `${fmtNum(l.ha, 0)} ha` : l.num}</b>{(() => { const t = [estOpts && est === 'all' ? estanciaNombre(l, state) : '', isSiloLot(l) ? (l.nombre || (l.subs?.length ? l.subs.map(s => s.id).join(' · ') : '')) : `${fmtNum(l.ha, l.ha % 1 ? 1 : 0)} ha${l.nombre ? ` · ${l.nombre}` : ''}`].filter(Boolean).join(' · '); return t ? <span className="muted small">{t}</span> : null; })()}</span>
+              <span className="lot-card-info">
+                <b>{isSiloLot(l) ? `${nBy[l.id] || 0} silo${nBy[l.id] === 1 ? '' : 's'}` : l.num}</b>
+                <span className="muted small">{[estOpts && est === 'all' ? estanciaNombre(l, state) : '', `${fmtNum(l.ha, 0)} ha`, isSiloLot(l) ? (gBy[l.id] ? [...gBy[l.id]].join(', ') : l.nombre || '') : 'Sin silobolsas'].filter(Boolean).join(' · ')}</span>
+              </span>
+              {isSiloLot(l) && <span className={`lot-card-t ${kgBy[l.id] ? '' : 'is-zero'}`}>{fmtTon(kgBy[l.id] || 0)}</span>}
             </button>
             {onEditLot && <Button size="sm" variant="ghost" icon="gear" onClick={() => onEditLot(l.id)} aria-label={`Configurar ${lotName(l.num)}`} />}
-            {isSiloLot(l) ? <>
-              <div className="lot-card-bar"><span style={{ width: `${((kgBy[l.id] || 0) / max) * 100}%` }} /></div>
-              <div className="lot-card-foot muted small"><span>{nBy[l.id] || 0} silo{nBy[l.id] === 1 ? '' : 's'}{gBy[l.id] ? ` · ${[...gBy[l.id]].join(', ')}` : ''}</span><span>{fmtTon(kgBy[l.id] || 0)}</span></div>
-            </> : <div className="lot-card-foot muted small"><span>Sin silobolsas</span></div>}
+            {isSiloLot(l) && kgBy[l.id] > 0 && <div className="lot-card-bar"><span style={{ width: `${((kgBy[l.id] || 0) / max) * 100}%` }} /></div>}
           </div>
         ))}
       </div>

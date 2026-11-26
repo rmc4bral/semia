@@ -80,7 +80,7 @@ Abrir `http://localhost:8000`. Así funciona la API, el GPS y la cámara (el nav
 
 ## Producción: acopia.app (Hostinger)
 
-> **Dónde están los datos:** cada despliegue reemplaza la carpeta del sitio, así que la base (`data.json`), las fotos, los mapas y los respaldos diarios viven en **`acopia-datos/`**, junto a `public_html/` (fuera de la web y fuera de git). Ningún despliegue la toca. La app migra sola los datos viejos que encuentre dentro de la web. Se guardan respaldos diarios de los últimos 60 días en `acopia-datos/backups/`. Diagnóstico (administrador): `api.php?action=health`.
+> **Dónde están los datos:** el Git de Hostinger reemplaza la carpeta del sitio en cada publicación (y puede publicar cada versión en una carpeta nueva enlazada como `public_html`). Por eso la base (`data.json`), las fotos, los mapas y los respaldos diarios (60 días) viven en **`~/acopia-datos/`**, la carpeta personal de la cuenta: fuera de la web, fuera de git y fuera de cualquier despliegue. Si encuentra datos en ubicaciones anteriores, la app los recupera sola. Diagnóstico (administrador): `api.php?action=health`.
 
 En cada push a `main`, GitHub Actions prueba todo y deja la web lista en la rama **`hostinger`** (solo el contenido de `public_html/`, sin `data.json`, `uploads/` ni `backups/`).
 

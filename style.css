@@ -1273,6 +1273,43 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
 .card-obs { font-weight: 500; white-space: pre-wrap; line-height: 1.45; }
 .card-photo { display: block; width: 100%; max-height: 280px; object-fit: cover; border-radius: var(--r); margin-top: 14px; }
 
+/* ---------- Teclados propios de Acopia ---------- */
+.num-field { position: relative; }
+.num-input { padding-right: 52px; font-feature-settings: 'tnum'; font-weight: 600; }
+.num-field.is-open .num-input, .kb-text-field.is-open .input { border-color: var(--accent-fg); }
+.num-unit { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 13px; font-weight: 600; pointer-events: none; }
+.num-conv { font-size: 13px; font-weight: 600; color: var(--accent-fg); font-feature-settings: 'tnum'; }
+.kb-open .modal-wrap { padding-bottom: var(--kb-h, 0px); }
+.kb-open .modal { max-height: calc(100dvh - var(--kb-h, 0px) - 12px); }
+.kb { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1300; padding: 10px 8px calc(10px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line-2); touch-action: manipulation; user-select: none; -webkit-user-select: none; animation: up .16s ease-out; }
+.kb-key { display: grid; place-items: center; min-width: 0; height: 48px; padding: 0; border: 0; border-radius: var(--r); background: var(--surface-2); color: var(--text); font: 500 20px/1 var(--font); font-feature-settings: 'tnum'; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.kb-key:active { background: var(--accent); color: var(--accent-ink); }
+.kb-key.kb-soft { background: var(--surface); color: var(--muted); }
+.kb-key.kb-small { font-size: 13px; font-weight: 600; }
+.kb-key.is-on { background: var(--accent); color: var(--accent-ink); }
+.kb-key.kb-accent { color: var(--accent-fg); }
+.kb-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.kb-num { display: grid; gap: 10px; }
+.kb-display { display: flex; flex-direction: column; align-items: flex-start; padding: 2px 6px 4px; }
+.kb-val { font-size: 34px; font-weight: 500; letter-spacing: -0.04em; font-feature-settings: 'tnum'; line-height: 1.2; }
+.kb-val small { margin-left: 6px; font-size: 15px; font-weight: 600; letter-spacing: 0; color: var(--muted); }
+.kb-conv { font-size: 15px; font-weight: 600; color: var(--accent-fg); font-feature-settings: 'tnum'; }
+.kb-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.kb-grid .kb-key { height: 54px; font-size: 24px; }
+.kb-grid .kb-key.kb-small { font-size: 14px; font-weight: 600; }
+.kb-open .modal-foot { display: none; }
+.kb-done { height: 50px; border: 0; border-radius: var(--r); background: var(--accent); color: var(--accent-ink); font: 700 15px var(--font); cursor: pointer; }
+.kb-text { display: flex; flex-direction: column; gap: 6px; }
+.kb-bar { display: flex; align-items: center; gap: 10px; padding: 0 4px 4px; }
+.kb-bar .kb-label { margin-right: auto; }
+.kb-count { font-size: 12px; color: var(--muted); font-feature-settings: 'tnum'; }
+.kb-bar-btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: transparent; color: var(--text); font: 600 13px var(--font); cursor: pointer; }
+.kb-bar-btn.is-done { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+.kb-row { display: flex; gap: 5px; }
+.kb-row .kb-key { flex: 1 1 0; height: 46px; font-size: 18px; }
+.kb-row .kb-key.w1\.5 { flex-grow: 1.5; }
+.kb-row .kb-key.w5 { flex-grow: 5; font-size: 13px; font-weight: 600; color: var(--muted); }
+@media (min-width: 640px) { .kb { left: 50%; right: auto; width: 600px; transform: translateX(-50%); animation: none; border: 1px solid var(--line-2); border-bottom: 0; border-radius: var(--r-lg) var(--r-lg) 0 0; } }
 /* Granos por lote */
 .grano-break { display: flex; flex-direction: column; gap: 12px; }
 .gb-row { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; gap: 4px 12px; }

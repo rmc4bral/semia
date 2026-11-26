@@ -3,20 +3,40 @@ import L from 'leaflet';
 import { fmtKg } from './ui.jsx';
 import { WarpLayer } from './maplayers.js';
 
+// Recorta la capa a color con la forma de los lotes (coordenadas de capa: no cambian al desplazar el mapa)
+function updClip(m, pane, polys) {
+  if (!m || !pane) return;
+  m.getContainer().classList.toggle('has-lots', polys.length > 0);
+  if (!polys.length) { pane.style.clipPath = pane.style.webkitClipPath = ''; pane.style.display = 'none'; return; }
+  let d = '';
+  for (const ll of polys) d += ll.map((q, i) => { const p = m.latLngToLayerPoint(q); return `${i ? 'L' : 'M'}${Math.round(p.x)} ${Math.round(p.y)}`; }).join('') + 'Z';
+  const cp = `path("${d}")`;
+  pane.style.display = ''; pane.style.clipPath = cp; pane.style.webkitClipPath = cp;
+}
+
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, selectedSilo, onSelectSilo, pickMode, onPick, gps, onNeedGeoref, editing, onVertexMove, onInsertVertex, onSelectVertex, overlays = [], overlayOpacity = 1, mapEdit, onMapCorners, capture, moving, onMoveDraft, fitKey = '' }) {
   const el = useRef(null), map = useRef(null), layers = useRef({}), fitted = useRef(false), editFit = useRef(null), lastFit = useRef(null);
   const cb = useRef({}); cb.current = { onSelectLot, onSelectSilo, onPick, pickMode, geo, selectedLot, editing, onVertexMove, onInsertVertex, onSelectVertex, onMapCorners, mapEdit, onMoveDraft };
   const warp = useRef({});
+  const colorEl = useRef(null), lotLL = useRef([]);
 
   useEffect(() => {
     const m = L.map(el.current, { zoomControl: false, attributionControl: true, center: [-36.5, -60.5], zoom: 6, zoomSnap: 0.25, zoomDelta: 0.5 });
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 19, attribution: 'Imágenes © Esri, Maxar, Earthstar Geographics',
-    }).addTo(m);
+    const SAT = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+    L.tileLayer(SAT, { maxZoom: 19, attribution: 'Imágenes © Esri, Maxar, Earthstar Geographics', className: 'sat-base' }).addTo(m);
+    // Los lotes van a color: la misma imagen (ya en caché del navegador) recortada con la forma de los lotes;
+    // el fondo queda en blanco y negro, oscuro y desenfocado (ver .has-lots .sat-base)
+    const colorPane = m.createPane('semiaColor'); colorPane.style.zIndex = 250; colorPane.style.pointerEvents = 'none';
+    L.tileLayer(SAT, { maxZoom: 19, pane: 'semiaColor' }).addTo(m);
+    colorEl.current = colorPane;
     L.control.zoom({ position: 'topright' }).addTo(m);
     const pane = m.createPane('semiaMaps'); pane.style.zIndex = 350; pane.style.pointerEvents = 'none';
+    const upd = () => updClip(m, colorPane, lotLL.current);
+    m.on('zoomend viewreset', upd);
+    m.on('zoomstart', () => { colorPane.style.opacity = '0'; });
+    m.on('zoomend', () => { colorPane.style.opacity = ''; });
     layers.current = { cap: L.layerGroup().addTo(m), lots: L.layerGroup().addTo(m), silos: L.layerGroup().addTo(m), gps: L.layerGroup().addTo(m), edit: L.layerGroup().addTo(m), maps: L.layerGroup().addTo(m), mapEdit: L.layerGroup().addTo(m) };
     m.on('click', e => {
       const c = cb.current;
@@ -32,13 +52,13 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
   // Lotes (en edición se dibuja la geometría de trabajo)
   useEffect(() => {
     const g = layers.current.lots; g.clearLayers();
-    if (!geo) return;
+    if (!geo) { lotLL.current = []; updClip(map.current, colorEl.current, []); return; }
     const all = [];
     const src = editing ? editing.geom.lots.filter(gl => data.lots.some(l => l.id === gl.id)).map(gl => { const o = data.lots.find(l => l.id === gl.id); return { ...o, poly: gl.poly, subs: gl.subs.map(s => ({ ...(o.subs || []).find(x => x.id === s.id), poly: s.poly })) }; }) : data.lots;
     src.forEach(l => {
       const ll = l.poly.map(p => geo.toLatLng(p)); all.push(...ll);
       const sel = editing ? l.id === editing.lot : l.id === selectedLot;
-      const pg = L.polygon(ll, { className: `sat-lot ${sel ? 'is-sel' : ''} ${editing && !sel ? 'is-dim' : ''} ${typeof l.num === 'string' ? 'is-casco' : ''}`, weight: sel ? 2 : 1, fillOpacity: sel ? (editing ? 0.1 : 0.2) : 0.04, interactive: !editing });
+      const pg = L.polygon(ll, { className: `sat-lot ${sel ? 'is-sel' : ''} ${editing && !sel ? 'is-dim' : ''} ${typeof l.num === 'string' ? 'is-casco' : ''}`, weight: sel ? 2 : 1, fillOpacity: sel ? (editing ? 0.1 : 0.16) : 0, interactive: !editing });
       if (!editing) {
         pg.on('click', e => { L.DomEvent.stopPropagation(e); const c = cb.current; if (c.pickMode) c.onPick(c.geo.toMap(e.latlng.lat, e.latlng.lng)); else c.onSelectLot(c.selectedLot === l.id ? null : l.id); });
         pg.bindTooltip(sel ? `<b>${esc(l.num)}</b><span> · ${esc(l.ha)} ha</span>` : `<b>${esc(l.num)}</b>`, { permanent: true, direction: 'center', className: `sat-label ${sel ? 'is-sel' : ''}` });
@@ -47,7 +67,9 @@ export default function SatMap({ data, silos, geo, selectedLot, onSelectLot, sel
       if (sel && editing) layers.current.editPoly = pg;
       l.subs?.forEach(s => g.addLayer(L.polygon(s.poly.map(p => geo.toLatLng(p)), { className: 'sat-sub', weight: 1, fill: false, interactive: false, dashArray: '4 4' })));
     });
+    lotLL.current = src.map(l => l.poly.map(p => geo.toLatLng(p)));
     if ((!fitted.current || lastFit.current !== fitKey) && all.length && !editing) { map.current.fitBounds(L.latLngBounds(all), { padding: [14, 14] }); fitted.current = true; lastFit.current = fitKey; }
+    updClip(map.current, colorEl.current, lotLL.current);
   }, [geo, data.lots, selectedLot, editing, fitKey]);
 
   // Manijas de edición: vértices (arrastrables) y puntos medios (agregar vértice)

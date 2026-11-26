@@ -338,6 +338,8 @@ with sync_playwright() as p:
     est.click(); page.click('.select-opt:has-text("Los Gatos")'); page.wait_for_timeout(600)
     check(page.locator('path.sat-lot').count() == 3 and 'Casco' in page.inner_text('.leaflet-container'), 'estancia: el mapa muestra solo los lotes de esa estancia')
     check('0' in page.inner_text('.kpi.is-hero') or 't' in page.inner_text('.kpi.is-hero'), 'estancia: indicadores de la estancia')
+    dm = page.evaluate("() => { const c = document.querySelector('.leaflet-container'), p = document.querySelector('.leaflet-semiaColor-pane'); return [c.classList.contains('has-lots'), (p.style.clipPath || '').startsWith('path('), getComputedStyle(document.querySelector('.sat-base')).filter] }")
+    check(dm[0] and dm[1] and 'grayscale' in dm[2], f'mapa: lotes a color y el resto en blanco y negro {dm}')
     page.click('.nav button:has-text("Lotes")'); page.wait_for_selector('.lot-card')
     check(page.locator('.lot-card').count() == 3, 'estancia: la pestaña Lotes respeta el filtro')
     page.fill('.lots-filters input', 'cas'); page.wait_for_timeout(150)

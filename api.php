@@ -6,16 +6,28 @@
 declare(strict_types=1);
 
 /*
- * DATOS FUERA DE LA WEB: cada despliegue (Git de Hostinger) reemplaza la carpeta del sitio,
- * así que la base, las fotos, los mapas y los respaldos viven en una carpeta hermana
- * (…/acopia.app/acopia-datos/ junto a public_html/), que ningún despliegue toca ni es accesible por URL.
- * Se puede fijar otra ruta con la variable de entorno ACOPIA_DATA.
+ * DATOS FUERA DEL DESPLIEGUE: el Git de Hostinger reemplaza la carpeta del sitio en cada publicación
+ * (y puede publicar cada versión en una carpeta nueva enlazada como public_html). Por eso la base,
+ * las fotos, los mapas y los respaldos viven en la CARPETA PERSONAL de la cuenta (~/acopia-datos),
+ * que ningún despliegue toca ni es accesible por URL. Otra ruta: variable de entorno ACOPIA_DATA.
  */
+function homeDir(): ?string {
+  $h = getenv('HOME') ?: ($_SERVER['HOME'] ?? '');
+  if (!$h && function_exists('posix_getpwuid') && function_exists('posix_geteuid')) { $pw = @posix_getpwuid(posix_geteuid()); $h = $pw['dir'] ?? ''; }
+  if (!$h && preg_match('#^(/home/[^/]+)/#', (string)realpath(__DIR__), $m)) $h = $m[1];
+  return $h && @is_dir($h) ? rtrim($h, '/') : null;
+}
+function insideOf(string $dir, string $base): bool { $d = realpath($dir) ?: $dir; $b = realpath($base) ?: $base; return $d === $b || strpos($d . '/', rtrim($b, '/') . '/') === 0; }
+function usableDir(string $d): bool { return (@is_dir($d) || @mkdir($d, 0750, true)) && @is_writable($d) && !insideOf($d, __DIR__); }
+function docRootParent(): ?string { $r = $_SERVER['DOCUMENT_ROOT'] ?? ''; return $r ? dirname(rtrim($r, '/')) : null; }
 function dataDirPath(): string {
   $env = getenv('ACOPIA_DATA');
   if ($env) { $d = rtrim($env, '/'); if (!is_dir($d)) @mkdir($d, 0750, true); return $d; }
-  $out = dirname(__DIR__) . '/acopia-datos';
-  if ((is_dir($out) || @mkdir($out, 0750, true)) && is_writable($out)) return $out;
+  $cands = [];
+  if ($h = homeDir()) $cands[] = "$h/acopia-datos";
+  if ($p = docRootParent()) $cands[] = "$p/acopia-datos";
+  $cands[] = dirname(__DIR__) . '/acopia-datos';
+  foreach ($cands as $c) if (usableDir($c)) return $c;
   // último recurso (hosting sin permiso fuera de la web): adentro, protegido por .htaccess
   $in = __DIR__ . '/datos';
   if (!is_dir($in)) @mkdir($in, 0750, true);
@@ -45,11 +57,39 @@ function moveTree(string $from, string $to): void {
     if (is_dir($a)) moveTree($a, $b); elseif (!file_exists($b)) @rename($a, $b);
   }
 }
-if (DATA_DIR !== __DIR__ && file_exists(__DIR__ . '/data.json')) {
-  if (file_exists(DATA_FILE)) @copy(DATA_FILE, DATA_DIR . '/data.antes-de-migrar-' . gmdate('Ymd-His') . '.json');
-  @rename(__DIR__ . '/data.json', DATA_FILE);
+function copyTree(string $from, string $to): void {
+  if (!is_dir($from)) return;
+  if (!is_dir($to)) @mkdir($to, 0750, true);
+  foreach (scandir($from) ?: [] as $f) {
+    if ($f === '.' || $f === '..' || $f === '.htaccess') continue;
+    $a = "$from/$f"; $b = "$to/$f";
+    if (is_dir($a)) copyTree($a, $b); elseif (!file_exists($b)) @copy($a, $b);
+  }
 }
-if (DATA_DIR !== __DIR__) { moveTree(__DIR__ . '/uploads', UPLOAD_DIR); moveTree(__DIR__ . '/backups', BACKUP_DIR); }
+// Recuperación: si quedaron datos en ubicaciones anteriores (dentro de la web o junto a ella),
+// se toma el más reciente (más nuevo que el actual), se guarda una copia del actual y se marca el viejo como migrado.
+(function () {
+  $olds = array_unique(array_filter([
+    __DIR__ . '/data.json', __DIR__ . '/datos/data.json',
+    dirname(__DIR__) . '/acopia-datos/data.json',
+    ($p = docRootParent()) ? "$p/acopia-datos/data.json" : null,
+  ]));
+  $best = null;
+  foreach ($olds as $f) {
+    if (realpath($f) && realpath($f) === realpath(DATA_FILE)) continue;
+    if (@is_file($f) && (!$best || filemtime($f) > filemtime($best))) $best = $f;
+  }
+  if (!$best) return;
+  if (!file_exists(DATA_FILE) || filemtime($best) > filemtime(DATA_FILE)) {
+    if (file_exists(DATA_FILE)) @copy(DATA_FILE, DATA_DIR . '/data.antes-de-recuperar-' . gmdate('Ymd-His') . '.json');
+    if (@copy($best, DATA_FILE)) {
+      $src = dirname($best);
+      copyTree("$src/uploads", UPLOAD_DIR); copyTree("$src/backups", BACKUP_DIR);
+    }
+  }
+  @rename($best, $best . '.migrado-' . gmdate('Ymd-His'));
+})();
+if (!insideOf(UPLOAD_DIR, __DIR__)) copyTree(__DIR__ . '/uploads', UPLOAD_DIR); // fotos de versiones viejas
 
 // Primera instalación: crear data.json desde la plantilla. Los despliegues nunca lo pisan.
 if (!file_exists(DATA_FILE)) {
@@ -173,9 +213,13 @@ switch ($action) {
     // diagnóstico para el administrador: dónde están los datos y si están a salvo de los despliegues
     $m = me(); if (!$m || $m['rol'] !== 'admin') fail('Solo administradores', 403);
     $bks = glob(BACKUP_DIR . '/data-*.json') ?: [];
-    out(['ok' => true, 'fueraDeLaWeb' => DATA_DIR !== __DIR__ && strpos(DATA_DIR, __DIR__ . '/') !== 0,
-      'carpeta' => basename(DATA_DIR), 'respaldos' => count($bks), 'ultimoRespaldo' => $bks ? basename(max($bks)) : null]);
+    out(['ok' => true, 'fueraDeLaWeb' => !insideOf(DATA_DIR, __DIR__), 'datos' => DATA_DIR, 'datosReal' => realpath(DATA_DIR) ?: null,
+      'web' => __DIR__, 'webReal' => realpath(__DIR__) ?: null, 'docRoot' => $_SERVER['DOCUMENT_ROOT'] ?? null,
+      'docRootEsEnlace' => !empty($_SERVER['DOCUMENT_ROOT']) && is_link(rtrim($_SERVER['DOCUMENT_ROOT'], '/')), 'home' => homeDir(),
+      'openBasedir' => ini_get('open_basedir') ?: null, 'base' => file_exists(DATA_FILE) ? ['bytes' => filesize(DATA_FILE), 'modificada' => gmdate('c', filemtime(DATA_FILE))] : null,
+      'respaldos' => count($bks), 'ultimoRespaldo' => $bks ? basename(max($bks)) : null]);
   }
+
 
   case 'session':
     $m = me();

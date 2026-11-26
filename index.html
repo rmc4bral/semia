@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Acopia · se mudó a acopia.app</title>
+<link rel="canonical" href="https://acopia.app/">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100dvh; display: grid; place-items: center; background: #000; color: #F2F2F2; font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; }
+  main { width: min(420px, calc(100% - 40px)); display: flex; flex-direction: column; gap: 14px; }
+  h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+  p { margin: 0; color: #999; }
+  b { color: #F2F2F2; font-weight: 600; }
+  a, button { display: flex; align-items: center; justify-content: center; height: 46px; border-radius: 8px; font: 600 14px system-ui, sans-serif; text-decoration: none; cursor: pointer; }
+  .go { background: #CCFF00; color: #000; border: 0; }
+  .dl { background: transparent; color: #F2F2F2; border: 1px solid rgba(242,242,242,.14); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Acopia se mudó a acopia.app</h1>
+  <p id="msg">Te llevamos a la versión definitiva…</p>
+  <div id="datos" hidden>
+    <p style="margin-bottom:12px">En este navegador hay datos de la versión de prueba (<b id="cuenta"></b>). Descargá el respaldo e importalo en acopia.app desde <b>Ajustes → Datos → Importar respaldo</b>.</p>
+    <button class="dl" id="bajar" type="button">Descargar respaldo</button>
+  </div>
+  <a class="go" href="https://acopia.app/">Ir a acopia.app</a>
+</main>
+<script>
+  // Quitar la app vieja instalada (service worker y cachés) de este dominio
+  try { navigator.serviceWorker && navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())); } catch (e) {}
+  try { window.caches && caches.keys().then(ks => ks.forEach(k => caches.delete(k))); } catch (e) {}
+  var raw = null; try { raw = localStorage.getItem('semia.data.v1'); } catch (e) {}
+  var d = null; try { d = raw && JSON.parse(raw); } catch (e) {}
+  var kmls = d && d.georef && d.georef.kmls ? d.georef.kmls.length : 0, silos = d && d.silos ? d.silos.length : 0;
+  if (d && (kmls || silos)) {
+    document.getElementById('msg').hidden = true;
+    document.getElementById('datos').hidden = false;
+    document.getElementById('cuenta').textContent = kmls + ' estancia' + (kmls === 1 ? '' : 's') + ', ' + silos + ' silobolsa' + (silos === 1 ? '' : 's');
+    document.getElementById('bajar').onclick = function () {
+      var c = JSON.parse(raw); delete c.users;
+      var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(c, null, 1)], { type: 'application/json' }));
+      a.download = 'acopia-prueba-' + new Date().toISOString().slice(0, 10) + '.json'; document.body.appendChild(a); a.click(); a.remove();
+    };
+  } else {
+    setTimeout(function () { location.replace('https://acopia.app/'); }, 600);
+  }
+</script>
+</body>
+</html>

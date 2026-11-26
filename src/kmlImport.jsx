@@ -33,6 +33,15 @@ function Preview({ features, rows }) {
   );
 }
 
+// «31–48, Casco»: números seguidos como rango, para que el resumen entre completo
+function rangoLotes(ls) {
+  const nums = ls.filter(n => Number.isInteger(+n)).map(Number).sort((a, b) => a - b), txt = ls.filter(n => !Number.isInteger(+n)).map(String);
+  const out = []; let a = null, b = null;
+  for (const n of nums) { if (a === null) { a = b = n; } else if (n === b + 1) b = n; else { out.push(a === b ? `${a}` : `${a}–${b}`); a = b = n; } }
+  if (a !== null) out.push(a === b ? `${a}` : `${a}–${b}`);
+  return [...out, ...txt].join(', ');
+}
+
 export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
   const toast = useToast();
   const inp = useRef(null);
@@ -116,7 +125,7 @@ export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
                 <>
                   <div className="kml-row-main">
                     <b>{k.nombre} <span className="sig">{k.sigla}</span></b>
-                    <span className="muted small">{k.archivo} · {k.lotes.length} lote{k.lotes.length === 1 ? '' : 's'}{k.lotes.length ? ` (${[...k.lotes].map(String).sort((a, b) => a.localeCompare(b, 'es', { numeric: true })).join(', ')})` : ''}{k.fecha ? ` · ${fmtDate(k.fecha)}` : ''}</span>
+                    <span className="muted small">{k.archivo} · {k.lotes.length} lote{k.lotes.length === 1 ? '' : 's'}{k.lotes.length ? ` (${rangoLotes(k.lotes)})` : ''}{k.fecha ? ` · ${fmtDate(k.fecha)}` : ''}</span>
                   </div>
                   {del === k.id ? (
                     <div className="row gap-s"><span className="small">{list.length === 1 ? '¿Quitar todos los lotes?' : '¿Quitar con sus lotes?'}</span><Button size="sm" onClick={() => setDel(null)}>No</Button><Button size="sm" variant="danger" onClick={() => removeKml(k.id)}>Quitar</Button></div>

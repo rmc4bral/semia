@@ -40,7 +40,7 @@ export function Kpis({ state }) {
   const ha = state.lots.reduce((a, l) => a + (+l.ha || 0), 0);
   const kg = sumKg(state.silos);
   const items = [
-    { k: 'Almacenado', v: fmtT(kg), s: `${fmtKg(kg)} kg`, hero: true },
+    { k: 'Almacenado', v: fmtT(kg), s: kg >= 1000 ? `${fmtKg(kg)} kg` : 'en silobolsas', hero: true },
     { k: 'Silobolsas', v: fmtNum(state.silos.length), s: 'registradas' },
     { k: 'Lotes con silos', v: `${lotsWith}/${nSilo}`, s: state.lots.length > nSilo ? `${state.lots.length - nSilo} sin silos (casco, etc.)` : 'lotes' },
     { k: 'Superficie', v: `${fmtNum(ha)} ha`, s: state.estancia.nombre },
@@ -118,7 +118,7 @@ export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est =
       .sort((a, b) => a.id.localeCompare(b.id));
   }, [state.silos, q, lote, grano, inEst]);
   const nEst = state.silos.filter(s => inEst(siloLot(s, state.lots))).length;
-  const lotOpts = [{ value: 'all', label: 'Todos los lotes' }, ...state.lots.filter(l => isSiloLot(l) && inEst(l)).map(l => ({ value: l.id, label: `Lote ${l.num}`, meta: estanciaNombre(l, state) }))];
+  const lotOpts = [{ value: 'all', label: 'Todos' }, ...state.lots.filter(l => isSiloLot(l) && inEst(l)).map(l => ({ value: l.id, label: `Lote ${l.num}`, meta: estanciaNombre(l, state) }))];
   return (
     <div className="screen">
       <div className="screen-head">

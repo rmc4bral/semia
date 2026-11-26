@@ -1,12 +1,13 @@
-# acopia · versión de prueba en GitHub Pages (sin servidor: modo local, datos en cada celular)
-# Publica los archivos estáticos en la rama gh-pages. En Settings → Pages:
-# Source = Deploy from a branch · Branch = gh-pages / (root)
-name: Publicar en GitHub Pages
+# GitHub Pages ya no publica la app: la versión de prueba se mudó a acopia.app.
+# rmc4bral.github.io/semia muestra un aviso que lleva a acopia.app (y ofrece descargar
+# los datos de prueba que hayan quedado en ese navegador). Se publica solo a mano.
+name: Publicar aviso en GitHub Pages
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
-  workflow_dispatch:
+    paths: ['tools/redirect/**', '.github/workflows/pages.yml']
 
 permissions:
   contents: write
@@ -18,19 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - run: npm ci && npm run build
-      - name: Solo archivos estáticos (sin PHP, sin datos de servidor)
+      - name: Aviso de mudanza (sin la app)
         run: |
-          mkdir -p _site
-          cd public_html
-          cp index.html version.json script.js style.css tiff.js pdf.js pdf.worker.js manifest.json sw.js icon.svg icon-192.png icon-512.png ../_site/ && cp -r fonts ../_site/
-          touch ../_site/.nojekyll
+          mkdir -p _site && cp tools/redirect/index.html _site/index.html && cp tools/redirect/index.html _site/404.html && cp tools/redirect/sw.js _site/sw.js
+          touch _site/.nojekyll
       - name: Subir a la rama gh-pages
         run: |
           cd _site
           git init -q -b gh-pages
-          git config user.name "semia-bot"; git config user.email "semia-bot@users.noreply.github.com"
-          git add -A && git commit -q -m "acopia ${GITHUB_SHA::7}"
+          git config user.name "acopia-bot"; git config user.email "acopia-bot@users.noreply.github.com"
+          git add -A && git commit -q -m "Aviso: Acopia se mudó a acopia.app"
           git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages

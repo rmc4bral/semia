@@ -48,6 +48,31 @@ def watch(page, bucket):
     page.on('pageerror', lambda e: bucket.append(str(e)))
 
 
+def set_kg(page, kg, tag=''):
+    # celular: teclado numérico propio; computadora: se escribe en el campo
+    inp = page.locator('.modal .num-input').first
+    if inp.get_attribute('readonly') is not None:
+        inp.click(); page.wait_for_selector('.kb-num')
+        for k in [c for c in kg if c.isdigit()]: page.click(f'.kb-num .kb-key[data-k="{k}"]')
+        conv = page.inner_text('.kb-conv')
+        check(conv.startswith('= ') and conv.endswith(' t'), f'{tag} teclado numérico: conversión a toneladas en vivo ({conv})')
+        page.click('.kb-done'); page.wait_for_selector('.kb-num', state='detached')
+    else:
+        inp.fill(kg)
+
+def set_text(page, sel, text):
+    ta = page.locator(sel).first
+    if ta.get_attribute('readonly') is not None:
+        ta.click(); page.wait_for_selector('.kb-text')
+        for ch in text:
+            if ch == ' ': page.click('.kb-text .kb-key[data-k="space"]')
+            elif ch.isdigit():
+                page.click('.kb-text .kb-key[data-k="num"]'); page.click(f'.kb-text .kb-key[data-k="{ch}"]'); page.click('.kb-text .kb-key[data-k="abc"]')
+            else: page.click(f'.kb-text .kb-key[data-k="{ch.lower()}"]')
+        page.click('.kb-bar-btn.is-done'); page.wait_for_selector('.kb-text', state='detached')
+    else:
+        ta.fill(text)
+
 def layout_checks(page, tag):
     r = page.evaluate("""() => { const q=s=>document.querySelector(s)?.getBoundingClientRect();
       return {sw: document.documentElement.scrollWidth, iw: innerWidth, ih: innerHeight, card: q('.map-card'), nav: q('.nav'), main: q('.main'), dash: q('.dash'),
@@ -116,12 +141,12 @@ with sync_playwright() as p:
             sid = page.inner_text('.modal .silo-id-num')
             check(sid == f'RB16{i+1:03d}', f'{tag}: ID automático {sid}')
             if i == 0: check('m de largo' in page.inner_text('.modal .loc-gps'), f'{tag}: ficha con largo de la bolsa')
-            page.fill('.modal input[inputmode=decimal]', kg)
+            set_kg(page, kg, tag)
             check(page.locator('.silo-id-num').inner_text() == sid and 'Lote' in page.inner_text('.silo-id-parts'), f'{tag}: número de silobolsa detallado')
             page.click('.modal-foot .btn-primary'); page.wait_for_timeout(300)
             check(page.locator('.modal').count() == 1, f'{tag}: sin grano no deja guardar')
             page.click('.modal .pick:has-text("Soja")')
-            page.fill('.modal textarea', 'Bolsa de prueba')
+            set_text(page, '.modal textarea', 'Bolsa de prueba')
             page.set_input_files('.modal input[type=file]:not([capture])', files=[{'name': 'f.png', 'mimeType': 'image/png', 'buffer': bytes.fromhex('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a5fa5ec50000000049454e44ae426082')}])
             page.wait_for_selector('.photo-prev img')
             page.click('.modal-foot .btn-primary'); page.wait_for_selector('.modal', state='detached')
@@ -294,7 +319,7 @@ with sync_playwright() as p:
     ctx.set_geolocation({'latitude': -35.9455, 'longitude': -60.3852, 'accuracy': 3}); page.wait_for_timeout(1200); page.click('.cap-btn')
     page.wait_for_function("() => (document.querySelector('.modal .silo-id-num')?.textContent || '').length > 3", timeout=15000)
     check(page.inner_text('.modal .silo-id-num') == 'RB02001', 'kml: la bolsa cae en el lote 2 por coordenadas')
-    page.fill('.modal input[inputmode=decimal]', '210000'); page.click('.modal .pick:has-text("Maíz")'); page.click('.modal-foot .btn-primary'); page.wait_for_selector('.modal', state='detached')
+    set_kg(page, '210000', 'kml'); page.click('.modal .pick:has-text("Maíz")'); page.click('.modal-foot .btn-primary'); page.wait_for_selector('.modal', state='detached')
     s_ = page.request.get(URL + '/api.php?action=state').json()['state']['silos'][0]
     check(mdist(s_['latlng2'], (-35.9455, -60.3852)) < 0.5 and 50 < s_['largo'] < 62, f"kml: cola y largo exactos ({s_['largo']} m)")
     # agregar un segundo KML sin perder lo cargado
@@ -349,10 +374,16 @@ with sync_playwright() as p:
     page.fill('.lots-filters input', '')
     # Enter guarda: hectáreas de un lote
     page.locator('.lot-card').first.locator('button[aria-label^="Configurar"]').click(); page.wait_for_selector('.modal')
-    ha = page.locator('.modal .field:has-text("Hectáreas") input'); ha.fill('123,5'); ha.press('Enter')
+    ha = page.locator('.modal .field:has-text("Hectáreas") input').first
+    check(',' in ha.input_value() or ha.input_value().isdigit(), f'lote: hectáreas con coma decimal ({ha.input_value()})')
+    ha.click(); page.wait_for_selector('.kb-num')
+    for _ in range(8): page.click('.kb-num .kb-key[data-k="del"]')
+    for k in '123,5': page.click(f'.kb-num .kb-key[data-k="{k}"]')
+    check(page.inner_text('.kb-val').startswith('123,5'), f"lote: teclado numérico con decimales ({page.inner_text('.kb-val')})")
+    page.click('.kb-done'); page.click('.modal-foot .btn-primary')
     page.wait_for_selector('.modal', state='detached', timeout=5000)
     st2 = page.request.get(URL + '/api.php?action=state').json()['state']
-    check(any(abs(float(l.get('ha') or 0) - 123.5) < 0.01 for l in st2['lots']), 'enter: guarda las hectáreas sin tocar Guardar')
+    check(any(abs(float(l.get('ha') or 0) - 123.5) < 0.01 for l in st2['lots']), 'lote: guarda 123,5 ha (no 1235)')
     page.locator('.lots-filters .select').click(); page.click('.select-opt:has-text("Todas las estancias")'); page.wait_for_timeout(200)
     check(page.locator('.lot-card').count() == 6, 'estancia: todas = 6 lotes')
     page.click('.nav button:has-text("Silos")'); page.wait_for_selector('.filters')
@@ -385,7 +416,20 @@ with sync_playwright() as p:
     sp.wait_for_function("() => (document.querySelector('.modal .silo-id-num')?.textContent || '').length > 3", timeout=15000)
     check(sp.inner_text('.modal .silo-id-num') == 'RB03001', f"supervisor: respeta el lote elegido aunque el GPS caiga en otro ({sp.inner_text('.modal .silo-id-num')})")
     check('afuera del lote 3' in sp.inner_text('.modal'), 'supervisor: la ficha advierte la distancia al lote')
-    sp.click('.modal .pick:has-text("Soja")'); sp.fill('.modal input[inputmode=decimal]', '200000'); sp.click('.modal-foot .btn-primary'); sp.wait_for_selector('.modal', state='detached')
+    sp.click('.modal .pick:has-text("Soja")')
+    sp.locator('.modal .num-input').click(); sp.wait_for_selector('.kb-num')
+    for k in '200000': sp.click(f'.kb-num .kb-key[data-k="{k}"]')
+    check(sp.inner_text('.kb-val').startswith('200.000') and sp.inner_text('.kb-conv') == '= 200 t', f"supervisor: teclado numérico propio con toneladas ({sp.inner_text('.kb-conv')})")
+    layout_checks(sp, 'supervisor teclado numérico')
+    sp.click('.kb-done'); check(sp.inner_text('.modal .num-conv') == '= 200 t', 'supervisor: conversión debajo del campo')
+    sp.locator('.modal textarea').click(); sp.wait_for_selector('.kb-text')
+    for k in ['b', 'o', 'l', 's', 'a', 'space', 'r', 'o', 't', '´', 'a']: sp.click(f'.kb-text .kb-key[data-k="{k}"]')
+    check(sp.input_value('.modal textarea') == 'Bolsa rotá', f"supervisor: teclado de texto propio con mayúscula y tilde ({sp.input_value('.modal textarea')})")
+    check(sp.locator('.kb-bar-btn:has-text("Sistema")').count() == 1, 'supervisor: opción de volver al teclado del celular (dictado)')
+    kb_top = sp.locator('.kb-text').bounding_box()['y']; ta_box = sp.locator('.modal textarea').bounding_box()
+    check(ta_box['y'] + ta_box['height'] <= kb_top + 1, 'supervisor: el teclado no tapa el campo')
+    sp.click('.kb-bar-btn.is-done')
+    sp.click('.modal-foot .btn-primary'); sp.wait_for_selector('.modal', state='detached')
     sp.click('.nav button:has-text("Silos")'); sp.wait_for_selector('.list-card .silo-row')
     check(sp.locator('.list-card .silo-row').count() == 2 and sp.locator('.screen-head button:has-text("CSV")').count() == 0, 'supervisor: ve las cargas activas de su estancia')
     sp.locator('.list-card .silo-row:has-text("RB03001")').click(); sp.wait_for_selector('.card-facts')

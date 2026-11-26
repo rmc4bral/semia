@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal, Button, Field, TextInput, TextArea, Select, Icon, useToast, fmtKg, fmtDate, fmtNum, parseNum } from './ui.jsx';
+import { NumField, KbTextArea, kgToT, fmtTyped } from './keyboard.jsx';
 import { nextSiloId, snapToBorder, areaHa, pointInPoly, isSiloLot, parseLotCode, lotName, siloLot, siglaOf, estanciaNombre } from './geo.js';
 import { resolvePhoto } from './store.js';
 import { fmtFecha, parseFecha } from './maplayers.js';
@@ -39,7 +40,7 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
   const canEdit = isNew || isAdmin || draft.creadoPor === me.user;
   const [f, setF] = useState(() => {
     const g = draft.grano ?? '', otro = g && !GRANOS.includes(g);
-    return { ...draft, lot: draft.lot || siloLot(draft, state.lots)?.id || null, kg: draft.kg ?? '', obs: draft.obs ?? '', grano: otro ? 'Otro' : g, granoOtro: otro ? g : '' };
+    return { ...draft, lot: draft.lot || siloLot(draft, state.lots)?.id || null, kg: draft.kg == null || draft.kg === '' ? '' : fmtTyped(String(draft.kg).replace('.', ','), 0), obs: draft.obs ?? '', grano: otro ? 'Otro' : g, granoOtro: otro ? g : '' };
   });
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -171,7 +172,7 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
           <Field label="¿Qué grano?" className="span-2"><TextInput value={f.granoOtro} onChange={v => setF(x => ({ ...x, granoOtro: v.slice(0, 30) }))} placeholder="Ej: Colza, Arveja…" disabled={!canEdit} /></Field>
         )}
         <Field label="Kg (opcional)" className="span-2" error={err.kg} hint={!err.kg ? 'Si todavía no se conoce, dejalo vacío' : null}>
-          <TextInput value={f.kg} onChange={v => setF(x => ({ ...x, kg: v }))} numeric placeholder="Ej: 180.000" disabled={!canEdit} />
+          <NumField value={f.kg} onChange={v => setF(x => ({ ...x, kg: v }))} unit="kg" conv={kgToT} label="Kilos" placeholder="Ej: 180.000" disabled={!canEdit} />
         </Field>
         <Field label="Foto" className="span-2">
           <div className="photo-box">
@@ -192,7 +193,7 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
           </div>
         </Field>
         <Field label="Observaciones" className="span-2" hint="Para el supervisor: estado de la bolsa, cosecha, destino…">
-          <TextArea value={f.obs} onChange={v => setF(x => ({ ...x, obs: v }))} rows={3} placeholder="Agregá la información que haga falta" disabled={!canEdit} />
+          <KbTextArea value={f.obs} onChange={v => setF(x => ({ ...x, obs: v }))} rows={3} label="Observaciones" placeholder="Agregá la información que haga falta" disabled={!canEdit} />
         </Field>
       </div>
     </Modal>
@@ -241,7 +242,9 @@ export function SiloCard({ silo: s, state, me, geo, onClose, onEdit, onMap }) {
 export function LotModal({ lot, state, me, geo, store, onClose, onSaved, onShape }) {
   const toast = useToast();
   const isAdmin = me.rol === 'admin';
-  const [f, setF] = useState(() => ({ num: String(lot.num), nombre: lot.nombre || '', ha: String(lot.ha), obs: lot.obs || '', subs: (lot.subs || []).map(s => ({ ...s, ha: String(s.ha) })) }));
+  // hectáreas con coma decimal (419,37): parseNum toma el punto como separador de miles
+  const haTxt = v => (v == null || v === '' ? '' : fmtTyped(String(Math.round(+v * 100) / 100).replace('.', ','), 2));
+  const [f, setF] = useState(() => ({ num: String(lot.num), nombre: lot.nombre || '', ha: haTxt(lot.ha), obs: lot.obs || '', subs: (lot.subs || []).map(s => ({ ...s, ha: haTxt(s.ha) })) }));
   const [busy, setBusy] = useState(false);
   const silos = state.silos.filter(s => s.lot === lot.id);
   const kg = silos.reduce((a, s) => a + (+s.kg || 0), 0);
@@ -272,14 +275,14 @@ export function LotModal({ lot, state, me, geo, store, onClose, onSaved, onShape
       </div>
       <div className="form-grid">
         <Field label="Número o nombre del lote" hint={/^\d+$/.test(f.num.trim()) ? 'Con número: recibe silobolsas' : 'Con letras (ej. Casco): no recibe silobolsas'}><TextInput value={f.num} onChange={v => setF(x => ({ ...x, num: v.slice(0, 16) }))} disabled={!isAdmin} /></Field>
-        <Field label="Hectáreas" hint={f.subs.length ? `Suma de subdivisiones: ${fmtNum(subSum)} ha` : null}><TextInput value={f.ha} onChange={v => setF(x => ({ ...x, ha: v }))} numeric disabled={!isAdmin} /></Field>
+        <Field label="Hectáreas" hint={f.subs.length ? `Suma de subdivisiones: ${fmtNum(subSum)} ha` : null}><NumField value={f.ha} onChange={v => setF(x => ({ ...x, ha: v }))} unit="ha" decimals={2} maxDigits={5} label="Hectáreas" disabled={!isAdmin} /></Field>
         <Field label="Nombre o referencia" className="span-2"><TextInput value={f.nombre} onChange={v => setF(x => ({ ...x, nombre: v }))} placeholder="Ej: Lote del molino" disabled={!isAdmin} /></Field>
         {f.subs.map((s, i) => (
           <Field key={s.id} label={`Subdivisión ${lot.num}${s.id} · ha`}>
-            <TextInput value={s.ha} numeric disabled={!isAdmin} onChange={v => setF(x => ({ ...x, subs: x.subs.map((y, j) => (j === i ? { ...y, ha: v } : y)) }))} />
+            <NumField value={s.ha} unit="ha" decimals={2} maxDigits={5} label={`Hectáreas · ${s.nombre || `subdivisión ${i + 1}`}`} disabled={!isAdmin} onChange={v => setF(x => ({ ...x, subs: x.subs.map((y, j) => (j === i ? { ...y, ha: v } : y)) }))} />
           </Field>
         ))}
-        <Field label="Observaciones" className="span-2"><TextArea value={f.obs} onChange={v => setF(x => ({ ...x, obs: v }))} rows={2} disabled={!isAdmin} /></Field>
+        <Field label="Observaciones" className="span-2"><KbTextArea value={f.obs} onChange={v => setF(x => ({ ...x, obs: v }))} rows={2} label="Observaciones" disabled={!isAdmin} /></Field>
       </div>
       {!isAdmin && <p className="muted small">Solo el administrador puede modificar los datos del lote.</p>}
       {isAdmin && <p className="muted small">«Ajustar forma» abre el lote sobre la imagen satelital para mover sus vértices y corregir desfasajes.{lot.poly0 ? ' Este lote ya tiene la forma ajustada.' : ''}</p>}

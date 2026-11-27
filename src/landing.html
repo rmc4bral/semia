@@ -101,6 +101,9 @@ section[id]{scroll-margin-top:calc(var(--hdr) + var(--gap) - var(--pad))}
 .sec-head{max-width:640px;display:flex;flex-direction:column;gap:14px;margin-bottom:56px}
 .sec-head h2{font-size:clamp(30px,4.2vw,46px)}
 .sec-head p{color:var(--muted);font-size:18px}
+.sec-head-row{max-width:none;flex-direction:row;align-items:flex-end;justify-content:space-between;gap:48px;margin-bottom:40px}
+.sec-head-row>div{display:flex;flex-direction:column;gap:14px;max-width:640px}
+.sec-head-row>p{max-width:340px;padding-bottom:6px}
 
 /* hero */
 .hero{padding:40px 0 96px}
@@ -158,12 +161,13 @@ section[id]{scroll-margin-top:calc(var(--hdr) + var(--gap) - var(--pad))}
 
 /* funciones: sin tarjetas, separadas por líneas finas */
 .feat{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--line)}
-.feat article{padding:34px 30px 38px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+.feat article{padding:28px 30px 30px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+.feat article header{display:flex;align-items:center;gap:14px}
 .feat article:nth-child(3n+1){padding-left:0}
 .feat article:nth-child(3n){border-right:0;padding-right:0}
-.feat .ic{width:44px;height:44px;border-radius:var(--r);display:grid;place-items:center;background:var(--ink);color:var(--lime);transition:transform var(--t2) var(--ease)}
+.feat .ic{flex:none;width:40px;height:40px;border-radius:var(--r);display:grid;place-items:center;background:var(--ink);color:var(--lime);transition:transform var(--t2) var(--ease)}
 .feat article:hover .ic{transform:translateY(-3px) rotate(-4deg)}
-.feat h3{font-size:20px}
+.feat h3{font-size:19px}
 .feat p{color:var(--muted);font-size:15px}
 .feat code{font:600 13px ui-monospace,SFMono-Regular,Menlo,monospace;padding:1px 6px;border-radius:5px;background:var(--lime);color:var(--lime-ink)}
 
@@ -294,6 +298,8 @@ footer .logo svg{width:24px}
   .step .n{position:absolute;left:-76px;top:0}
   .step h3{margin-top:12px}
   section{--pad:80px}
+  .sec-head-row{flex-direction:column;align-items:flex-start;gap:14px}
+  .sec-head-row>p{max-width:none;padding-bottom:0}
   :root{--gap:32px}
   .desk{margin-top:64px}
 }
@@ -384,14 +390,14 @@ footer .logo svg{width:24px}
 
   <section id="plataforma">
     <div class="wrap">
-      <div class="sec-head"><span class="eyebrow rv"><i></i>Plataforma</span><h2 class="rv" style="--i:1">Todo lo que pasa en el campo, registrado con método.</h2><p class="rv" style="--i:2">Seis pilares para ordenar tu acopio, del lote al despacho.</p></div>
+      <div class="sec-head sec-head-row"><div><span class="eyebrow rv"><i></i>Plataforma</span><h2 class="rv" style="--i:1">Todo lo que pasa en el campo, registrado con método.</h2></div><p class="rv" style="--i:2">Seis pilares para ordenar tu acopio, del lote al despacho.</p></div>
       <div class="feat">
-        <article class="rv" style="--i:0"><span class="ic">__IC_LOTS__</span><h3>Cargá o marcá tus lotes</h3><p>Importá un KML o delimitá tus lotes directamente sobre el mapa satelital.</p></article>
-        <article class="rv" style="--i:1"><span class="ic">__IC_ID__</span><h3>Identidad de cada silo</h3><p>Cada silobolsa georreferenciada con su ficha completa: grano, kilos, humedad y prioridad de salida, bajo un código único como <code>__ID__</code>.</p></article>
-        <article class="rv" style="--i:2"><span class="ic">__IC_NAV__</span><h3>Sistema de navegación</h3><p>Con los lotes trazados y los silos ubicados por GPS, recorrés el campo y verificás la posición real de cada bolsa.</p></article>
-        <article class="rv" style="--i:0"><span class="ic">__IC_CHART__</span><h3>Panel de estadísticas</h3><p>Stock, toneladas por variedad y lote, humedad promedio, prioridades y despachos, filtrados por fecha y en tiempo real.</p></article>
-        <article class="rv" style="--i:1"><span class="ic">__IC_USERS__</span><h3>Gestioná tu equipo</h3><p>Asigná a cada persona su sección y su rol, y sabé quién registró cada silo.</p></article>
-        <article class="rv" style="--i:2"><span class="ic">__IC_SAFE__</span><h3>Datos confidenciales</h3><p>Los lotes y registros de cada empresa son privados: solo los ve tu equipo, con respaldo diario.</p></article>
+        <article class="rv" style="--i:0"><header><span class="ic">__IC_LOTS__</span><h3>Cargá o marcá tus lotes</h3></header><p>Importá un KML o delimitá tus lotes directamente sobre el mapa satelital.</p></article>
+        <article class="rv" style="--i:1"><header><span class="ic">__IC_ID__</span><h3>Identidad de cada silo</h3></header><p>Cada silobolsa georreferenciada con su ficha completa: grano, kilos, humedad y prioridad de salida, bajo un código único como <code>__ID__</code>.</p></article>
+        <article class="rv" style="--i:2"><header><span class="ic">__IC_NAV__</span><h3>Sistema de navegación</h3></header><p>Con los lotes trazados y los silos ubicados por GPS, recorrés el campo y verificás la posición real de cada bolsa.</p></article>
+        <article class="rv" style="--i:0"><header><span class="ic">__IC_CHART__</span><h3>Panel de estadísticas</h3></header><p>Stock, toneladas por variedad y lote, humedad promedio, prioridades y despachos, filtrados por fecha y en tiempo real.</p></article>
+        <article class="rv" style="--i:1"><header><span class="ic">__IC_USERS__</span><h3>Gestioná tu equipo</h3></header><p>Asigná a cada persona su sección y su rol, y sabé quién registró cada silo.</p></article>
+        <article class="rv" style="--i:2"><header><span class="ic">__IC_SAFE__</span><h3>Datos confidenciales</h3></header><p>Los lotes y registros de cada empresa son privados: solo los ve tu equipo, con respaldo diario.</p></article>
       </div>
     </div>
   </section>

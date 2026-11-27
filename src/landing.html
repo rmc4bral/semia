@@ -116,7 +116,8 @@ section[id]{scroll-margin-top:calc(var(--hdr) + var(--gap) - var(--pad-t,var(--p
 .proof div{padding:16px 16px 0 0;border-right:1px solid var(--line)}
 .proof div+div{padding-left:16px}
 .proof div:last-child{border-right:0}
-.proof b{display:block;font-size:22px;font-weight:600;letter-spacing:-.03em}
+.proof b{display:flex;align-items:flex-end;min-height:2.5em;font-size:19px;line-height:1.25;font-weight:600;letter-spacing:-.025em;text-wrap:balance}
+.proof span{display:block;margin-top:4px}
 .proof span{font-size:13px;color:var(--muted)}
 
 /* ---------- iPhone en 3D con capturas reales de la app ---------- */
@@ -329,7 +330,7 @@ footer .logo svg{width:24px}
   .hero{padding:24px 0 64px}
   .feat{grid-template-columns:1fr}
   .feat article,.feat article:nth-child(n){border-right:0;padding:26px 0}
-  .proof b{font-size:18px}
+  .proof b{font-size:16px}
   .proof span{font-size:12px}
   form{grid-template-columns:1fr}
   footer .wrap{flex-direction:column;align-items:flex-start}
@@ -383,9 +384,9 @@ footer .logo svg{width:24px}
           <a class="btn" href="#como-funciona">Ver cómo funciona</a>
         </div>
         <div class="proof rv" style="--i:4">
-          <div><b>A y B</b><span>cabecera y cola por GPS</span></div>
-          <div><b>__ID__</b><span>número único por bolsa</span></div>
-          <div><b>A pie</b><span>navegación a cada bolsa</span></div>
+          <div><b>Variedad, kg y humedad</b><span>de cada silo</span></div>
+          <div><b>ID o denominación</b><span>para cada bolsa</span></div>
+          <div><b>Navegación GPS</b><span>ubicación de cada bolsa</span></div>
         </div>
       </div>
       <figure class="stage rv" style="--i:2" id="demo" aria-label="Acopia en el celular: registro de una silobolsa y navegación a pie hasta otra">
@@ -415,7 +416,7 @@ footer .logo svg{width:24px}
       <div class="sec-head sec-head-row"><div><span class="eyebrow rv"><i></i>Plataforma</span><h2 class="rv" style="--i:1">Todo lo que pasa en el campo, registrado con método.</h2></div><p class="rv" style="--i:2">Seis pilares para ordenar tu acopio, del lote al despacho.</p></div>
       <div class="feat">
         <article class="rv" style="--i:0"><header><span class="ic">__IC_LOTS__</span><h3>Cargá o marcá tus lotes</h3></header><p>Importá un KML o delimitá tus lotes directamente sobre el mapa satelital.</p></article>
-        <article class="rv" style="--i:1"><header><span class="ic">__IC_ID__</span><h3>Identidad de cada silo</h3></header><p>Cada silobolsa georreferenciada con su ficha completa: grano, kilos, humedad y prioridad de salida, bajo un código único como <code>__ID__</code>.</p></article>
+        <article class="rv" style="--i:1"><header><span class="ic">__IC_ID__</span><h3>ID o denominación de cada silo</h3></header><p>Cada silobolsa georreferenciada con su ficha completa: grano, kilos, humedad y prioridad de salida, identificada con un ID como <code>__ID__</code>.</p></article>
         <article class="rv" style="--i:2"><header><span class="ic">__IC_NAV__</span><h3>Sistema de navegación</h3></header><p>Con los lotes trazados y los silos ubicados por GPS, recorrés el campo y verificás la posición real de cada bolsa.</p></article>
         <article class="rv" style="--i:0"><header><span class="ic">__IC_CHART__</span><h3>Panel de estadísticas</h3></header><p>Stock, toneladas por variedad y lote, humedad promedio, prioridades y despachos, filtrados por fecha y en tiempo real.</p></article>
         <article class="rv" style="--i:1"><header><span class="ic">__IC_USERS__</span><h3>Gestioná tu equipo</h3></header><p>Asigná a cada persona su sección y su rol, y sabé quién registró cada silo.</p></article>

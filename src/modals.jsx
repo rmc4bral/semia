@@ -40,7 +40,7 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
   const canEdit = isNew || isAdmin || draft.creadoPor === me.user;
   const [f, setF] = useState(() => {
     const g = draft.grano ?? '', otro = g && !GRANOS.includes(g);
-    return { ...draft, lot: draft.lot || siloLot(draft, state.lots)?.id || null, kg: draft.kg == null || draft.kg === '' ? '' : fmtTyped(String(draft.kg).replace('.', ','), 0), obs: draft.obs ?? '', grano: otro ? 'Otro' : g, granoOtro: otro ? g : '', hum: draft.hum == null || draft.hum === '' ? '' : String(draft.hum).replace('.', ','), prio: !!draft.prio };
+    return { ...draft, lot: draft.lot || siloLot(draft, state.lots)?.id || null, kg: draft.kg == null || draft.kg === '' ? '' : fmtTyped(String(draft.kg).replace('.', ','), 0), obs: draft.obs ?? '', grano: otro ? 'Otro' : g, granoOtro: otro ? g : '', hum: draft.hum == null || draft.hum === '' ? '' : String(draft.hum).replace('.', ','), prio: prioOf(draft.prio) };
   });
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -89,7 +89,7 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
       let foto = f.fotoData === null ? null : f.foto || null;
       if (f.fotoData) foto = await store.uploadPhoto(id, f.fotoData);
       const silo = {
-        id, lote: lot.num, lot: lot.id, kg: f.kg === '' ? null : kgNum, hum: f.hum === '' ? null : Math.round(humNum * 10) / 10, prio: !!f.prio, grano: granoFinal, obs: (f.obs || '').trim(), foto,
+        id, lote: lot.num, lot: lot.id, kg: f.kg === '' ? null : kgNum, hum: f.hum === '' ? null : Math.round(humNum * 10) / 10, prio: prioOf(f.prio), grano: granoFinal, obs: (f.obs || '').trim(), foto,
         map: f.map.map(v => Math.round(v * 100) / 100), t: free ? null : Math.round(f.t * 100) / 100, ang: Number.isFinite(f.ang) ? Math.round(f.ang * 1e4) / 1e4 : 0,
         map2: f.map2 ? f.map2.map(v => Math.round(v * 100) / 100) : null,
         latlng: f.latlng && f.origen === 'gps' ? f.latlng : geo ? geo.toLatLng(f.map).map(v => +v.toFixed(7)) : (draft.latlng || null),
@@ -176,13 +176,11 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
         <Field label="Kg (opcional)" className="span-2" error={err.kg} hint={!err.kg ? 'Si todavía no se conoce, dejalo vacío' : null}>
           <NumField value={f.kg} onChange={v => setF(x => ({ ...x, kg: v }))} unit="kg" conv={kgToT} label="Kilos" placeholder="Ej: 180.000" disabled={!canEdit} />
         </Field>
-        <Field label="Humedad (opcional)" error={err.hum}>
+        <Field label="Humedad al embolsar (opcional)" className="span-2" error={err.hum} hint={!err.hum ? 'Porcentaje medido al cargar la bolsa' : null}>
           <NumField value={f.hum} onChange={v => setF(x => ({ ...x, hum: v }))} unit="%" decimals={1} maxDigits={2} label="Humedad" placeholder="Ej: 13,5" disabled={!canEdit} />
         </Field>
-        <Field label="Salida">
-          <button type="button" role="checkbox" aria-checked={!!f.prio} className={`check check-field ${f.prio ? 'is-on' : ''}`} disabled={!canEdit} onClick={() => setF(x => ({ ...x, prio: !x.prio }))}>
-            <span className="check-box">{f.prio && <Icon name="check" size={14} />}</span>Prioridad de salida
-          </button>
+        <Field label="Prioridad de salida" className="span-2" hint="Alta: menos humedad, se despacha primero · Baja: más humedad">
+          <PrioPick value={f.prio} onChange={p => setF(x => ({ ...x, prio: p }))} disabled={!canEdit} />
         </Field>
         <Field label="Foto" className="span-2">
           <div className="photo-box">
@@ -211,8 +209,27 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
 }
 
 /* ---------- Tarjeta de información de un silo ---------- */
-export const userName = (u, state) => (state.users || []).find(x => x.user === u)?.nombre || u || '—';
-export function SiloCard({ silo: s, state, me, geo, onClose, onEdit, onMap }) {
+// nombre y apellido por separado; los usuarios anteriores tenían todo en «nombre»
+export const splitName = u => (u?.apellido != null && u.apellido !== '' ? { nombre: u.nombre || '', apellido: u.apellido } : (() => { const p = String(u?.nombre || '').trim().split(/\s+/); return { nombre: p[0] || '', apellido: p.slice(1).join(' ') }; })());
+export const fullName = u => [u?.nombre, u?.apellido].filter(Boolean).join(' ') || u?.user || '';
+export const userName = (u, state) => { const x = (state.users || []).find(y => y.user === u); return x ? fullName(x) : u || '—'; };
+
+/* ---------- Prioridad de salida: alta = menos humedad, se despacha primero ---------- */
+export const PRIOS = [{ v: 'alta', l: 'Alta' }, { v: 'media', l: 'Media' }, { v: 'baja', l: 'Baja' }];
+export const prioOf = v => (v === true ? 'alta' : PRIOS.some(p => p.v === v) ? v : null);
+export const prioLabel = v => PRIOS.find(p => p.v === prioOf(v))?.l || '';
+export function PrioTag({ p, short }) { const v = prioOf(p); return v ? <span className={`prio-tag is-${v}`} title={`Prioridad de salida ${prioLabel(v).toLowerCase()}`}>{short ? prioLabel(v) : `Salida ${prioLabel(v).toLowerCase()}`}</span> : null; }
+export function PrioPick({ value, onChange, disabled }) {
+  const v = prioOf(value);
+  return (
+    <div className="chips-pick prio-pick" role="radiogroup" aria-label="Prioridad de salida">
+      {PRIOS.map(p => <button type="button" key={p.v} role="radio" aria-checked={v === p.v} className={`pick is-${p.v} ${v === p.v ? 'is-on' : ''}`} disabled={disabled} onClick={() => onChange(v === p.v ? null : p.v)}>{p.l}</button>)}
+    </div>
+  );
+}
+export function SiloCard({ silo: s, state, me, geo, store, onState, onClose, onEdit, onMap }) {
+  const toast = useToast();
+  const setPrio = async p => { try { onState(await store.setPrio(s.id, p, me)); toast(p ? `Prioridad de salida ${prioLabel(p).toLowerCase()}` : 'Prioridad quitada', 'ok'); } catch (e) { toast(e.message, 'error'); } };
   const lot = siloLot(s, state.lots);
   const canEdit = me.rol === 'admin' || s.creadoPor === me.user;
   const ll = s.latlng || (geo && s.map ? geo.toLatLng(s.map) : null), ll2 = s.latlng2 || (geo && s.map2 ? geo.toLatLng(s.map2) : null);
@@ -235,7 +252,7 @@ export function SiloCard({ silo: s, state, me, geo, onClose, onEdit, onMap }) {
         <div><dt>Grano</dt><dd>{s.grano || '—'}</dd></div>
         <div><dt>Kilos</dt><dd>{hasKg ? <>{fmtKg(s.kg)} kg <span className="muted">· {fmtNum(s.kg / 1000, 1)} t</span></> : <span className="muted">Sin cargar</span>}</dd></div>
         <div><dt>Humedad</dt><dd>{s.hum != null ? `${fmtNum(s.hum, 1)} %` : <span className="muted">Sin medir</span>}</dd></div>
-        <div><dt>Salida</dt><dd>{s.prio ? <span className="prio-tag">Prioritaria</span> : <span className="muted">Normal</span>}</dd></div>
+        <div><dt>Prioridad de salida</dt><dd>{store ? <PrioPick value={s.prio} onChange={setPrio} /> : prioLabel(s.prio) || <span className="muted">Sin marcar</span>}</dd></div>
         <div className="span-2"><dt>Lugar</dt><dd>{ll ? <>
           {s.largo ? <span>Bolsa de {fmtNum(s.largo)} m{s.gps ? ` · GPS ±${fmtNum(s.gps.acc)} m` : ''}</span> : <span>{s.origen === 'gps' ? `Punto GPS${s.gps ? ` ±${fmtNum(s.gps.acc)} m` : ''}` : 'Marcado en el mapa'}</span>}
           <span className="mono small muted">{ll2 ? `A ${c(ll)}` : c(ll)}</span>{ll2 && <span className="mono small muted">B {c(ll2)}</span>}

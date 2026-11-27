@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches: [capturas]
+permissions:
+  contents: write
 jobs:
   capturas:
     runs-on: ubuntu-latest
@@ -18,5 +20,10 @@ jobs:
           (cd /tmp/web && ACOPIA_DATA=/tmp/datos php -S 127.0.0.1:8790 "$GITHUB_WORKSPACE/tests/router.php" > /tmp/php.log 2>&1 &)
           sleep 1
           python tests/capturas.py http://127.0.0.1:8790 /tmp/datos capturas
-      - uses: actions/upload-artifact@v4
-        with: { name: capturas, path: capturas, retention-days: 3 }
+      - name: Convertir a WebP y guardar en la rama
+        run: |
+          python tests/capturas_webp.py capturas
+          git config user.name "acopia-capturas"; git config user.email "actions@github.com"
+          git add public_html/img/app src/capturas.json
+          git commit -m "Capturas reales actualizadas" || echo "sin cambios"
+          git push

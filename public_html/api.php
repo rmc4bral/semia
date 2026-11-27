@@ -149,13 +149,15 @@ function withData(callable $fn, bool $write = false) {
   return $res;
 }
 function publicState(array $d): array {
-  $d['users'] = array_map(fn($u) => ['user' => $u['user'], 'nombre' => $u['nombre'] ?? '', 'rol' => $u['rol'] ?? 'operador', 'email' => $u['email'] ?? '', 'tel' => $u['tel'] ?? ''], $d['users'] ?? []);
+  $d['users'] = array_map(fn($u) => ['user' => $u['user'], 'nombre' => $u['nombre'] ?? '', 'apellido' => $u['apellido'] ?? '', 'rol' => $u['rol'] ?? 'operador', 'email' => $u['email'] ?? '', 'tel' => $u['tel'] ?? ''], $d['users'] ?? []);
   return $d;
 }
 function me(): ?array { return $_SESSION['me'] ?? null; }
 function sessionUser(array $u): array {
-  return ['user' => $u['user'], 'nombre' => $u['nombre'] ?? $u['user'], 'rol' => $u['rol'] ?? 'operador', 'email' => $u['email'] ?? '', 'tel' => $u['tel'] ?? '', 'tema' => $u['tema'] ?? 'light'];
+  return ['user' => $u['user'], 'nombre' => $u['nombre'] ?? $u['user'], 'apellido' => $u['apellido'] ?? '', 'rol' => $u['rol'] ?? 'operador', 'email' => $u['email'] ?? '', 'tel' => $u['tel'] ?? '', 'tema' => $u['tema'] ?? 'light'];
 }
+// prioridad de salida: alta (menos humedad, se despacha primero), media o baja; true de versiones anteriores = alta
+function prioOf($v): ?string { if ($v === true) return 'alta'; return in_array($v, ['alta', 'media', 'baja'], true) ? $v : null; }
 function requireUser(): array { $m = me(); if (!$m) fail('Sesión expirada. Ingresá nuevamente.', 401); return $m; }
 function requireAdmin(): array { $m = requireUser(); if (($m['rol'] ?? '') !== 'admin') fail('Solo el administrador puede hacer esto', 403); return $m; }
 function body(): array {
@@ -229,7 +231,7 @@ switch ($action) {
     $b = body();
     if (str($b['web'] ?? '', 200) !== '') out(['ok' => true]);
     $f = ['nombre' => str($b['nombre'] ?? '', 60), 'apellido' => str($b['apellido'] ?? '', 60), 'email' => str($b['email'] ?? '', 120),
-      'tel' => str($b['tel'] ?? '', 30), 'empresa' => str($b['empresa'] ?? '', 100), 'fuente' => str($b['fuente'] ?? '', 20), 'mensaje' => str($b['mensaje'] ?? '', 2000)];
+      'tel' => str($b['tel'] ?? '', 30), 'empresa' => str($b['empresa'] ?? '', 100), 'fuente' => str($b['fuente'] ?? '', 20), 'mensaje' => str($b['mensaje'] ?? '', 2000), 'tipo' => ($b['tipo'] ?? '') === 'demo' ? 'demo' : 'consulta'];
     foreach (['nombre' => 'el nombre', 'apellido' => 'el apellido', 'email' => 'el email', 'tel' => 'el celular', 'empresa' => 'la empresa'] as $k => $t)
       if ($f[$k] === '') fail("Completá $t");
     if (!filter_var($f['email'], FILTER_VALIDATE_EMAIL)) fail('El email no es válido');
@@ -247,9 +249,9 @@ switch ($action) {
     $to = []; withData(function (&$d) use (&$to) { foreach ($d['users'] ?? [] as $u) if (($u['rol'] ?? '') === 'admin' && filter_var($u['email'] ?? '', FILTER_VALIDATE_EMAIL)) $to[] = $u['email']; });
     if ($to && function_exists('mail')) {
       $host = preg_replace('/[^a-z0-9.\-]/i', '', explode(':', $_SERVER['HTTP_HOST'] ?? 'acopia.app')[0]) ?: 'acopia.app';
-      $txt = "Nueva consulta desde $host\n\nNombre: {$f['nombre']} {$f['apellido']}\nEmpresa: {$f['empresa']}\nEmail: {$f['email']}\nCelular: {$f['tel']}\nNos conoció por: " . ($f['fuente'] ?: '—') . "\n\n{$f['mensaje']}\n";
+      $txt = ($f['tipo'] === 'demo' ? "Solicitud de demo de 10 días desde $host" : "Nueva consulta desde $host") . "\n\nNombre: {$f['nombre']} {$f['apellido']}\nEmpresa: {$f['empresa']}\nEmail: {$f['email']}\nCelular: {$f['tel']}\nNos conoció por: " . ($f['fuente'] ?: '—') . "\n\n{$f['mensaje']}\n";
       $safe = fn($v) => str_replace(["\r", "\n"], '', $v);
-      @mail(implode(',', $to), '=?UTF-8?B?' . base64_encode('Consulta de ' . $f['nombre'] . ' ' . $f['apellido'] . ' · ' . $f['empresa']) . '?=', $txt,
+      @mail(implode(',', $to), '=?UTF-8?B?' . base64_encode(($f['tipo'] === 'demo' ? 'Demo de 10 días: ' : 'Consulta de ') . $f['nombre'] . ' ' . $f['apellido'] . ' · ' . $f['empresa']) . '?=', $txt,
         "From: Acopia <no-reply@$host>\r\nReply-To: " . $safe($f['email']) . "\r\nContent-Type: text/plain; charset=UTF-8");
     }
     out(['ok' => true]);
@@ -391,7 +393,7 @@ switch ($action) {
       $foto = $s['foto'] ?? null;
       if ($foto !== null && !preg_match('#^uploads/[A-Z0-9]+-[a-f0-9]{8}\.(jpg|png|webp)$#', (string)$foto)) $foto = null;
       $rec = [
-        'id' => $id, 'lote' => $lote, 'lot' => $lotId, 'kg' => $kg, 'hum' => $hum, 'prio' => !empty($s['prio']), 'grano' => str($s['grano'] ?? '', 30), 'obs' => str($s['obs'] ?? '', 1000), 'foto' => $foto,
+        'id' => $id, 'lote' => $lote, 'lot' => $lotId, 'kg' => $kg, 'hum' => $hum, 'prio' => prioOf($s['prio'] ?? null), 'grano' => str($s['grano'] ?? '', 30), 'obs' => str($s['obs'] ?? '', 1000), 'foto' => $foto,
         'map' => [round((float)$map[0], 2), round((float)$map[1], 2)], 't' => num($s['t'] ?? null), 'ang' => num($s['ang'] ?? null),
         'map2' => $map2,
         'latlng' => is_array($s['latlng'] ?? null) ? array_map('floatval', array_slice($s['latlng'], 0, 2)) : null,
@@ -404,6 +406,16 @@ switch ($action) {
       if ($idx !== null) $d['silos'][$idx] = array_merge($d['silos'][$idx], $rec, ['editadoPor' => $me['user'], 'editadoEn' => gmdate('c')]);
       else $d['silos'][] = array_merge($rec, ['creadoPor' => $me['user'], 'creadoEn' => gmdate('c')]);
       return publicState($d);
+    }, true);
+    out(['ok' => true, 'state' => $state]);
+  }
+
+  case 'setPrio': {
+    // administrador y supervisores marcan la prioridad de salida de cualquier bolsa, desde el campo o el panel
+    $me = requireUser(); $b = body(); $id = (string)($b['id'] ?? ''); $p = prioOf($b['prio'] ?? null);
+    $state = withData(function (&$d) use ($id, $p, $me) {
+      foreach ($d['silos'] as &$s) if ($s['id'] === $id) { $s['prio'] = $p; $s['prioPor'] = $me['user']; $s['prioEn'] = gmdate('c'); return publicState($d); }
+      fail('El silo ya no existe', 404);
     }, true);
     out(['ok' => true, 'state' => $state]);
   }
@@ -619,6 +631,7 @@ switch ($action) {
       $idx = null; foreach ($d['users'] as $i => $x) if ($x['user'] === $user) $idx = $i;
       $rol = $isAdmin && in_array($u['rol'] ?? '', ['admin', 'operador'], true) ? $u['rol'] : ($idx !== null ? $d['users'][$idx]['rol'] : 'operador');
       $rec = ['user' => $user, 'nombre' => str($u['nombre'] ?? $user, 60) ?: $user, 'rol' => $rol];
+      if (array_key_exists('apellido', $u)) $rec['apellido'] = str($u['apellido'], 60);
       if (array_key_exists('email', $u)) $rec['email'] = substr($email, 0, 120);
       if (array_key_exists('tel', $u)) $rec['tel'] = substr($tel, 0, 30);
       if (in_array($u['tema'] ?? '', ['light', 'dark'], true)) $rec['tema'] = $u['tema'];

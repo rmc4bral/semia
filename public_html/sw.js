@@ -1,5 +1,5 @@
 // acopia · service worker: app offline, datos siempre desde el servidor
-const CACHE = 'acopia-v4';
+const CACHE = 'acopia-v5';
 // landing en / y app en /login y /dashboard/… (app.html)
 const SHELL = ['/', '/app.html', '/manifest.json', '/icon.svg', '/icon-192.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });

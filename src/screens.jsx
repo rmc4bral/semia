@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Field, TextInput, Select, Segmented, Icon, Modal, useToast, fmtKg, fmtNum, fmtDate } from './ui.jsx';
 import { fmtFecha } from './maplayers.js';
 import { areaHa, lotCorners, migrateGeoref, pointKey, isSiloLot, lotName, siloLot, estanciaNombre } from './geo.js';
-import { PhotoView, GRANOS, userName } from './modals.jsx';
+import { PhotoView, GRANOS, userName, PrioTag, PRIOS, prioOf, splitName, fullName } from './modals.jsx';
 import { KmlImport } from './kmlImport.jsx';
 import { buildKmlRename } from './kml.js';
 import GlobalMap from './GlobalMap.jsx';
@@ -88,7 +88,7 @@ export function SiloRow({ s, onClick, thumb, state, est }) {
   return (
     <button type="button" className="silo-row" onClick={onClick}>
       <span className="silo-ic"><Icon name="silo" size={18} /></span>
-      <span className="silo-row-main"><span className="silo-row-id"><b className="mono">{s.id}</b>{s.prio && <span className="prio-tag" title="Prioridad de salida">Salida</span>}</span>
+      <span className="silo-row-main"><span className="silo-row-id"><b className="mono">{s.id}</b><PrioTag p={s.prio} short /></span>
         <span className="muted small">{est && state ? `${estanciaNombre(siloLot(s, state.lots), state) || state.estancia.nombre} · ` : ''}Lote {s.lote}{s.grano ? ` · ${s.grano}` : ''}{s.hum != null ? ` · ${fmtNum(s.hum, 1)} % hum.` : ''}</span>
         <span className="muted small">{fmtDate(s.creadoEn)}{state ? ` · ${userName(s.creadoPor, state)}` : ''}</span></span>
       {thumb && s.foto && <PhotoView refPath={s.foto} className="silo-thumb" />}
@@ -113,22 +113,24 @@ export function RecentPanel({ state, onSelectSilo }) {
 const HUM = { all: () => true, seco: h => h != null && h <= 14, medio: h => h != null && h > 14 && h <= 16, alto: h => h != null && h > 16, sin: h => h == null };
 const HUM_OPTS = [{ value: 'all', label: 'Todas' }, { value: 'seco', label: 'Hasta 14 %' }, { value: 'medio', label: '14 a 16 %' }, { value: 'alto', label: 'Más de 16 %' }, { value: 'sin', label: 'Sin medir' }];
 const byId = (a, b) => a.id.localeCompare(b.id);
+const PRANK = { alta: 0, media: 1, baja: 2, null: 3 };
+const PRIO_OPTS = [{ value: 'all', label: 'Todas' }, ...PRIOS.map(p => ({ value: p.v, label: p.l })), { value: 'sin', label: 'Sin marcar' }];
 const ORDEN = {
-  prio: (a, b) => (!!b.prio - !!a.prio) || byId(a, b),
+  prio: (a, b) => (PRANK[prioOf(a.prio)] - PRANK[prioOf(b.prio)]) || ((a.hum ?? 99) - (b.hum ?? 99)) || byId(a, b),
   kg: (a, b) => ((+b.kg || 0) - (+a.kg || 0)) || byId(a, b),
   fecha: (a, b) => String(b.creadoEn || '').localeCompare(String(a.creadoEn || '')) || byId(a, b),
   id: byId,
 };
-const ORDEN_OPTS = [{ value: 'prio', label: 'Prioridad', meta: 'De salida primero' }, { value: 'kg', label: 'Mayor kg' }, { value: 'fecha', label: 'Recientes' }, { value: 'id', label: 'Número' }];
+const ORDEN_OPTS = [{ value: 'prio', label: 'Prioridad', meta: 'Alta primero, luego menor humedad' }, { value: 'kg', label: 'Mayor kg' }, { value: 'fecha', label: 'Recientes' }, { value: 'id', label: 'Número' }];
 
 export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est = 'all', estOpts, onEst, inEst = () => true }) {
-  const [q, setQ] = useState(''), [lote, setLote] = useState('all'), [grano, setGrano] = useState('all'), [hum, setHum] = useState('all'), [orden, setOrden] = useState('prio');
+  const [q, setQ] = useState(''), [lote, setLote] = useState('all'), [grano, setGrano] = useState('all'), [hum, setHum] = useState('all'), [prio, setPrio] = useState('all'), [orden, setOrden] = useState('prio');
   const list = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return state.silos.filter(s => inEst(siloLot(s, state.lots)) && (lote === 'all' || s.lot === lote) && (grano === 'all' || s.grano === grano) && HUM[hum](s.hum)
+    return state.silos.filter(s => inEst(siloLot(s, state.lots)) && (lote === 'all' || s.lot === lote) && (grano === 'all' || s.grano === grano) && HUM[hum](s.hum) && (prio === 'all' || (prio === 'sin' ? !prioOf(s.prio) : prioOf(s.prio) === prio))
       && (!t || s.id.toLowerCase().includes(t) || (s.obs || '').toLowerCase().includes(t)))
       .sort(ORDEN[orden]);
-  }, [state.silos, q, lote, grano, hum, orden, inEst]);
+  }, [state.silos, q, lote, grano, hum, prio, orden, inEst]);
   const nEst = state.silos.filter(s => inEst(siloLot(s, state.lots))).length;
   const lotOpts = [{ value: 'all', label: 'Todos' }, ...state.lots.filter(l => isSiloLot(l) && inEst(l)).map(l => ({ value: l.id, label: `Lote ${l.num}`, meta: estanciaNombre(l, state) }))];
   return (
@@ -143,6 +145,7 @@ export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est =
         <Field label="Lote"><Select value={lote} options={lotOpts} onChange={setLote} /></Field>
         <Field label="Grano"><Select value={grano} options={[{ value: 'all', label: 'Todos' }, ...GRANOS.map(g => ({ value: g, label: g }))]} onChange={setGrano} /></Field>
         <Field label="Humedad"><Select value={hum} options={HUM_OPTS} onChange={setHum} /></Field>
+        <Field label="Prioridad"><Select value={prio} options={PRIO_OPTS} onChange={setPrio} /></Field>
         <Field label="Ordenar"><Select value={orden} options={ORDEN_OPTS} onChange={setOrden} /></Field>
       </div>
       <div className="card list-card">
@@ -263,14 +266,16 @@ function Group({ icon, title, desc, children, id }) {
 export function ProfileScreen({ me, store, onState, onMe, theme, setTheme, onLogout, estActual, onChangeEst, onGo }) {
   const toast = useToast();
   const isAdmin = me.rol === 'admin';
-  const [f, setF] = useState({ nombre: me.nombre || '', email: me.email || '', tel: me.tel || '', pass: '', pass2: '' });
-  const dirty = f.nombre !== (me.nombre || '') || f.email !== (me.email || '') || f.tel !== (me.tel || '') || f.pass;
+  const nm = splitName(me);
+  const [f, setF] = useState({ nombre: nm.nombre, apellido: nm.apellido, email: me.email || '', tel: me.tel || '', pass: '', pass2: '' });
+  const dirty = f.nombre !== nm.nombre || f.apellido !== nm.apellido || f.email !== (me.email || '') || f.tel !== (me.tel || '') || f.pass;
   async function save() {
     if (!f.nombre.trim()) return toast('Escribí tu nombre', 'error');
+    if (!f.apellido.trim()) return toast('Escribí tu apellido', 'error');
     if (f.pass && f.pass.length < 6) return toast('La contraseña debe tener al menos 6 caracteres', 'error');
     if (f.pass && f.pass !== f.pass2) return toast('Las contraseñas no coinciden', 'error');
     try {
-      const out = await store.saveProfile({ user: me.user, nombre: f.nombre.trim(), rol: me.rol, email: f.email.trim(), tel: f.tel.trim(), ...(f.pass ? { pass: f.pass } : {}) }, me);
+      const out = await store.saveProfile({ user: me.user, nombre: f.nombre.trim(), apellido: f.apellido.trim(), rol: me.rol, email: f.email.trim(), tel: f.tel.trim(), ...(f.pass ? { pass: f.pass } : {}) }, me);
       onState(out.state); onMe(out.me); setF(x => ({ ...x, pass: '', pass2: '' })); toast('Perfil guardado', 'ok');
     } catch (e) { toast(e.message, 'error'); }
   }
@@ -281,7 +286,8 @@ export function ProfileScreen({ me, store, onState, onMe, theme, setTheme, onLog
       <div className="set-page">
         <Group id="perfil" icon="user" title="Mis datos" desc="Tu nombre aparece en el saludo y en cada silobolsa que registrás.">
           <div className="form-grid">
-            <Field label="Nombre y apellido"><TextInput value={f.nombre} onChange={v => setF(x => ({ ...x, nombre: v.slice(0, 60) }))} autoComplete="name" /></Field>
+            <Field label="Nombre"><TextInput value={f.nombre} onChange={v => setF(x => ({ ...x, nombre: v.slice(0, 60) }))} autoComplete="given-name" /></Field>
+            <Field label="Apellido"><TextInput value={f.apellido} onChange={v => setF(x => ({ ...x, apellido: v.slice(0, 60) }))} autoComplete="family-name" /></Field>
             <Field label="Email"><TextInput type="email" value={f.email} onChange={v => setF(x => ({ ...x, email: v.slice(0, 120) }))} placeholder="nombre@empresa.com" autoComplete="email" /></Field>
             <Field label="Celular"><TextInput type="tel" value={f.tel} onChange={v => setF(x => ({ ...x, tel: v.replace(/[^0-9+ ()-]/g, '').slice(0, 30) }))} placeholder="+54 9 11 1234 5678" autoComplete="tel" /></Field>
             <Field label="Usuario" hint="Lo asigna el administrador"><TextInput value={me.user} onChange={() => {}} disabled /></Field>
@@ -314,7 +320,7 @@ export function ProfileScreen({ me, store, onState, onMe, theme, setTheme, onLog
 }
 
 /* ---------- Usuarios (administrador) ---------- */
-const EMPTY_USER = { user: '', nombre: '', email: '', tel: '', pass: '', rol: 'operador' };
+const EMPTY_USER = { user: '', nombre: '', apellido: '', email: '', tel: '', pass: '', rol: 'operador' };
 export function UsersScreen({ state, me, store, onState }) {
   const toast = useToast();
   const [form, setForm] = useState(null); // null | { ...usuario, nuevo }
@@ -335,10 +341,11 @@ export function UsersScreen({ state, me, store, onState }) {
         {!form && <Button variant="primary" icon="plus" onClick={() => setForm({ ...EMPTY_USER, nuevo: true })}>Nuevo usuario</Button>}</div>
       {form && (
         <section className="user-form">
-          <h3>{form.nuevo ? 'Nuevo usuario' : `Editar ${form.nombre || form.user}`}</h3>
+          <h3>{form.nuevo ? 'Nuevo usuario' : `Editar ${fullName(form)}`}</h3>
           <div className="form-grid">
             <Field label="Usuario" hint={form.nuevo ? 'Con esto ingresa (sin espacios)' : 'No se puede cambiar'}><TextInput value={form.user} onChange={v => setForm(x => ({ ...x, user: v.toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 30) }))} disabled={!form.nuevo} autoComplete="off" /></Field>
-            <Field label="Nombre y apellido"><TextInput value={form.nombre} onChange={v => setForm(x => ({ ...x, nombre: v.slice(0, 60) }))} /></Field>
+            <Field label="Nombre"><TextInput value={form.nombre} onChange={v => setForm(x => ({ ...x, nombre: v.slice(0, 60) }))} /></Field>
+            <Field label="Apellido"><TextInput value={form.apellido} onChange={v => setForm(x => ({ ...x, apellido: v.slice(0, 60) }))} /></Field>
             <Field label="Email"><TextInput type="email" value={form.email} onChange={v => setForm(x => ({ ...x, email: v.slice(0, 120) }))} placeholder="nombre@empresa.com" /></Field>
             <Field label="Celular"><TextInput type="tel" value={form.tel} onChange={v => setForm(x => ({ ...x, tel: v.replace(/[^0-9+ ()-]/g, '').slice(0, 30) }))} placeholder="+54 9 11 1234 5678" /></Field>
             <Field label={form.nuevo ? 'Contraseña' : 'Nueva contraseña'} hint={form.nuevo ? 'Mínimo 6 caracteres' : 'Dejalo vacío para no cambiarla'}><TextInput type="password" value={form.pass} onChange={v => setForm(x => ({ ...x, pass: v }))} autoComplete="new-password" /></Field>
@@ -352,14 +359,14 @@ export function UsersScreen({ state, me, store, onState }) {
           <div className="user-row" key={u.user}>
             <span className="avatar sm">{(u.nombre || u.user).slice(0, 1).toUpperCase()}</span>
             <div className="user-row-main">
-              <b>{u.nombre || u.user}{u.user === me.user ? <span className="muted"> · vos</span> : null}</b>
+              <b>{fullName(u)}{u.user === me.user ? <span className="muted"> · vos</span> : null}</b>
               <span className="muted small">{[u.user, rolTxt(u.rol), u.email, u.tel].filter(Boolean).join(' · ')}</span>
             </div>
             {del === u.user ? <>
               <Button size="sm" onClick={() => setDel(null)}>No</Button>
               <Button size="sm" variant="danger" onClick={async () => { if (await run(() => store.deleteUser(u.user, me), 'Usuario eliminado')) setDel(null); }}>Eliminar</Button>
             </> : <>
-              <Button size="sm" variant="ghost" icon="edit" onClick={() => setForm({ ...EMPTY_USER, ...u, pass: '', nuevo: false })} aria-label={`Editar a ${u.user}`} />
+              <Button size="sm" variant="ghost" icon="edit" onClick={() => setForm({ ...EMPTY_USER, ...u, ...splitName(u), pass: '', nuevo: false })} aria-label={`Editar a ${u.user}`} />
               {u.user !== me.user && <Button size="sm" variant="ghost" icon="trash" onClick={() => setDel(u.user)} aria-label={`Eliminar a ${u.user}`} />}
             </>}
           </div>
@@ -535,11 +542,11 @@ function ContactsGroup({ store }) {
   const upd = async (id, ch) => { try { setItems(await store.contactUpdate(id, ch)); if (ch.borrar) toast('Consulta eliminada'); } catch (e) { toast(e.message, 'error'); } };
   const nuevas = (items || []).filter(c => !c.leida).length;
   return (
-    <Group id="consultas" icon="users" title="Consultas de la web" desc={items == null ? 'Cargando…' : items.length ? `${items.length} recibida${items.length === 1 ? '' : 's'}${nuevas ? ` · ${nuevas} sin leer` : ''}. Si cargás tu email en Perfil, también te llegan por correo.` : 'Todavía no hay consultas desde el formulario de contacto.'}>
+    <Group id="consultas" icon="users" title="Consultas y demos" desc={items == null ? 'Cargando…' : items.length ? `${items.length} recibida${items.length === 1 ? '' : 's'}${nuevas ? ` · ${nuevas} sin leer` : ''}. Si cargás tu email en Perfil, también te llegan por correo.` : 'Todavía no hay consultas ni pedidos de demo desde la web.'}>
       {(items || []).map(c => (
         <div className={`contact-row ${c.leida ? '' : 'is-new'}`} key={c.id}>
           <button type="button" className="contact-main" aria-expanded={open === c.id} onClick={() => { setOpen(open === c.id ? null : c.id); if (!c.leida) upd(c.id, { leida: true }); }}>
-            <b>{c.nombre} {c.apellido}</b><span className="muted small">{c.empresa} · {fmtDate(c.fecha)}</span>
+            <b>{c.nombre} {c.apellido}{c.tipo === 'demo' && <span className="prio-tag is-alta">Demo 10 días</span>}</b><span className="muted small">{c.empresa} · {fmtDate(c.fecha)}</span>
           </button>
           {open === c.id && (
             <div className="contact-body">

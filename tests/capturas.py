@@ -34,11 +34,11 @@ def bolsa(n, desde_m, fila=0):
     lo = b['w'] + desde_m * M_LNG
     return (la, lo), (la, lo + 60 * M_LNG)
 SILOS = [  # lote, metros desde la esquina, fila, kg, grano, humedad, prioridad
-    (31, 140, 0, '214300', 'Soja', '135', True), (31, 140, 1, '198700', 'Soja', '128', False),
-    (32, 380, 0, '232900', 'Maíz', '152', False), (33, 600, 0, '176400', 'Trigo', '121', False),
-    (34, 220, 0, '205800', 'Maíz', '171', True), (35, 480, 0, '189200', 'Girasol', '94', False),
+    (31, 140, 0, '214300', 'Soja', '128', 'alta'), (31, 140, 1, '198700', 'Soja', '139', 'media'),
+    (32, 380, 0, '232900', 'Maíz', '152', 'media'), (33, 600, 0, '176400', 'Trigo', '121', 'alta'),
+    (34, 220, 0, '205800', 'Maíz', '171', 'baja'), (35, 480, 0, '189200', 'Girasol', '94', 'alta'),
 ]
-ULTIMO = (36, 300, 0, '212300', 'Soja', '135', True)   # la bolsa que se registra en la animación
+ULTIMO = (36, 300, 0, '212300', 'Soja', '132', 'alta')   # la bolsa que se registra en la animación
 
 boxes = {}
 def shot(pg, name, *sels):
@@ -72,9 +72,9 @@ def registrar(pg, ctx, s, frames=False):
     kg_keys(pg, 0, kg, close=not frames)
     if frames: shot(pg, '05-kilos', '.kb-done'); pg.click('.kb-done'); pg.wait_for_selector('.kb-num', state='detached')
     kg_keys(pg, 1, hum[:-1] + ',' + hum[-1])
-    if prio: pg.click('.modal .check-field')
+    if prio: pg.click(f'.modal .prio-pick .pick.is-{prio}')
     if frames:
-        pg.locator('.modal .check-field').scroll_into_view_if_needed(); shot(pg, '06-ficha', '.modal-foot .btn-primary')
+        pg.locator('.modal .prio-pick').scroll_into_view_if_needed(); shot(pg, '06-ficha', '.modal-foot .btn-primary')
     pg.click('.modal-foot .btn-primary'); pg.wait_for_selector('.modal', state='detached'); pg.wait_for_timeout(600)
 
 with sync_playwright() as p:
@@ -89,7 +89,7 @@ with sync_playwright() as p:
     for t in ['Permitir ubicación', 'Ahora no']:
         if pg.locator(f'button:has-text("{t}")').count(): pg.click(f'button:has-text("{t}")'); break
     pg.wait_for_selector('.satmap')
-    pg.request.post(URL + '/api.php?action=saveUser', data=json.dumps({'u': {'user': 'rodma', 'nombre': 'Rodrigo Maldonado', 'rol': 'admin'}}), headers={'Content-Type': 'application/json'})
+    pg.request.post(URL + '/api.php?action=saveUser', data=json.dumps({'u': {'user': 'rodma', 'nombre': 'Rodrigo', 'apellido': 'Maldonado', 'rol': 'admin'}}), headers={'Content-Type': 'application/json'})
     pg.request.post(URL + '/api.php?action=saveEstancia', data=json.dumps({'estancia': {'nombre': 'Agropecuaria La Aurora', 'sigla': 'LA'}}), headers={'Content-Type': 'application/json'})
     # lotes desde el KML
     pg.click('.avatar-btn'); pg.wait_for_selector('.set-link')

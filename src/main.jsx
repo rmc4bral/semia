@@ -9,7 +9,7 @@ import { GpsCapture } from './capture.jsx';
 import { UpdateButton } from './update.jsx';
 import { cloneGeom, moveVertex, insertVertex, removeVertex, restoreLot, buildShapeChange, isLocked } from './shapes.js';
 import SatMap from './SatMap.jsx';
-import { SiloModal, LotModal, EditMapModal, SiloCard } from './modals.jsx';
+import { SiloModal, LotModal, EditMapModal, SiloCard , prioLabel, splitName } from './modals.jsx';
 import { meters, bearing, dirName, nearestSilos, nearestOnSeg, siloLL, fmtDist, fmtWalk, trailLength, greeting } from './nav.js';
 import { Kpis, LotPanel, RecentPanel, SilosScreen, LotsScreen, SettingsScreen, MapsScreen, ProfileScreen, UsersScreen } from './screens.jsx';
 
@@ -444,7 +444,7 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
   function exportCsv() {
     const head = ['ID', 'Lote', 'Kg', 'Humedad_%', 'Prioridad_salida', 'Grano', 'Observacion', 'Latitud', 'Longitud', 'Latitud_fin', 'Longitud_fin', 'Largo_m', 'Precision_m', 'Origen', 'Registrado_por', 'Fecha'];
     const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const rows = state.silos.map(s => [s.id, s.lote, s.kg, s.hum, s.prio ? 'Sí' : '', s.grano, s.obs, s.latlng?.[0], s.latlng?.[1], s.latlng2?.[0], s.latlng2?.[1], s.largo, s.gps?.acc, s.origen, s.creadoPor, s.creadoEn].map(q).join(';'));
+    const rows = state.silos.map(s => [s.id, s.lote, s.kg, s.hum, prioLabel(s.prio), s.grano, s.obs, s.latlng?.[0], s.latlng?.[1], s.latlng2?.[0], s.latlng2?.[1], s.largo, s.gps?.acc, s.origen, s.creadoPor, s.creadoEn].map(q).join(';'));
     download('\ufeff' + [head.join(';'), ...rows].join('\n'), `silobolsas-${today()}.csv`, 'text/csv');
   }
   function exportKmlFile() {
@@ -499,7 +499,7 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
       <main className="main">
         {tab === 'mapa' && (
           <div className="dash">
-            {(() => { const g = greeting(me.nombre || me.user); return <p className="greet">{g.g}{g.first ? <>, <b>{g.first}</b></> : ''}</p>; })()}
+            {(() => { const g = greeting(splitName(me).nombre || me.user); return <p className="greet">{g.g}{g.first ? <>, <b>{g.first}</b></> : ''}</p>; })()}
             <Kpis state={shownState} />
             <div className="dash-body">
               <div className="card map-card">
@@ -576,10 +576,10 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
 
       {draft && <SiloModal draft={draft} state={state} me={me} geo={geo} store={store} onClose={() => setDraft(null)}
         onSaved={(st, id) => { setState(st); setDraft(null); setSelSilo(id); if (id) { const s = normalizeState(st).silos.find(x => x.id === id); if (s) setSelLot(s.lot); } }}
-        onRelocate={form => { setDraft(null); setTab('mapa'); setPick({ purpose: 'relocate', form: { kg: form.kg, grano: form.grano, obs: form.obs, fotoData: form.fotoData } }); }}
-        onRemeasure={form => onAdd({ kg: form.kg, grano: form.grano, obs: form.obs, fotoData: form.fotoData })}
+        onRelocate={form => { setDraft(null); setTab('mapa'); setPick({ purpose: 'relocate', form: { kg: form.kg, hum: form.hum, prio: form.prio, grano: form.grano, obs: form.obs, fotoData: form.fotoData } }); }}
+        onRemeasure={form => onAdd({ kg: form.kg, hum: form.hum, prio: form.prio, grano: form.grano, obs: form.obs, fotoData: form.fotoData })}
         onStartMove={startMove} />}
-      {card && state.silos.find(x => x.id === card) && <SiloCard silo={state.silos.find(x => x.id === card)} state={state} me={me} geo={geo} onClose={() => setCard(null)}
+      {card && state.silos.find(x => x.id === card) && <SiloCard silo={state.silos.find(x => x.id === card)} state={state} me={me} geo={geo} store={store} onState={setState} onClose={() => setCard(null)}
         onEdit={id => { setCard(null); openSilo(id); }}
         onMap={id => { const s = state.silos.find(x => x.id === id); setCard(null); setTab('mapa'); if (s) { setSelLot(s.lot); setSelSilo(id); } }} />}
       {mapEditMeta && maps.find(m => m.id === mapEditMeta) && <EditMapModal map={maps.find(m => m.id === mapEditMeta)} me={me} store={store} onClose={() => setMapEditMeta(null)} onSaved={st => { setState(st); setMapEditMeta(null); }} />}

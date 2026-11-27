@@ -90,7 +90,7 @@ function localSave(d) {
 }
 const publicState = d => { const o = clone(d); o.users = (o.users || []).map(({ sha, hash, ...u }) => u); return o; };
 const isAdmin = me => me && me.rol === 'admin';
-const sessUser = u => ({ user: u.user, nombre: u.nombre, rol: u.rol, email: u.email || '', tel: u.tel || '', tema: u.tema || 'light' });
+const sessUser = u => ({ user: u.user, nombre: u.nombre, apellido: u.apellido || '', rol: u.rol, email: u.email || '', tel: u.tel || '', tema: u.tema || 'light' });
 // modo local: «mantener sesión» usa localStorage; si no, sessionStorage (se borra al cerrar el navegador)
 const sessGet = () => safeLS.get(LS_SESSION) || (() => { try { return sessionStorage.getItem(LS_SESSION); } catch { return null; } })();
 const sessSet = (u, keep) => { if (keep) safeLS.set(LS_SESSION, u); else { safeLS.del(LS_SESSION); try { sessionStorage.setItem(LS_SESSION, u); } catch { /* */ } } };
@@ -157,6 +157,13 @@ export function createStore(mode) {
         localSave(d); return publicState(d);
       }
       return (await api('saveSilo', { silo, prevId })).state;
+    },
+    async setPrio(id, prio, me) {
+      if (local) {
+        const d = localLoad(); const s = d.silos.find(x => x.id === id); if (!s) throw new Error('El silo ya no existe');
+        Object.assign(s, { prio: prio || null, prioPor: me.user, prioEn: new Date().toISOString() }); localSave(d); return publicState(d);
+      }
+      return (await api('setPrio', { id, prio })).state;
     },
     async deleteSilo(id, me) {
       if (local) {
@@ -254,7 +261,7 @@ export function createStore(mode) {
       if (local) {
         const d = localLoad(); const i = d.users.findIndex(x => x.user === u.user);
         if (!isAdmin(me) && u.user !== me.user) throw new Error('Sin permiso');
-        const rec = { user: u.user, nombre: u.nombre, rol: isAdmin(me) ? u.rol : (d.users[i]?.rol || 'operador') };
+        const rec = { user: u.user, nombre: u.nombre, ...(u.apellido !== undefined ? { apellido: String(u.apellido).trim() } : {}), rol: isAdmin(me) ? u.rol : (d.users[i]?.rol || 'operador') };
         if (u.email !== undefined) { if (u.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u.email)) throw new Error('El email no es válido'); rec.email = u.email.trim(); }
         if (u.tel !== undefined) rec.tel = String(u.tel).replace(/[^0-9+ ()-]/g, '');
         if (u.tema === 'light' || u.tema === 'dark') rec.tema = u.tema;

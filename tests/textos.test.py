@@ -22,7 +22,8 @@ def run(w, h, who='rodma', pw='rmaldonado'):
     res = {}
     with sync_playwright() as p:
         b = p.chromium.launch(); c = b.new_context(viewport={'width': w, 'height': h}, geolocation={'latitude': -35.9455, 'longitude': -60.3815, 'accuracy': 5}, permissions=['geolocation'])
-        pg = c.new_page(); pg.goto(URL); pg.wait_for_selector('.login-card')
+        pg = c.new_page(); pg.goto(URL + '/'); pg.wait_for_selector('.hero'); pg.evaluate('scrollTo(0, document.body.scrollHeight)'); pg.wait_for_timeout(1000); pg.evaluate('scrollTo(0, 0)'); res['landing'] = pg.evaluate(JS)
+        pg.goto(URL + '/login'); pg.wait_for_selector('.login-card')
         res['login'] = pg.evaluate(JS)
         pg.fill('input[autocomplete=username]', who); pg.fill('input[type=password]', pw); pg.click('button[type=submit]'); pg.wait_for_timeout(1200)
         for t in ['Permitir ubicación', 'Ahora no']:
@@ -33,13 +34,17 @@ def run(w, h, who='rodma', pw='rmaldonado'):
             pass
         pg.click('.nav-add'); pg.wait_for_timeout(900); res['elegir-lote'] = pg.evaluate(JS)
         if pg.locator('.cap-foot button:has-text("Cancelar")').count(): pg.click('.cap-foot button:has-text("Cancelar")')
-        for tab in ['Silos', 'Lotes', 'Mapas', 'Ajustes', 'Cuenta']:
+        for tab in ['Silos', 'Lotes', 'Mapas', 'Usuarios', 'Ajustes', 'Perfil']:
             loc = pg.locator(f'.nav button:has-text("{tab}")')
             if loc.count() and loc.first.is_visible(): loc.first.click(); pg.wait_for_timeout(900); res[tab] = pg.evaluate(JS)
             if tab == 'Silos' and pg.locator('.list-card .silo-row').count():
                 pg.locator('.list-card .silo-row').first.click(); pg.wait_for_timeout(700); res['ficha'] = pg.evaluate(JS); pg.click('.modal-head button[aria-label="Cerrar"]')
             if tab == 'Lotes' and pg.locator('.lot-card .lot-card-main').count():
                 pg.locator('.lot-card .lot-card-main').first.click(); pg.wait_for_timeout(700); res['detalle-lote'] = pg.evaluate(JS); pg.click('.modal-head button[aria-label="Cerrar"]')
+        if w < 500:  # en el celular, Perfil → Usuarios y Ajustes
+            pg.click('.avatar-btn'); pg.wait_for_timeout(700); res['Perfil'] = pg.evaluate(JS)
+            for t in ['Usuarios', 'Ajustes']:
+                pg.click('.avatar-btn'); pg.wait_for_selector('.set-link'); pg.click(f'.set-link:has-text("{t}")'); pg.wait_for_timeout(800); res[t] = pg.evaluate(JS)
         b.close()
     return res
 tot = 0

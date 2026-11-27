@@ -48,10 +48,10 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
   const multi = (state.georef?.kmls || []).length > 1;
   const lotOpts = state.lots.filter(isSiloLot).map(l => ({ value: l.id, label: `Lote ${l.num}`, meta: [multi ? estanciaNombre(l, state) : '', `${l.ha} ha`].filter(Boolean).join(' · ') }));
   const lot = state.lots.find(l => l.id === f.lot);
-  const sigla = siglaOf(lot, state); // cada estancia tiene su sigla: LG31010 = Los Gatos · lote 31 · bolsa 010
+  const sigla = siglaOf(lot, state); // cada sección tiene su sigla: LG31010 = Los Gatos · lote 31 · bolsa 010
   const origLot = draft.lot || siloLot(draft, state.lots)?.id;
 
-  // ID automático según estancia y lote
+  // ID automático según sección y lote
   useEffect(() => {
     if (isNew || f.lot !== origLot) setF(x => ({ ...x, id: lot ? nextSiloId(sigla, lot.num, state.silos, draft.prevId) : '' }));
     else setF(x => ({ ...x, id: draft.prevId }));
@@ -125,7 +125,7 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
       <div className="silo-id" aria-label={`Número de silobolsa ${f.id}`}>
         <span className="silo-id-num mono">{f.id || '—'}</span>
         <div className="silo-id-parts">
-          <span><b className="mono">{sigla}</b>{estanciaNombre(lot, state) || 'Estancia'}</span>
+          <span><b className="mono">{sigla}</b>{estanciaNombre(lot, state) || 'Sección'}</span>
           <span><b className="mono">{String(lot?.num ?? '').padStart(2, '0')}</b>Lote</span>
           <span><b className="mono">{String(f.id || '').slice(-3)}</b>Bolsa</span>
         </div>
@@ -214,13 +214,13 @@ export function SiloCard({ silo: s, state, me, geo, onClose, onEdit, onMap }) {
       <div className="silo-id" aria-label={`Número de silobolsa ${s.id}`}>
         <span className="silo-id-num mono">{s.id}</span>
         <div className="silo-id-parts">
-          <span><b className="mono">{siglaOf(lot, state)}</b>{estanciaNombre(lot, state) || 'Estancia'}</span>
+          <span><b className="mono">{siglaOf(lot, state)}</b>{estanciaNombre(lot, state) || 'Sección'}</span>
           <span><b className="mono">{String(s.lote).padStart(2, '0')}</b>Lote</span>
           <span><b className="mono">{s.id.slice(-3)}</b>Bolsa</span>
         </div>
       </div>
       <dl className="card-facts">
-        <div><dt>Estancia</dt><dd>{estanciaNombre(lot, state) || state.estancia.nombre}</dd></div>
+        <div><dt>Sección</dt><dd>{estanciaNombre(lot, state) || state.estancia.nombre}</dd></div>
         <div><dt>Lote</dt><dd>{lotName(s.lote)}{lot?.ha ? <span className="muted"> · {fmtNum(lot.ha, 0)} ha</span> : null}</dd></div>
         <div><dt>Grano</dt><dd>{s.grano || '—'}</dd></div>
         <div><dt>Kilos</dt><dd>{hasKg ? <>{fmtKg(s.kg)} kg <span className="muted">· {fmtNum(s.kg / 1000, 1)} t</span></> : <span className="muted">Sin cargar</span>}</dd></div>

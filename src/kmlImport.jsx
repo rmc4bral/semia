@@ -71,7 +71,7 @@ export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
     const bad = lots.filter(f => code(f) === null).map(f => f.key);
     const ks = lots.map(f => (code(f) === null ? null : lotKey(code(f))));
     const dup = lots.filter((f, i) => ks[i] && ks.indexOf(ks[i]) !== ks.lastIndexOf(ks[i])).map(f => f.key);
-    const taken = []; // cada KML es una estancia: los números pueden repetirse entre estancias
+    const taken = []; // cada KML es una sección: los números pueden repetirse entre secciones
     const sig = (job.sigla || '').length >= 2 && !(add && list.some(k => k.sigla === job.sigla));
     return { count: lots.length, bad, dup, taken, sig, ok: lots.length > 0 && !bad.length && !dup.length && !!(job.est || '').trim() && sig };
   }, [job, state.lots]); // eslint-disable-line
@@ -85,7 +85,7 @@ export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
       const change = buildKmlImport(job.parsed, rows, state, geo, { archivo: job.file.name, mode: job.mode, nombre: job.est, sigla: job.sigla });
       const st = await store.importKml(change, me);
       onState(st); setJob(null);
-      toast(change.mode === 'add' ? `Estancia ${change.estancia.nombre} (${change.estancia.sigla}) agregada con ${change.added} lotes`
+      toast(change.mode === 'add' ? `Sección ${change.estancia.nombre} (${change.estancia.sigla}) agregada con ${change.added} lotes`
         : `${change.lots.length} lotes cargados desde ${job.file.name}${state.silos.length ? ` · ${state.silos.length} silos reubicados` : ''}`, 'ok', 5000);
       if (change.sinCoord) toast(`${change.sinCoord} silos no tenían coordenadas: quedaron en el centro de su lote. Movelos desde su ficha.`, 'info', 7000);
       onShowLots?.();
@@ -99,14 +99,14 @@ export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
     } catch (e) { setDel(null); toast(e.message, 'error'); }
   }
   async function renameKml() {
-    try { onState(await store.importKml(buildKmlRename(state, ren.id, { nombre: ren.nombre, sigla: ren.sigla }), me)); setRen(null); toast('Estancia actualizada', 'ok'); }
+    try { onState(await store.importKml(buildKmlRename(state, ren.id, { nombre: ren.nombre, sigla: ren.sigla }), me)); setRen(null); toast('Sección actualizada', 'ok'); }
     catch (e) { toast(e.message, 'error'); }
   }
 
   const f = job?.parsed?.features || [];
   return (
     <section className="card set-sec kml-sec">
-      <div className="panel-head"><h3><Icon name="lots" size={18} /> Estancias y lotes (KML)</h3>{isKml && <span className="badge badge-ok">{list.length} estancia{list.length === 1 ? '' : 's'} · {state.lots.length} lotes</span>}</div>
+      <div className="panel-head"><h3><Icon name="lots" size={18} /> Secciones y lotes (KML)</h3>{isKml && <span className="badge badge-ok">{list.length} {list.length === 1 ? 'sección' : 'secciones'} · {state.lots.length} lotes</span>}</div>
       {!isKml && <p className="muted small">Los lotes actuales vienen del plano digitalizado. El primer KML los reemplaza; después podés ir <b>agregando</b> más KML (otros campos o sectores) sin perder lo cargado.</p>}
       {isKml && (
         <div className="kml-files" role="list" aria-label="KML cargados">
@@ -116,7 +116,7 @@ export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
               {ren?.id === k.id ? (
                 <>
                   <div className="kml-ren">
-                    <Field label="Estancia" className="grow"><TextInput value={ren.nombre} onChange={v => setRen(r => ({ ...r, nombre: v.slice(0, 60) }))} autoFocus /></Field>
+                    <Field label="Sección" className="grow"><TextInput value={ren.nombre} onChange={v => setRen(r => ({ ...r, nombre: v.slice(0, 60) }))} autoFocus /></Field>
                     <Field label="Sigla" className="kml-sigla"><TextInput value={ren.sigla} onChange={v => setRen(r => ({ ...r, sigla: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) }))} /></Field>
                     <div className="row gap-s"><Button size="sm" onClick={() => setRen(null)}>Cancelar</Button><Button size="sm" variant="primary" icon="check" onClick={renameKml}>Guardar</Button></div>
                   </div>
@@ -161,11 +161,11 @@ export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
             <span className="muted small">{f.filter(x => !x.isOutline).length} polígonos{f.some(x => x.isOutline) ? ' · contorno del campo' : ''}{job.parsed.lines.length ? ` · ${job.parsed.lines.length} líneas` : ''}</span>
           </div>
           <div className="kml-est">
-            <Field label="Estancia" className="grow" error={!(job.est || '').trim() ? 'Escribí el nombre' : null}><TextInput value={job.est} onChange={v => setJob(j => ({ ...j, est: v.slice(0, 60), sigla: j.siglaTocada ? j.sigla : siglaDe(v), confirm: false }))} placeholder="Ej: Los Gatos" /></Field>
+            <Field label="Sección" className="grow" error={!(job.est || '').trim() ? 'Escribí el nombre' : null}><TextInput value={job.est} onChange={v => setJob(j => ({ ...j, est: v.slice(0, 60), sigla: j.siglaTocada ? j.sigla : siglaDe(v), confirm: false }))} placeholder="Ej: Los Gatos" /></Field>
             <Field label="Sigla para silos" className="kml-sigla" hint={check.sig ? `Ej: ${job.sigla}31001` : null} error={!check.sig ? ((job.sigla || '').length < 2 ? '2 a 4 letras' : 'Ya existe') : null}><TextInput value={job.sigla} onChange={v => setJob(j => ({ ...j, sigla: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4), siglaTocada: true, confirm: false }))} /></Field>
           </div>
           {isKml && (
-            <Field label="Qué hacer con los lotes actuales" hint={add ? `Se agrega como estancia nueva; los ${state.lots.length} lotes cargados no cambian.` : 'Se borran los lotes actuales y quedan solo los de este archivo.'}>
+            <Field label="Qué hacer con los lotes actuales" hint={add ? `Se agrega como sección nueva; los ${state.lots.length} lotes cargados no cambian.` : 'Se borran los lotes actuales y quedan solo los de este archivo.'}>
               <Segmented value={job.mode} onChange={m => setJob(j => ({ ...j, mode: m, confirm: false }))} options={[{ value: 'add', label: 'Agregar' }, { value: 'replace', label: 'Reemplazar todo' }]} />
             </Field>
           )}
@@ -192,7 +192,7 @@ export function KmlImport({ state, me, geo, store, onState, onShowLots }) {
           </div>
           {job.confirm && (
             <p className="kml-confirm"><Icon name="alert" size={16} />
-              {add ? `Se agrega la estancia ${job.est} (${job.sigla}) con ${check.count} lotes. Los lotes y silos cargados no cambian.`
+              {add ? `Se agrega la sección ${job.est} (${job.sigla}) con ${check.count} lotes. Los lotes y silos cargados no cambian.`
                 : `Se reemplazan los ${state.lots.length} lotes actuales por ${check.count}. ${state.silos.length ? `Los ${state.silos.length} silos se reubican por sus coordenadas.` : ''} Se borran los puntos de control y las subdivisiones.`}
             </p>
           )}

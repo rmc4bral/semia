@@ -31,6 +31,14 @@ chk forma "$R" '"poly0":\[\[551.7,407\]'
 chk forma-silo "$R" '"map":\[548,450\]'
 chk forma-invalida "$(curl -s -b $A "${J[@]}" -d '{"change":{"lots":[{"num":16,"poly":[[1,1]]}]}}' $B/api.php?action=saveShapes)" 'inválida'
 chk usuario "$(curl -s -b $A "${J[@]}" -d '{"u":{"user":"peon","nombre":"Peón","pass":"campo123","rol":"operador"}}' $B/api.php?action=saveUser)" '"user":"peon"'
+chk email-invalido "$(curl -s -b $A "${J[@]}" -d '{"u":{"user":"peon","nombre":"Peón","email":"no-es-mail","rol":"operador"}}' $B/api.php?action=saveUser)" 'email no es válido'
+chk email-celular "$(curl -s -b $A "${J[@]}" -d '{"u":{"user":"peon","nombre":"Peón","email":"peon@campo.com","tel":"+54 9 2346 555123","rol":"operador"}}' $B/api.php?action=saveUser)" '"tel":"+54 9 2346 555123"'
+chk perfil-tema "$(curl -s -b $A "${J[@]}" -d '{"u":{"user":"rodma","nombre":"Rodrigo","rol":"admin","tema":"dark"}}' $B/api.php?action=saveUser)" '"tema":"dark"'
+# «Mantener sesión iniciada»: cookie persistente (con vencimiento) solo si se pide
+H=$(curl -s -D - -o /dev/null "${J[@]}" -d '{"user":"peon","pass":"campo123","recordar":true}' $B/api.php?action=login | grep -i '^set-cookie')
+chk recordar-persistente "$H" '[Ee]xpires='
+H=$(curl -s -D - -o /dev/null "${J[@]}" -d '{"user":"peon","pass":"campo123"}' $B/api.php?action=login | grep -i '^set-cookie' | tail -1)
+if echo "$H" | grep -qi 'expires='; then fail=$((fail+1)); echo "FALLA: sin recordar no debe persistir → $H"; else pass=$((pass+1)); fi
 curl -s -c $O "${J[@]}" -d '{"user":"peon","pass":"campo123"}' $B/api.php?action=login >/dev/null
 chk op-no-borra "$(curl -s -b $O "${J[@]}" -d '{"id":"RB16001"}' $B/api.php?action=deleteSilo)" 'Solo el administrador'
 chk op-no-mueve "$(curl -s -b $O "${J[@]}" -d '{"prevId":"RB16001","silo":{"id":"RB16001","lote":16,"kg":1,"map":[1,1]}}' $B/api.php?action=saveSilo)" 'permiso'

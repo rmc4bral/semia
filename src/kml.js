@@ -166,7 +166,7 @@ export function kmlList(state) {
 const outlineOf = (lots, extra = []) => convexHull(lots.flatMap(l => l.poly).concat(extra)).map(p => [r2(p[0]), r2(p[1])]);
 const newId = () => 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 const cleanSigla = v => String(v || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
-const nombreDeArchivo = a => String(a || 'Estancia').replace(/\.km[lz]$/i, '').replace(/[_-]+/g, ' ').trim().slice(0, 60);
+const nombreDeArchivo = a => String(a || 'Sección').replace(/\.km[lz]$/i, '').replace(/[_-]+/g, ' ').trim().slice(0, 60);
 
 /**
  * Arma el cambio completo (lotes finales, contorno, georreferencia, líneas y silos a reubicar).

@@ -90,6 +90,11 @@ function localSave(d) {
 }
 const publicState = d => { const o = clone(d); o.users = (o.users || []).map(({ sha, hash, ...u }) => u); return o; };
 const isAdmin = me => me && me.rol === 'admin';
+const sessUser = u => ({ user: u.user, nombre: u.nombre, rol: u.rol, email: u.email || '', tel: u.tel || '', tema: u.tema || 'light' });
+// modo local: «mantener sesión» usa localStorage; si no, sessionStorage (se borra al cerrar el navegador)
+const sessGet = () => safeLS.get(LS_SESSION) || (() => { try { return sessionStorage.getItem(LS_SESSION); } catch { return null; } })();
+const sessSet = (u, keep) => { if (keep) safeLS.set(LS_SESSION, u); else { safeLS.del(LS_SESSION); try { sessionStorage.setItem(LS_SESSION, u); } catch { /* */ } } };
+const sessDel = () => { safeLS.del(LS_SESSION); try { sessionStorage.removeItem(LS_SESSION); } catch { /* */ } };
 
 // Misma lógica que api.php → saveShapes (modo local)
 function applyShapes(d, change) {
@@ -114,24 +119,24 @@ export function createStore(mode) {
     mode,
     async session() {
       if (local) {
-        const u = safeLS.get(LS_SESSION); if (!u) return null;
+        const u = sessGet(); if (!u) return null;
         const d = localLoad(); const me = d.users.find(x => x.user === u);
-        return me ? { me: { user: me.user, nombre: me.nombre, rol: me.rol }, state: publicState(d) } : null;
+        return me ? { me: sessUser(me), state: publicState(d) } : null;
       }
       try { const j = await api('session'); return j.me ? { me: j.me, state: j.state } : null; } catch { return null; }
     },
-    async login(user, pass) {
+    async login(user, pass, recordar = false) {
       user = (user || '').trim().toLowerCase();
       if (local) {
         const d = localLoad(); const u = d.users.find(x => x.user === user);
         if (!u || u.sha !== sha256(`semia|${user}|${pass}`)) throw new Error('Usuario o contraseña incorrectos');
-        safeLS.set(LS_SESSION, user);
-        return { me: { user: u.user, nombre: u.nombre, rol: u.rol }, state: publicState(d) };
+        sessSet(user, recordar);
+        return { me: sessUser(u), state: publicState(d) };
       }
-      const j = await api('login', { user, pass });
+      const j = await api('login', { user, pass, recordar });
       return { me: j.me, state: j.state };
     },
-    async logout() { if (local) safeLS.del(LS_SESSION); else await api('logout', {}).catch(() => {}); },
+    async logout() { if (local) sessDel(); else await api('logout', {}).catch(() => {}); },
     async reload() { if (local) return publicState(localLoad()); return (await api('state')).state; },
 
     async uploadPhoto(siloId, dataUrl) {
@@ -250,6 +255,9 @@ export function createStore(mode) {
         const d = localLoad(); const i = d.users.findIndex(x => x.user === u.user);
         if (!isAdmin(me) && u.user !== me.user) throw new Error('Sin permiso');
         const rec = { user: u.user, nombre: u.nombre, rol: isAdmin(me) ? u.rol : (d.users[i]?.rol || 'operador') };
+        if (u.email !== undefined) { if (u.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u.email)) throw new Error('El email no es válido'); rec.email = u.email.trim(); }
+        if (u.tel !== undefined) rec.tel = String(u.tel).replace(/[^0-9+ ()-]/g, '');
+        if (u.tema === 'light' || u.tema === 'dark') rec.tema = u.tema;
         if (u.pass) rec.sha = sha256(`semia|${u.user}|${u.pass}`);
         if (i >= 0) d.users[i] = { ...d.users[i], ...rec };
         else { if (!u.pass) throw new Error('Indicá una contraseña'); d.users.push(rec); }
@@ -257,6 +265,11 @@ export function createStore(mode) {
         localSave(d); return publicState(d);
       }
       return (await api('saveUser', { u })).state;
+    },
+    // perfil propio: devuelve también la sesión actualizada (nombre, email, celular, tema)
+    async saveProfile(u, me) {
+      if (local) { const state = await this.saveUser(u, me); const x = state.users.find(y => y.user === me.user); const d = localLoad(); return { state, me: sessUser(d.users.find(y => y.user === me.user) || x) }; }
+      const j = await api('saveUser', { u }); return { state: j.state, me: j.me };
     },
     async deleteUser(user, me) {
       if (local) {

@@ -98,7 +98,7 @@ export function GpsCapture({ near: vecinas = [], fix, gpsErr, lots = [], geo, lo
               </button>
             ))}
           </div>
-        </> : <p className="form-err"><Icon name="alert" size={16} />No hay lotes con número en esta estancia.</p>}
+        </> : <p className="form-err"><Icon name="alert" size={16} />No hay lotes con número en esta sección.</p>}
         <div className="cap-foot"><Button variant="ghost" onClick={onCancel}>Cancelar</Button></div>
       </div>
     );

@@ -300,7 +300,7 @@ export function normalizeState(st) {
   if (!st) return st;
   const kmls = Array.isArray(st.georef?.kmls) ? st.georef.kmls : st.georef?.mode === 'kml' ? [{ id: 'k1', archivo: st.georef.kml?.archivo || 'KML', fecha: st.georef.kml?.fecha || null, lotes: (st.lots || []).map(l => l.num) }] : [];
   // la primera estancia de datos anteriores conserva la sigla general (RB) para no cambiar la numeración
-  const ks = kmls.map((k, i) => { const nombre = k.nombre || String(k.archivo || 'Estancia').replace(/\.km[lz]$/i, '').replace(/[_-]+/g, ' ').trim(); return { ...k, nombre, sigla: k.sigla || (i === 0 && st.estancia?.sigla) || siglaDe(nombre) }; });
+  const ks = kmls.map((k, i) => { const nombre = k.nombre || String(k.archivo || 'Sección').replace(/\.km[lz]$/i, '').replace(/[_-]+/g, ' ').trim(); return { ...k, nombre, sigla: k.sigla || (i === 0 && st.estancia?.sigla) || siglaDe(nombre) }; });
   const lots = (st.lots || []).map(l => { const kml = l.kml || (ks.find(k => (k.lotes || []).includes(l.num))?.id ?? null); const x = { ...l, kml }; return { ...x, id: lotIdOf(x) }; });
   const byId = new Set(lots.map(l => l.id));
   const silos = (st.silos || []).map(s => (s.lot && byId.has(s.lot) ? s : { ...s, lot: (lots.find(l => l.num === s.lote) || {}).id || null }));

@@ -11,12 +11,22 @@ import { cloneGeom, moveVertex, insertVertex, removeVertex, restoreLot, buildSha
 import SatMap from './SatMap.jsx';
 import { SiloModal, LotModal, EditMapModal, SiloCard } from './modals.jsx';
 import { meters, bearing, dirName, nearestSilos, nearestOnSeg, siloLL, fmtDist, fmtWalk, trailLength, greeting } from './nav.js';
-import { Kpis, LotPanel, RecentPanel, SilosScreen, LotsScreen, SettingsScreen, MapsScreen } from './screens.jsx';
+import { Kpis, LotPanel, RecentPanel, SilosScreen, LotsScreen, SettingsScreen, MapsScreen, ProfileScreen, UsersScreen } from './screens.jsx';
 
 const pref = {
   get(k, d) { try { return localStorage.getItem('semia.' + k) || d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem('semia.' + k, v); } catch { /* */ } },
 };
+
+/* ---------- Rutas: /login y /dashboard/<menú> (en file:// no hay rutas) ---------- */
+const ROUTED = location.protocol !== 'file:';
+const TAB_PATH = { mapa: 'inicio', silos: 'silos', lotes: 'lotes', mapas: 'mapas', usuarios: 'usuarios', ajustes: 'ajustes', perfil: 'perfil' };
+const PATH_TAB = Object.fromEntries(Object.entries(TAB_PATH).map(([k, v]) => [v, k]));
+const tabFromPath = () => { const m = location.pathname.match(/^\/dashboard\/([a-z]+)/); return (m && PATH_TAB[m[1]]) || 'mapa'; };
+function go(path, replace = false) {
+  if (!ROUTED || location.pathname === path) return;
+  history[replace ? 'replaceState' : 'pushState'](null, '', path);
+}
 
 /* ---------- GPS en tiempo real ---------- */
 function useGps(enabled) {
@@ -78,7 +88,7 @@ function GeoGate({ onDone, required, onBack, est }) {
       </div>
       <div className="geo-gate-act">
         {st !== 'nogps' && <Button variant="primary" className="block" icon="gps" onClick={pedir} disabled={busy}>{busy ? 'Buscando señal…' : st === 'denied' ? 'Volver a intentar' : 'Permitir ubicación'}</Button>}
-        {required && st !== 'nogps' ? onBack && <Button variant="ghost" className="block" onClick={onBack}>Cambiar estancia</Button>
+        {required && st !== 'nogps' ? onBack && <Button variant="ghost" className="block" onClick={onBack}>Cambiar sección</Button>
           : <Button variant="ghost" className="block" onClick={() => { if (!required) { try { sessionStorage.setItem('semia.geoLater', '1'); } catch { /* */ } } onDone(false); }}>{st === 'nogps' ? 'Continuar' : 'Ahora no'}</Button>}
       </div>
     </div>
@@ -125,13 +135,13 @@ function NavHud({ d, onEnd, onCenter, onDest, onCard }) {
   );
 }
 
-/* ---------- Supervisor: elegir la estancia de trabajo ---------- */
+/* ---------- Supervisor: elegir la sección de trabajo ---------- */
 function EstanciaGate({ state, me, onPick, onLogout }) {
   const list = estancias(state);
   const nBy = {}; state.silos.forEach(s => { const l = siloLot(s, state.lots); if (l?.kml) nBy[l.kml] = (nBy[l.kml] || 0) + 1; });
   return (
     <div className="geo-gate est-gate">
-      <div className="est-gate-head"><Logo size={40} /><span className="geo-gate-step">Hola, {me.nombre || me.user} · Paso 1 de 2</span><h1>¿En qué estancia trabajás hoy?</h1><p className="muted">Vas a ver y registrar solo los lotes de la estancia elegida. Podés cambiarla desde Cuenta.</p></div>
+      <div className="est-gate-head"><Logo size={40} /><span className="geo-gate-step">Hola, {me.nombre || me.user} · Paso 1 de 2</span><h1>¿En qué sección trabajás hoy?</h1><p className="muted">Vas a ver y registrar solo los lotes de la sección elegida. Podés cambiarla desde Perfil.</p></div>
       <div className="est-gate-list" role="list">
         {list.map(e => (
           <button type="button" role="listitem" key={e.id} className="est-opt" onClick={() => onPick(e.id)}>
@@ -150,9 +160,10 @@ function EstanciaGate({ state, me, onPick, onLogout }) {
 function Login({ store, onLogged, mode }) {
   const [u, setU] = useState(''), [p, setP] = useState(''), [show, setShow] = useState(false);
   const [err, setErr] = useState(null), [busy, setBusy] = useState(false);
+  const [keep, setKeep] = useState(() => pref.get('keep', '1') === '1');
   async function submit(e) {
     e.preventDefault(); setBusy(true); setErr(null);
-    try { onLogged(await store.login(u, p)); } catch (x) { setErr(x.message); } finally { setBusy(false); }
+    try { pref.set('keep', keep ? '1' : '0'); onLogged(await store.login(u, p, keep)); } catch (x) { setErr(x.message); } finally { setBusy(false); }
   }
   return (
     <div className="login">
@@ -160,7 +171,7 @@ function Login({ store, onLogged, mode }) {
         {Array.from({ length: 9 }, (_, i) => <path key={i} d={`M-20 ${60 + i * 38} Q 200 ${20 + i * 38} 420 ${80 + i * 38}`} />)}
       </svg></div>
       <form className="login-card" onSubmit={submit}>
-        <div className="login-brand"><Logo size={48} /><div><h1>Acopia</h1><p className="muted">Registro de silobolsas</p></div></div>
+        <a className="login-brand" href={ROUTED ? '/' : undefined}><Logo size={48} /><div><h1>Acopia</h1><p className="muted">Control preciso de tu Producción</p></div></a>
         <Field label="Usuario"><TextInput value={u} onChange={setU} autoCapitalize="none" autoComplete="username" placeholder="usuario" /></Field>
         <Field label="Contraseña">
           <div className="input-ic right">
@@ -168,19 +179,25 @@ function Login({ store, onLogged, mode }) {
             <button type="button" className="input-btn" onClick={() => setShow(s => !s)} aria-label={show ? 'Ocultar contraseña' : 'Mostrar contraseña'}><Icon name={show ? 'eyeoff' : 'eye'} size={18} /></button>
           </div>
         </Field>
+        <button type="button" role="checkbox" aria-checked={keep} className={`check ${keep ? 'is-on' : ''}`} onClick={() => setKeep(k => !k)}>
+          <span className="check-box">{keep && <Icon name="check" size={14} />}</span>Mantener sesión iniciada
+        </button>
         {err && <div className="form-err"><Icon name="alert" size={16} />{err}</div>}
         <Button variant="primary" className="block" disabled={busy || !u || !p} onClick={submit} type="submit">{busy ? 'Ingresando…' : 'Ingresar'}</Button>
-        <p className="muted small center">Est. Rincón de Baguales · {mode === 'local' ? 'modo local' : 'conectado al servidor'}</p>
+        <p className="muted small center">{mode === 'local' ? 'Modo local' : 'Conectado al servidor'}</p>
       </form>
     </div>
   );
 }
 
 /* ---------- Aplicación ---------- */
-function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = true, supEst = null, onChangeEst }) {
+function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gpsOn = true, supEst = null, onChangeEst }) {
   const toast = useToast();
   const isAdmin = me.rol === 'admin';
-  const [tab, setTab] = useState('mapa');
+  const [tab, setTabRaw] = useState(() => (ROUTED ? tabFromPath() : 'mapa'));
+  // cada menú tiene su dirección: /dashboard/inicio, /dashboard/silos…
+  const setTab = useCallback(k => { setTabRaw(k); go(`/dashboard/${TAB_PATH[k] || 'inicio'}`); }, []);
+  useEffect(() => { const f = () => setTabRaw(tabFromPath()); window.addEventListener('popstate', f); return () => window.removeEventListener('popstate', f); }, []);
   const [selLot, setSelLot] = useState(null), [selSilo, setSelSilo] = useState(null);
   const [pick, setPick] = useState(null), [moving, setMoving] = useState(null);
   const [draft, setDraft] = useState(null), [lotEdit, setLotEdit] = useState(null);
@@ -191,8 +208,8 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
   const [mapOpacity, setMapOpacityRaw] = useState(+pref.get('mapOpacity', '1'));
   const setMapOpacity = v => { setMapOpacityRaw(v); pref.set('mapOpacity', String(v)); };
   const [mapUrls, setMapUrls] = useState({});
-  // estancia (KML) a mostrar, compartida por Mapa, Lotes y Silos
-  const [estId, setEstIdRaw] = useState('all'); // vista general: todas las estancias
+  // sección (KML) a mostrar, compartida por Mapa, Lotes y Silos
+  const [estId, setEstIdRaw] = useState('all'); // vista general: todas las secciones
   const setEstId = v => { setEstIdRaw(v); setSelLot(null); setSelSilo(null); };
   const [mapJob, setMapJob] = useState(null), [mapEditMeta, setMapEditMeta] = useState(null), [mapEdit, setMapEdit] = useState(null);
   const { fix, err: gpsErr } = useGps(gpsOn);
@@ -215,11 +232,11 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
   const geo = useMemo(() => buildGeo(state.georef), [state.georef]);
   const estList = useMemo(() => estancias(state), [state.georef, state.lots]); // eslint-disable-line
   const effEst = supEst && estList.some(e => e.id === supEst) ? supEst : estList.some(e => e.id === estId) ? estId : 'all';
-  const estFilterOpts = !supEst && estList.length > 1; // el supervisor trabaja en una sola estancia
+  const estFilterOpts = !supEst && estList.length > 1; // el supervisor trabaja en una sola sección
   const inEst = useMemo(() => estanciaFilter(state, effEst), [state.georef, effEst]); // eslint-disable-line
   const lots = state.lots;
   const shownState = useMemo(() => (effEst === 'all' ? state : { ...state, lots: state.lots.filter(inEst), silos: state.silos.filter(s => inEst(siloLot(s, state.lots))) }), [state, effEst, inEst]);
-  const estOpts = [{ value: 'all', label: 'Todas las estancias', meta: `${state.lots.length} lotes` }, ...estList.map(e => ({ value: e.id, label: e.nombre, meta: `${e.sigla} · ${e.n} lotes` }))];
+  const estOpts = [{ value: 'all', label: 'Todas las secciones', meta: `${state.lots.length} lotes` }, ...estList.map(e => ({ value: e.id, label: e.nombre, meta: `${e.sigla} · ${e.n} lotes` }))];
   const maps = state.maps || [];
   useEffect(() => {
     let on = true;
@@ -294,7 +311,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
     const map = pt.map(v => Math.round(v * 100) / 100);
     return { ...extra, lote: loc.lot.num, lot: loc.lot.id, map, map2: null, t: null, ang: 0, latlng: geo ? geo.toLatLng(map).map(v => +v.toFixed(7)) : null, latlng2: null, largo: null, gps2: null, fuera: !loc.inside };
   }
-  // Lotes donde se pueden registrar silobolsas (los de la estancia en uso)
+  // Lotes donde se pueden registrar silobolsas (los de la sección en uso)
   const capLots = useMemo(() => lots.filter(l => isSiloLot(l) && inEst(l)), [lots, inEst]);
   const gpsOk = geo && 'geolocation' in navigator && gpsErr !== 'Permiso de ubicación denegado' && gpsOn;
   // datos de navegación para el mapa (y separación con las bolsas vecinas al marcar)
@@ -435,14 +452,18 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
     download(exportKml(state, geo), `acopia-${today()}.kml`, 'application/vnd.google-earth.kml+xml');
   }
 
-  // El supervisor solo ve Mapa, Silos, + y Lotes (y su cuenta para cambiar de estancia o salir)
+  // El supervisor solo ve Mapa, Silos, + y Lotes (y su cuenta para cambiar de sección o salir)
+  // Administrador: Usuarios, Ajustes y Perfil en el menú lateral; en el celular se llega desde el avatar (Perfil)
   const tabs = isAdmin ? [
     { k: 'mapa', label: 'Inicio', icon: 'map' }, { k: 'silos', label: 'Silos', icon: 'silo' },
-    { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'mapas', label: 'Mapas', icon: 'layers' }, { k: 'ajustes', label: 'Ajustes', icon: 'gear', desk: true },
+    { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'mapas', label: 'Mapas', icon: 'layers' },
+    { k: 'usuarios', label: 'Usuarios', icon: 'users', desk: true }, { k: 'ajustes', label: 'Ajustes', icon: 'gear', desk: true }, { k: 'perfil', label: 'Perfil', icon: 'user', desk: true },
   ] : [
     { k: 'mapa', label: 'Inicio', icon: 'map' }, { k: 'silos', label: 'Silos', icon: 'silo' },
-    { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'ajustes', label: 'Cuenta', icon: 'user' },
+    { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'perfil', label: 'Perfil', icon: 'user' },
   ];
+  // menús que el rol no puede ver vuelven a Inicio
+  useEffect(() => { if (!isAdmin && ['usuarios', 'ajustes', 'mapas'].includes(tab)) setTab('mapa'); }, [tab, isAdmin]); // eslint-disable-line
   // pestaña del navegador: solo «Acopia · menú activo»
   const tabLabel = (tabs.find(t => t.k === tab) || {}).label;
   useEffect(() => { document.title = tabLabel ? `Acopia · ${tabLabel}` : 'Acopia'; }, [tabLabel]);
@@ -457,7 +478,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
         <div className="top-act">
           <span className={`gps-chip ${fix && !gpsErr ? (fix.acc <= 5 ? 'is-good' : fix.acc <= 15 ? 'is-mid' : 'is-bad') : 'is-off'}`} title={gpsLabel}><Icon name="gps" size={15} /><span>{gpsLabel}</span></span>
           <button type="button" className="round-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Cambiar tema"><Icon name={theme === 'dark' ? 'sun' : 'moon'} size={18} /></button>
-          {isAdmin && <button type="button" className={`round-btn avatar-btn ${tab === 'ajustes' ? 'is-on' : ''}`} onClick={() => goTab('ajustes')} aria-label="Ajustes" title={`${me.nombre} (${me.rol}) · Ajustes`}>{(me.nombre || me.user).slice(0, 1).toUpperCase()}</button>}
+          {isAdmin && <button type="button" className={`round-btn avatar-btn ${['perfil', 'usuarios', 'ajustes'].includes(tab) ? 'is-on' : ''}`} onClick={() => goTab('perfil')} aria-label="Perfil" title={`${me.nombre} · Perfil`}>{(me.nombre || me.user).slice(0, 1).toUpperCase()}</button>}
         </div>
       </header>
 
@@ -483,7 +504,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
             <div className="dash-body">
               <div className="card map-card">
                 {!shape && !mapEdit && !cap && <div className="map-top">
-                  {estFilterOpts && <div className="map-layers"><Field label="Estancia" className="map-filter"><Select value={effEst} onChange={setEstId} options={estOpts} /></Field></div>}
+                  {estFilterOpts && <div className="map-layers"><Field label="Sección" className="map-filter"><Select value={effEst} onChange={setEstId} options={estOpts} /></Field></div>}
                   {maps.length > 0 && (
                     <div className="map-layers">
                       <Field label="Mapa a mostrar" className="map-filter"><Select value={effFilter} onChange={setMapFilter} options={[
@@ -548,7 +569,9 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
           onJobChange={patch => setMapJob(j => (j ? { ...j, ...patch } : j))}
           onShowMap={id => { setMapFilter(id); setTab('mapa'); }} onAdjustMap={startMapEdit} onEditMap={setMapEditMeta}
           geo={geo} store={store} onState={setState} onShowLots={() => { setTab('mapa'); }} urls={mapUrls} />}
-        {tab === 'ajustes' && <SettingsScreen estActual={effEst !== 'all' ? estList.find(e => e.id === effEst) : null} onChangeEst={onChangeEst} state={state} me={me} store={store} geo={geo} gps={fix} captureFix={captureFix} theme={theme} setTheme={setTheme} onState={setState} onLogout={onLogout} mode={store.mode} onGoMapas={() => setTab('mapas')} />}
+        {tab === 'perfil' && <ProfileScreen me={me} store={store} onState={setState} onMe={onMe} theme={theme} setTheme={setTheme} onLogout={onLogout} estActual={effEst !== 'all' ? estList.find(e => e.id === effEst) : null} onChangeEst={onChangeEst} onGo={goTab} />}
+        {tab === 'usuarios' && isAdmin && <UsersScreen state={state} me={me} store={store} onState={setState} />}
+        {tab === 'ajustes' && isAdmin && <SettingsScreen estActual={effEst !== 'all' ? estList.find(e => e.id === effEst) : null} onChangeEst={onChangeEst} state={state} me={me} store={store} geo={geo} gps={fix} captureFix={captureFix} theme={theme} setTheme={setTheme} onState={setState} onLogout={onLogout} mode={store.mode} onGoMapas={() => setTab('mapas')} />}
       </main>
 
       {draft && <SiloModal draft={draft} state={state} me={me} geo={geo} store={store} onClose={() => setDraft(null)}
@@ -569,7 +592,7 @@ function Shell({ store, me, state, setState, onLogout, theme, setTheme, gpsOn = 
 function App() {
   useEnterToSave();
   const [boot, setBoot] = useState({ phase: 'loading' });
-  const [theme, setThemeRaw] = useState(pref.get('theme', 'dark'));
+  const [theme, setThemeRaw] = useState(pref.get('theme', 'light')); // claro por defecto; cada usuario puede elegir oscuro
   const [geoGate, setGeoGate] = useState(null); // null = revisando · 'ask' · 'ok' · 'off' · 'nogps'
   const [supEst, setSupEst] = useState(() => { try { return sessionStorage.getItem('semia.estSup'); } catch { return null; } });
   useEffect(() => {
@@ -582,32 +605,41 @@ function App() {
       setGeoGate(pref.get('geo', '') === 'ok' ? 'ok' : later ? 'off' : 'ask');
     })();
   }, []);
-  const setTheme = t => { setThemeRaw(t); pref.set('theme', t); };
+  const setTheme = t => {
+    setThemeRaw(t); pref.set('theme', t);
+    // se guarda en el usuario para verlo igual en todos sus dispositivos
+    if (boot.me && boot.me.tema !== t) { boot.store.saveProfile({ user: boot.me.user, nombre: boot.me.nombre, rol: boot.me.rol, tema: t }, boot.me).then(o => setBoot(b => ({ ...b, me: o.me, state: normalizeState(o.state) }))).catch(() => {}); }
+  };
+  const applyUserTheme = me => { if (me?.tema && me.tema !== theme) { setThemeRaw(me.tema); pref.set('theme', me.tema); } };
   useEffect(() => { document.documentElement.dataset.theme = theme; document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#000000' : '#F2F2F2'); }, [theme]);
   useEffect(() => {
     (async () => {
       const mode = await detectMode(); const store = createStore(mode);
       const s = await store.session();
+      if (s?.me?.tema) { setThemeRaw(s.me.tema); pref.set('theme', s.me.tema); }
+      // con sesión, /login lleva al panel; sin sesión, /dashboard lleva al ingreso
+      if (ROUTED) { if (s?.me && !location.pathname.startsWith('/dashboard')) go('/dashboard/inicio', true); else if (!s?.me && location.pathname !== '/login') go('/login', true); }
       setBoot({ phase: 'ready', store, me: s?.me || null, state: normalizeState(s?.state || null) });
     })();
   }, []);
   if (boot.phase === 'loading') return <div className="splash"><Logo size={56} /><span className="muted">Cargando Acopia…</span></div>;
   const { store } = boot;
-  if (!boot.me) return <Login store={store} mode={store.mode} onLogged={({ me, state }) => setBoot(b => ({ ...b, me, state: normalizeState(state) }))} />;
-  const logout = async () => { try { sessionStorage.removeItem('semia.estSup'); } catch { /* */ } setSupEst(null); await store.logout(); setBoot(b => ({ ...b, me: null, state: null })); };
-  // Supervisor: login → estancia → ubicación (obligatoria) → registro
+  if (!boot.me) return <Login store={store} mode={store.mode} onLogged={({ me, state }) => { applyUserTheme(me); go('/dashboard/inicio', true); setBoot(b => ({ ...b, me, state: normalizeState(state) })); }} />;
+  const logout = async () => { try { sessionStorage.removeItem('semia.estSup'); } catch { /* */ } setSupEst(null); await store.logout(); go('/login'); setBoot(b => ({ ...b, me: null, state: null })); };
+  // Supervisor: login → sección → ubicación (obligatoria) → registro
   const sup = boot.me.rol !== 'admin';
   const ests = estancias(boot.state);
   const supId = !sup ? null : ests.length === 1 ? ests[0].id : ests.some(e => e.id === supEst) ? supEst : null;
-  if (sup && ests.length > 1 && !supId) return <EstanciaGate state={boot.state} me={boot.me} onLogout={logout} onPick={id => { try { sessionStorage.setItem('semia.estSup', id); } catch { /* */ } setSupEst(id); }} />;
+  if (sup && ests.length > 1 && !supId) return <EstanciaGate state={boot.state} me={boot.me} onLogout={logout} onPick={id => { try { sessionStorage.setItem('semia.estSup', id); } catch { /* */ } setSupEst(id); go('/dashboard/inicio', true); }} />;
   if (!geoGate) return <div className="splash"><Logo size={56} /></div>;
   const changeEst = ests.length > 1 ? () => { try { sessionStorage.removeItem('semia.estSup'); } catch { /* */ } setSupEst(null); } : null;
   if (geoGate === 'ask' || (sup && geoGate !== 'ok' && geoGate !== 'nogps')) return <GeoGate required={sup} est={supId ? ests.find(e => e.id === supId)?.nombre : ''} onBack={changeEst} onDone={ok => setGeoGate(ok ? 'ok' : sup ? 'nogps' : 'off')} />;
   return <Shell key={supId || 'admin'} store={store} me={boot.me} state={boot.state} theme={theme} setTheme={setTheme} gpsOn={geoGate === 'ok'}
     supEst={supId} onChangeEst={sup ? changeEst : null}
     setState={st => setBoot(b => ({ ...b, state: normalizeState(st) }))}
+    onMe={m => setBoot(b => ({ ...b, me: m }))}
     onLogout={logout} />;
 }
 
 createRoot(document.getElementById('root')).render(<ToastProvider><App /><UpdateButton /></ToastProvider>);
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});

@@ -126,7 +126,7 @@ export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est =
         {(onExportKml || onExportCsv) && <div className="row gap-s">{onExportKml && <Button icon="download" onClick={onExportKml}>KML</Button>}{onExportCsv && <Button icon="download" onClick={onExportCsv}>CSV</Button>}</div>}
       </div>
       <div className={`filters ${estOpts ? 'has-est' : ''}`}>
-        {estOpts && <Field label="Estancia"><Select value={est} options={estOpts} onChange={v => { onEst(v); setLote('all'); }} /></Field>}
+        {estOpts && <Field label="Sección"><Select value={est} options={estOpts} onChange={v => { onEst(v); setLote('all'); }} /></Field>}
         <Field label="Buscar"><div className="input-ic"><Icon name="search" size={16} /><TextInput value={q} onChange={setQ} placeholder="ID u observación" /></div></Field>
         <Field label="Lote"><Select value={lote} options={lotOpts} onChange={setLote} /></Field>
         <Field label="Grano"><Select value={grano} options={[{ value: 'all', label: 'Todos' }, ...GRANOS.map(g => ({ value: g, label: g }))]} onChange={setGrano} /></Field>
@@ -154,7 +154,7 @@ export function LotsScreen({ state, onEditLot, onShowLot, onOpenSilo, est = 'all
       <div className="screen-head"><div><h1>Lotes</h1><p className="muted">{shown.length}{shown.length !== state.lots.length ? ` de ${state.lots.length}` : ''} lotes · {fmtNum(shown.reduce((a, l) => a + l.ha, 0))} ha</p></div></div>
       {state.lots.length > 0 && (
         <div className={`filters lots-filters ${estOpts ? 'has-est' : ''}`}>
-          {estOpts && <Field label="Estancia"><Select value={est} options={estOpts} onChange={onEst} /></Field>}
+          {estOpts && <Field label="Sección"><Select value={est} options={estOpts} onChange={onEst} /></Field>}
           <Field label="Buscar lote"><div className="input-ic"><Icon name="search" size={16} /><TextInput value={q} onChange={setQ} placeholder="Número o nombre" /></div></Field>
         </div>
       )}
@@ -212,16 +212,16 @@ function LotMini({ lot, vi, n }) {
   );
 }
 
-// Fila editable de una estancia (KML): nombre y sigla de los IDs de silobolsa
+// Fila editable de una sección (KML): nombre y sigla de los IDs de silobolsa
 function EstanciaRow({ k, state, me, store, onState, isAdmin, lotes }) {
   const toast = useToast();
   const [f, setF] = useState(null);
   async function save() {
-    try { onState(await store.importKml(buildKmlRename(state, k.id, f), me)); setF(null); toast(`Estancia ${f.nombre} guardada`, 'ok'); } catch (e) { toast(e.message, 'error'); }
+    try { onState(await store.importKml(buildKmlRename(state, k.id, f), me)); setF(null); toast(`Sección ${f.nombre} guardada`, 'ok'); } catch (e) { toast(e.message, 'error'); }
   }
   if (f) return (
     <div className="set-row est-edit">
-      <Field label="Estancia" className="grow"><TextInput value={f.nombre} onChange={v => setF(x => ({ ...x, nombre: v.slice(0, 60) }))} /></Field>
+      <Field label="Sección" className="grow"><TextInput value={f.nombre} onChange={v => setF(x => ({ ...x, nombre: v.slice(0, 60) }))} /></Field>
       <Field label="Sigla" className="kml-sigla" hint={`Ej: ${f.sigla || 'XX'}31001`}><TextInput value={f.sigla} onChange={v => setF(x => ({ ...x, sigla: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) }))} /></Field>
       <div className="row gap-s"><Button size="sm" onClick={() => setF(null)}>Cancelar</Button><Button size="sm" variant="primary" icon="check" onClick={save}>Guardar</Button></div>
     </div>
@@ -242,6 +242,116 @@ function Group({ icon, title, desc, children, id }) {
       <div className="set-group-head"><h3 id={`sg-${id}`}><Icon name={icon} size={18} />{title}</h3>{desc && <p className="muted small">{desc}</p>}</div>
       <div className="set-group-body">{children}</div>
     </section>
+  );
+}
+
+/* ---------- Perfil: datos propios, contraseña y tema (cada usuario elige claro u oscuro) ---------- */
+export function ProfileScreen({ me, store, onState, onMe, theme, setTheme, onLogout, estActual, onChangeEst, onGo }) {
+  const toast = useToast();
+  const isAdmin = me.rol === 'admin';
+  const [f, setF] = useState({ nombre: me.nombre || '', email: me.email || '', tel: me.tel || '', pass: '', pass2: '' });
+  const dirty = f.nombre !== (me.nombre || '') || f.email !== (me.email || '') || f.tel !== (me.tel || '') || f.pass;
+  async function save() {
+    if (!f.nombre.trim()) return toast('Escribí tu nombre', 'error');
+    if (f.pass && f.pass.length < 6) return toast('La contraseña debe tener al menos 6 caracteres', 'error');
+    if (f.pass && f.pass !== f.pass2) return toast('Las contraseñas no coinciden', 'error');
+    try {
+      const out = await store.saveProfile({ user: me.user, nombre: f.nombre.trim(), rol: me.rol, email: f.email.trim(), tel: f.tel.trim(), ...(f.pass ? { pass: f.pass } : {}) }, me);
+      onState(out.state); onMe(out.me); setF(x => ({ ...x, pass: '', pass2: '' })); toast('Perfil guardado', 'ok');
+    } catch (e) { toast(e.message, 'error'); }
+  }
+  return (
+    <div className="screen">
+      <div className="screen-head"><div><h1>Perfil</h1><p className="muted">{me.user} · {isAdmin ? 'Administrador' : 'Supervisor'}</p></div>
+        <Button variant="ghost" icon="logout" onClick={onLogout}>Cerrar sesión</Button></div>
+      <div className="set-page">
+        <Group id="perfil" icon="user" title="Mis datos" desc="Tu nombre aparece en el saludo y en cada silobolsa que registrás.">
+          <div className="form-grid">
+            <Field label="Nombre y apellido"><TextInput value={f.nombre} onChange={v => setF(x => ({ ...x, nombre: v.slice(0, 60) }))} autoComplete="name" /></Field>
+            <Field label="Email"><TextInput type="email" value={f.email} onChange={v => setF(x => ({ ...x, email: v.slice(0, 120) }))} placeholder="nombre@empresa.com" autoComplete="email" /></Field>
+            <Field label="Celular"><TextInput type="tel" value={f.tel} onChange={v => setF(x => ({ ...x, tel: v.replace(/[^0-9+ ()-]/g, '').slice(0, 30) }))} placeholder="+54 9 11 1234 5678" autoComplete="tel" /></Field>
+            <Field label="Usuario" hint="Lo asigna el administrador"><TextInput value={me.user} onChange={() => {}} disabled /></Field>
+            <Field label="Nueva contraseña" hint="Dejalo vacío para no cambiarla"><TextInput type="password" value={f.pass} onChange={v => setF(x => ({ ...x, pass: v }))} placeholder="Mínimo 6 caracteres" autoComplete="new-password" /></Field>
+            <Field label="Repetir contraseña"><TextInput type="password" value={f.pass2} onChange={v => setF(x => ({ ...x, pass2: v }))} autoComplete="new-password" disabled={!f.pass} /></Field>
+          </div>
+          <div className="row end"><Button variant="primary" icon="check" onClick={save} disabled={!dirty}>Guardar</Button></div>
+        </Group>
+        <Group id="tema" icon="sun" title="Apariencia" desc="Se guarda en tu usuario: la ves igual en todos tus dispositivos.">
+          <Field label="Tema"><Segmented value={theme} onChange={setTheme} options={[{ value: 'light', label: 'Claro', icon: 'sun' }, { value: 'dark', label: 'Oscuro', icon: 'moon' }]} /></Field>
+        </Group>
+        {!isAdmin && (
+          <Group id="seccion" icon="map" title="Sección de trabajo" desc="Ves y registrás solo los lotes de esta sección.">
+            <div className="set-row">
+              <span className="est-sig mono">{estActual?.sigla || '—'}</span>
+              <div className="grow"><b>{estActual?.nombre || 'Todas'}</b>{estActual && <span className="muted small">{estActual.n} lotes</span>}</div>
+              {onChangeEst && <Button icon="map" onClick={onChangeEst}>Cambiar sección</Button>}
+            </div>
+          </Group>
+        )}
+        {isAdmin && onGo && (
+          <div className="set-links only-mobile">
+            <button type="button" className="set-link" onClick={() => onGo('usuarios')}><Icon name="users" size={18} /><span><b>Usuarios</b><small>Altas, roles y contactos</small></span><Icon name="chev" size={16} className="set-link-go" /></button>
+            <button type="button" className="set-link" onClick={() => onGo('ajustes')}><Icon name="gear" size={18} /><span><b>Ajustes</b><small>Empresa, secciones, lotes y datos</small></span><Icon name="chev" size={16} className="set-link-go" /></button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Usuarios (administrador) ---------- */
+const EMPTY_USER = { user: '', nombre: '', email: '', tel: '', pass: '', rol: 'operador' };
+export function UsersScreen({ state, me, store, onState }) {
+  const toast = useToast();
+  const [form, setForm] = useState(null); // null | { ...usuario, nuevo }
+  const [del, setDel] = useState(null);
+  async function run(fn, ok) { try { onState(await fn()); if (ok) toast(ok, 'ok'); return true; } catch (e) { toast(e.message, 'error'); return false; } }
+  async function save() {
+    const u = form;
+    if (u.nuevo && u.user.length < 3) return toast('El usuario necesita al menos 3 caracteres', 'error');
+    if (u.nuevo && state.users.some(x => x.user === u.user)) return toast('Ese usuario ya existe', 'error');
+    if ((u.nuevo || u.pass) && u.pass.length < 6) return toast('La contraseña debe tener al menos 6 caracteres', 'error');
+    const { nuevo, ...rec } = u; if (!rec.pass) delete rec.pass;
+    if (await run(() => store.saveUser(rec, me), nuevo ? 'Usuario creado' : 'Usuario guardado')) setForm(null);
+  }
+  const rolTxt = r => (r === 'admin' ? 'Administrador' : 'Supervisor');
+  return (
+    <div className="screen">
+      <div className="screen-head"><div><h1>Usuarios</h1><p className="muted">{state.users.length} usuario{state.users.length === 1 ? '' : 's'} · el supervisor elige su sección y registra silobolsas</p></div>
+        {!form && <Button variant="primary" icon="plus" onClick={() => setForm({ ...EMPTY_USER, nuevo: true })}>Nuevo usuario</Button>}</div>
+      {form && (
+        <section className="user-form">
+          <h3>{form.nuevo ? 'Nuevo usuario' : `Editar ${form.nombre || form.user}`}</h3>
+          <div className="form-grid">
+            <Field label="Usuario" hint={form.nuevo ? 'Con esto ingresa (sin espacios)' : 'No se puede cambiar'}><TextInput value={form.user} onChange={v => setForm(x => ({ ...x, user: v.toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 30) }))} disabled={!form.nuevo} autoComplete="off" /></Field>
+            <Field label="Nombre y apellido"><TextInput value={form.nombre} onChange={v => setForm(x => ({ ...x, nombre: v.slice(0, 60) }))} /></Field>
+            <Field label="Email"><TextInput type="email" value={form.email} onChange={v => setForm(x => ({ ...x, email: v.slice(0, 120) }))} placeholder="nombre@empresa.com" /></Field>
+            <Field label="Celular"><TextInput type="tel" value={form.tel} onChange={v => setForm(x => ({ ...x, tel: v.replace(/[^0-9+ ()-]/g, '').slice(0, 30) }))} placeholder="+54 9 11 1234 5678" /></Field>
+            <Field label={form.nuevo ? 'Contraseña' : 'Nueva contraseña'} hint={form.nuevo ? 'Mínimo 6 caracteres' : 'Dejalo vacío para no cambiarla'}><TextInput type="password" value={form.pass} onChange={v => setForm(x => ({ ...x, pass: v }))} autoComplete="new-password" /></Field>
+            <Field label="Rol"><Select value={form.rol} options={[{ value: 'operador', label: 'Supervisor', meta: 'registra silobolsas' }, { value: 'admin', label: 'Administrador', meta: 'gestiona todo' }]} onChange={v => setForm(x => ({ ...x, rol: v }))} disabled={form.user === me.user} /></Field>
+          </div>
+          <div className="row end gap-s"><Button onClick={() => setForm(null)}>Cancelar</Button><Button variant="primary" icon="check" onClick={save}>{form.nuevo ? 'Crear usuario' : 'Guardar'}</Button></div>
+        </section>
+      )}
+      <div className="list-card user-list">
+        {state.users.map(u => (
+          <div className="user-row" key={u.user}>
+            <span className="avatar sm">{(u.nombre || u.user).slice(0, 1).toUpperCase()}</span>
+            <div className="user-row-main">
+              <b>{u.nombre || u.user}{u.user === me.user ? <span className="muted"> · vos</span> : null}</b>
+              <span className="muted small">{[u.user, rolTxt(u.rol), u.email, u.tel].filter(Boolean).join(' · ')}</span>
+            </div>
+            {del === u.user ? <>
+              <Button size="sm" onClick={() => setDel(null)}>No</Button>
+              <Button size="sm" variant="danger" onClick={async () => { if (await run(() => store.deleteUser(u.user, me), 'Usuario eliminado')) setDel(null); }}>Eliminar</Button>
+            </> : <>
+              <Button size="sm" variant="ghost" icon="edit" onClick={() => setForm({ ...EMPTY_USER, ...u, pass: '', nuevo: false })} aria-label={`Editar a ${u.user}`} />
+              {u.user !== me.user && <Button size="sm" variant="ghost" icon="trash" onClick={() => setDel(u.user)} aria-label={`Eliminar a ${u.user}`} />}
+            </>}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -313,97 +423,24 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
 
   return (
     <div className="screen">
-      {!isAdmin ? <>
-        <div className="screen-head"><div><h1>Cuenta</h1><p className="muted">{estActual ? estActual.nombre : state.estancia.nombre}</p></div></div>
-        <div className="set-page">
-          <Group id="cuenta" icon="user" title="Mi cuenta" desc="Supervisor: registrás silobolsas en la estancia elegida.">
-            <div className="set-me">
-              <span className="avatar">{(me.nombre || me.user).slice(0, 1).toUpperCase()}</span>
-              <div className="grow"><b>{me.nombre || me.user}</b><span className="muted small">{me.user} · Supervisor</span></div>
-              <Button variant="ghost" icon="logout" onClick={onLogout}>Cerrar sesión</Button>
-            </div>
-            <div className="set-inline">
-              <Field label="Nueva contraseña" className="grow"><TextInput type="password" value={myPass} onChange={setMyPass} placeholder="Mínimo 6 caracteres" autoComplete="new-password" /></Field>
-              <Button data-enter onClick={async () => { if (myPass.length < 6) return toast('Mínimo 6 caracteres', 'error'); if (await run(() => store.saveUser({ user: me.user, nombre: me.nombre, rol: me.rol, pass: myPass }, me), 'Contraseña actualizada')) setMyPass(''); }}>Cambiar</Button>
-            </div>
-          </Group>
-          <Group id="estancia" icon="map" title="Estancia de trabajo" desc="Ves y registrás solo los lotes de esta estancia.">
-            <div className="set-row">
-              <span className="est-sig mono">{estActual?.sigla || state.estancia.sigla}</span>
-              <div className="grow"><b>{estActual?.nombre || state.estancia.nombre}</b>{estActual && <span className="muted small">{estActual.n} lotes</span>}</div>
-              {onChangeEst && <Button icon="map" onClick={onChangeEst}>Cambiar estancia</Button>}
-            </div>
-          </Group>
-          <Group id="tema" icon="sun" title="Apariencia" desc="Oscuro para el campo de noche, claro a pleno sol.">
-            <Field label="Tema"><Segmented value={theme} onChange={setTheme} options={[{ value: 'dark', label: 'Oscuro', icon: 'moon' }, { value: 'light', label: 'Claro', icon: 'sun' }]} /></Field>
-          </Group>
-        </div>
-      </> : <>
       <div className="screen-head"><div><h1>Ajustes</h1><p className="muted">{state.estancia.nombre} · {mode === 'local' ? 'Modo local: los datos quedan en este dispositivo' : 'Conectado al servidor'}</p></div></div>
       <div className="set-page">
-        <Group id="cuenta" icon="user" title="Mi cuenta" desc="Tu usuario y contraseña.">
-          <div className="set-me">
-            <span className="avatar">{(me.nombre || me.user).slice(0, 1).toUpperCase()}</span>
-            <div className="grow"><b>{me.nombre || me.user}</b><span className="muted small">{me.user} · {me.rol === 'admin' ? 'Administrador' : 'Supervisor'}</span></div>
-            <Button variant="ghost" icon="logout" onClick={onLogout}>Cerrar sesión</Button>
+        <Group id="empresa" icon="silo" title="Empresa" desc="Nombre que se muestra junto al logo y sigla para lotes cargados a mano.">
+          <div className="form-grid">
+            <Field label="Nombre de la empresa"><TextInput value={est.nombre} onChange={v => setEst(x => ({ ...x, nombre: v.slice(0, 60) }))} disabled={!isAdmin} /></Field>
+            <Field label="Sigla por defecto" hint="Para lotes que no vienen de un KML"><TextInput value={est.sigla} onChange={v => setEst(x => ({ ...x, sigla: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) }))} disabled={!isAdmin} /></Field>
           </div>
-          <div className="set-inline">
-            <Field label="Nueva contraseña" className="grow"><TextInput type="password" value={myPass} onChange={setMyPass} placeholder="Mínimo 6 caracteres" autoComplete="new-password" /></Field>
-            <Button data-enter onClick={async () => { if (myPass.length < 6) return toast('Mínimo 6 caracteres', 'error'); if (await run(() => store.saveUser({ user: me.user, nombre: me.nombre, rol: me.rol, pass: myPass }, me), 'Contraseña actualizada')) setMyPass(''); }}>Cambiar</Button>
-          </div>
+          {isAdmin && (est.nombre !== state.estancia.nombre || est.sigla !== state.estancia.sigla) && <div className="row end"><Button variant="primary" icon="check" onClick={() => { if (!est.nombre.trim() || !est.sigla) return toast('Completá nombre y sigla', 'error'); run(() => store.saveEstancia(est, me), 'Guardado'); }}>Guardar</Button></div>}
         </Group>
 
-        <Group id="tema" icon="sun" title="Apariencia" desc="Oscuro para el campo de noche, claro a pleno sol.">
-          <Field label="Tema"><Segmented value={theme} onChange={setTheme} options={[{ value: 'dark', label: 'Oscuro', icon: 'moon' }, { value: 'light', label: 'Claro', icon: 'sun' }]} /></Field>
-        </Group>
-
-        <Group id="estancia" icon="map" title="Estancias" desc="Cada KML es una estancia con su sigla: los silos de Los Gatos se numeran LG + lote + bolsa (LG31010).">
+        <Group id="estancia" icon="map" title="Secciones" desc="Cada KML es una sección con sus lotes y su sigla: los silos de Los Gatos se numeran LG + lote + bolsa (LG31010).">
           {kmls.length > 0 && (
             <div className="set-list">
               {kmls.map(k => <EstanciaRow key={k.id} k={k} state={state} me={me} store={store} onState={onState} isAdmin={isAdmin} lotes={state.lots.filter(l => l.kml === k.id).length} />)}
             </div>
           )}
-          {!kmls.length && <p className="muted small">Todavía no hay estancias: cargá un KML en la pestaña Mapas.</p>}
-          <div className="set-sub">
-            <div className="form-grid">
-              <Field label="Nombre del establecimiento" hint="Se muestra arriba, junto al logo"><TextInput value={est.nombre} onChange={v => setEst(x => ({ ...x, nombre: v }))} disabled={!isAdmin} /></Field>
-              <Field label="Sigla por defecto" hint="Para lotes que no vienen de un KML"><TextInput value={est.sigla} onChange={v => setEst(x => ({ ...x, sigla: v.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4) }))} disabled={!isAdmin} /></Field>
-            </div>
-            {isAdmin && (est.nombre !== state.estancia.nombre || est.sigla !== state.estancia.sigla) && <div className="row end"><Button variant="primary" icon="check" onClick={() => { if (!est.nombre.trim() || !est.sigla) return toast('Completá nombre y sigla', 'error'); run(() => store.saveEstancia(est, me), 'Guardado'); }}>Guardar</Button></div>}
-          </div>
+          {!kmls.length && <p className="muted small">Todavía no hay secciones: cargá un KML en la pestaña Mapas.</p>}
         </Group>
-
-        {isAdmin && (
-          <Group id="usuarios" icon="user" title="Usuarios" desc="El supervisor elige su estancia y registra silobolsas; el administrador además maneja lotes, mapas, KML y usuarios.">
-            <div className="set-list">
-              {state.users.map(u => (
-                <div className="set-row" key={u.user}>
-                  <span className="avatar sm">{(u.nombre || u.user).slice(0, 1).toUpperCase()}</span>
-                  <div className="grow"><b>{u.nombre || u.user}</b><span className="muted small">{u.user} · {u.rol === 'admin' ? 'Administrador' : 'Supervisor'}{u.user === me.user ? ' · vos' : ''}</span></div>
-                  {u.user !== me.user && <Button size="sm" variant="ghost" icon="trash" onClick={() => run(() => store.deleteUser(u.user, me), 'Usuario eliminado')} aria-label={`Eliminar a ${u.user}`} />}
-                </div>
-              ))}
-            </div>
-            {!newUser ? <div><Button icon="plus" onClick={() => setNewUser(true)}>Nuevo usuario</Button></div> : (
-              <div className="set-sub">
-                <div className="form-grid">
-                  <Field label="Usuario"><TextInput value={nu.user} onChange={v => setNu(x => ({ ...x, user: v.toLowerCase().replace(/[^a-z0-9._-]/g, '') }))} /></Field>
-                  <Field label="Nombre"><TextInput value={nu.nombre} onChange={v => setNu(x => ({ ...x, nombre: v }))} /></Field>
-                  <Field label="Contraseña"><TextInput type="password" value={nu.pass} onChange={v => setNu(x => ({ ...x, pass: v }))} autoComplete="new-password" /></Field>
-                  <Field label="Rol"><Select value={nu.rol} options={[{ value: 'operador', label: 'Supervisor (registra silos)' }, { value: 'admin', label: 'Administrador' }]} onChange={v => setNu(x => ({ ...x, rol: v }))} /></Field>
-                </div>
-                <div className="row end gap-s">
-                  <Button onClick={() => { setNewUser(false); setNu({ user: '', nombre: '', pass: '', rol: 'operador' }); }}>Cancelar</Button>
-                  <Button variant="primary" icon="check" onClick={async () => {
-                    if (nu.user.length < 3 || nu.pass.length < 6) return toast('Usuario (3+) y contraseña (6+) requeridos', 'error');
-                    if (state.users.some(u => u.user === nu.user)) return toast('Ese usuario ya existe', 'error');
-                    if (await run(() => store.saveUser(nu, me), 'Usuario creado')) { setNu({ user: '', nombre: '', pass: '', rol: 'operador' }); setNewUser(false); }
-                  }}>Crear usuario</Button>
-                </div>
-              </div>
-            )}
-          </Group>
-        )}
 
         {state.georef?.mode === 'kml' ? (
           <Group id="lotes" icon="gps" title="Lotes y ubicación" desc="Los lotes vienen de KML en coordenadas reales; las silobolsas se ubican con el GPS.">
@@ -471,7 +508,6 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
           )}
         </Group>
       </div>
-      </>}
     </div>
   );
 }

@@ -98,14 +98,25 @@ if (!file_exists(DATA_FILE)) {
 
 ini_set('session.use_strict_mode', '1');
 session_name('SEMIASESS');
+// Sesiones guardadas con los datos (fuera de la web): «Mantener sesión iniciada» dura 30 días;
+// si no se marca, la sesión termina al cerrar el navegador.
+const SESSION_DAYS = 30;
+$sessDir = DATA_DIR . '/sesiones';
+if ((is_dir($sessDir) || @mkdir($sessDir, 0700, true)) && is_writable($sessDir)) session_save_path($sessDir);
+ini_set('session.gc_maxlifetime', (string)(SESSION_DAYS * 86400));
+function cookieOpts(int $expires): array {
+  return ['expires' => $expires, 'path' => '/', 'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off', 'httponly' => true, 'samesite' => 'Lax'];
+}
 session_set_cookie_params([
-  'lifetime' => 60 * 60 * 24 * 30,
+  'lifetime' => 0,
   'path' => '/',
   'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
   'httponly' => true,
   'samesite' => 'Lax',
 ]);
 session_start();
+// sesión recordada: se renueva el vencimiento de la cookie en cada uso
+if (!empty($_SESSION['recordar'])) setcookie(session_name(), session_id(), cookieOpts(time() + SESSION_DAYS * 86400));
 
 function out(array $d, int $code = 200): void { http_response_code($code); echo json_encode($d, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); exit; }
 function fail(string $msg, int $code = 400): void { out(['ok' => false, 'error' => $msg], $code); }
@@ -138,10 +149,13 @@ function withData(callable $fn, bool $write = false) {
   return $res;
 }
 function publicState(array $d): array {
-  $d['users'] = array_map(fn($u) => ['user' => $u['user'], 'nombre' => $u['nombre'] ?? '', 'rol' => $u['rol'] ?? 'operador'], $d['users'] ?? []);
+  $d['users'] = array_map(fn($u) => ['user' => $u['user'], 'nombre' => $u['nombre'] ?? '', 'rol' => $u['rol'] ?? 'operador', 'email' => $u['email'] ?? '', 'tel' => $u['tel'] ?? ''], $d['users'] ?? []);
   return $d;
 }
 function me(): ?array { return $_SESSION['me'] ?? null; }
+function sessionUser(array $u): array {
+  return ['user' => $u['user'], 'nombre' => $u['nombre'] ?? $u['user'], 'rol' => $u['rol'] ?? 'operador', 'email' => $u['email'] ?? '', 'tel' => $u['tel'] ?? '', 'tema' => $u['tema'] ?? 'light'];
+}
 function requireUser(): array { $m = me(); if (!$m) fail('Sesión expirada. Ingresá nuevamente.', 401); return $m; }
 function requireAdmin(): array { $m = requireUser(); if (($m['rol'] ?? '') !== 'admin') fail('Solo el administrador puede hacer esto', 403); return $m; }
 function body(): array {
@@ -242,12 +256,15 @@ switch ($action) {
     }
     session_regenerate_id(true);
     $_SESSION['tries'] = 0;
-    $_SESSION['me'] = ['user' => $found['user'], 'nombre' => $found['nombre'] ?? $found['user'], 'rol' => $found['rol'] ?? 'operador'];
+    $_SESSION['me'] = sessionUser($found);
+    $_SESSION['recordar'] = !empty($b['recordar']);
+    if ($_SESSION['recordar']) setcookie(session_name(), session_id(), cookieOpts(time() + SESSION_DAYS * 86400));
     out(['ok' => true, 'me' => $_SESSION['me'], 'state' => withData(fn($d) => publicState($d))]);
   }
 
   case 'logout':
     $_SESSION = []; session_destroy();
+    setcookie(session_name(), '', cookieOpts(time() - 3600));
     out(['ok' => true]);
 
   case 'state':
@@ -530,18 +547,26 @@ switch ($action) {
     if (!$isAdmin && $user !== $me['user']) fail('Sin permiso', 403);
     $pass = (string)($u['pass'] ?? '');
     if ($pass !== '' && strlen($pass) < 6) fail('La contraseña debe tener al menos 6 caracteres');
-    $state = withData(function (&$d) use ($u, $user, $pass, $isAdmin) {
+    $email = trim((string)($u['email'] ?? ''));
+    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) fail('El email no es válido');
+    $tel = preg_replace('/[^0-9+ ()-]/', '', (string)($u['tel'] ?? ''));
+    if ($tel !== '' && strlen(preg_replace('/\D/', '', $tel)) < 6) fail('El celular no es válido');
+    $state = withData(function (&$d) use ($u, $user, $pass, $isAdmin, $email, $tel) {
       $idx = null; foreach ($d['users'] as $i => $x) if ($x['user'] === $user) $idx = $i;
       $rol = $isAdmin && in_array($u['rol'] ?? '', ['admin', 'operador'], true) ? $u['rol'] : ($idx !== null ? $d['users'][$idx]['rol'] : 'operador');
       $rec = ['user' => $user, 'nombre' => str($u['nombre'] ?? $user, 60) ?: $user, 'rol' => $rol];
+      if (array_key_exists('email', $u)) $rec['email'] = substr($email, 0, 120);
+      if (array_key_exists('tel', $u)) $rec['tel'] = substr($tel, 0, 30);
+      if (in_array($u['tema'] ?? '', ['light', 'dark'], true)) $rec['tema'] = $u['tema'];
       if ($pass !== '') $rec['hash'] = password_hash($pass, PASSWORD_DEFAULT);
       if ($idx !== null) $d['users'][$idx] = array_merge($d['users'][$idx], $rec);
       else { if ($pass === '') fail('Indicá una contraseña'); $d['users'][] = $rec; }
       $admins = array_filter($d['users'], fn($x) => ($x['rol'] ?? '') === 'admin');
       if (!$admins) fail('Debe quedar al menos un administrador');
+      foreach ($d['users'] as $x) if ($x['user'] === ($_SESSION['me']['user'] ?? '')) $_SESSION['me'] = sessionUser($x);
       return publicState($d);
     }, true);
-    out(['ok' => true, 'state' => $state]);
+    out(['ok' => true, 'state' => $state, 'me' => $_SESSION['me']]);
   }
 
   case 'deleteUser': {

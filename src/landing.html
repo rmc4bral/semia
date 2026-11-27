@@ -91,10 +91,10 @@ p{margin:0}
 /* ---------- Secciones (solo el contenido se mueve sobre el fondo fijo) ---------- */
 main{position:relative}
 .wrap{max-width:var(--max);margin:0 auto;padding:0 24px}
-section{--pad:104px;padding:var(--pad) 0}
+section{--pad:104px;padding:var(--pad-t,var(--pad)) 0 var(--pad)}
 /* al saltar desde el menú, el título de la sección queda a la misma distancia bajo la barra fija */
 :root{--hdr:68px;--gap:44px}
-section[id]{scroll-margin-top:calc(var(--hdr) + var(--gap) - var(--pad))}
+section[id]{scroll-margin-top:calc(var(--hdr) + var(--gap) - var(--pad-t,var(--pad)))}
 .anchor{scroll-margin-top:calc(var(--hdr) + var(--gap))}
 .eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:var(--lime-deep);letter-spacing:.02em}
 .eyebrow i{width:8px;height:8px;border-radius:50%;background:var(--lime);box-shadow:0 0 0 4px rgba(204,255,0,.35)}
@@ -235,6 +235,14 @@ form{display:grid;grid-template-columns:1fr 1fr;gap:18px 20px}
 .sent b{font-size:24px;letter-spacing:-.03em}
 .sent p{color:var(--muted)}
 
+
+/* frases de conexión entre secciones: título centrado con la idea clave en lima y una bajada breve */
+.bridge{padding:clamp(8px,2vw,24px) 0;text-align:center}
+.bridge .wrap{display:flex;flex-direction:column;align-items:center;gap:16px}
+.bridge h2{max-width:900px;font-size:clamp(28px,3.6vw,46px);letter-spacing:-.04em;line-height:1.12;text-wrap:balance}
+.bridge h2 em{font-style:normal;background:linear-gradient(transparent 64%,rgba(204,255,0,.85) 64%,rgba(204,255,0,.85) 90%,transparent 90%);-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.bridge p{max-width:620px;color:var(--muted);font-size:clamp(16px,1.5vw,19px);text-wrap:balance}
+.bridge+section{--pad-t:clamp(48px,6vw,72px)}
 /* cierre */
 .end{padding:120px 0 96px}
 .end .wrap{display:flex;flex-direction:column;align-items:flex-start;gap:26px}
@@ -398,6 +406,10 @@ footer .logo svg{width:24px}
     </div>
   </section>
 
+  <aside class="bridge" aria-label="Acopia">
+    <div class="wrap"><h2 class="rv">Eliminá el papel. <em>Hacé tu registro totalmente digital.</em></h2><p class="rv" style="--i:1">Cada silobolsa queda georreferenciada en el momento, con su ficha completa, desde el celular y sin planillas.</p></div>
+  </aside>
+
   <section id="plataforma">
     <div class="wrap">
       <div class="sec-head sec-head-row"><div><span class="eyebrow rv"><i></i>Plataforma</span><h2 class="rv" style="--i:1">Todo lo que pasa en el campo, registrado con método.</h2></div><p class="rv" style="--i:2">Seis pilares para ordenar tu acopio, del lote al despacho.</p></div>
@@ -411,6 +423,10 @@ footer .logo svg{width:24px}
       </div>
     </div>
   </section>
+
+  <aside class="bridge" aria-label="Acopia">
+    <div class="wrap"><h2 class="rv">Una app desarrollada para el <em>control a distancia</em> de toda tu producción.</h2><p class="rv" style="--i:1">Lo que se registra en el campo se ve al instante en el panel, desde la oficina o desde cualquier lugar.</p></div>
+  </aside>
 
   <section id="como-funciona">
     <div class="wrap">
@@ -430,6 +446,10 @@ footer .logo svg{width:24px}
       </figure>
     </div>
   </section>
+
+  <aside class="bridge" aria-label="Acopia">
+    <div class="wrap"><h2 class="rv">Menos recorridas a ciegas. <em>Más despachos a tiempo.</em></h2><p class="rv" style="--i:1">Stock, humedad y prioridades de salida en un mismo lugar, para vender cada bolsa en el momento justo.</p></div>
+  </aside>
 
   <section id="contacto" class="contact">
     <span id="solicitar-demo" class="anchor" aria-hidden="true"></span>

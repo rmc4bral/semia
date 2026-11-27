@@ -112,7 +112,7 @@ with sync_playwright() as p:
         page.goto(URL + '/'); page.wait_for_selector('.hero h1')
         check('Control preciso de tu Producción' in page.inner_text('.hero h1') and page.locator('a[href="/login"]').count() >= 2, f'{tag}: landing con lema e «Ingresar»')
         check(page.evaluate("getComputedStyle(document.querySelector('.bg')).position") == 'fixed', f'{tag}: landing con fondo fijo')
-        check(page.locator('.top .btn-demo').is_visible() and page.locator('.top .login-link').is_visible() and page.locator('#plataforma .feat article').count() == 6, f'{tag}: barra con Ingresar y Solicitar demo; Plataforma con 6 pilares')
+        check(page.locator('.top .btn-demo').is_visible() and page.locator('.top .login-link').is_visible() and page.locator('#plataforma .feat article').count() == 6 and page.locator('.bridge h2').count() == 3, f'{tag}: barra con Ingresar y Solicitar demo; Plataforma con 6 pilares; 3 frases de conexión')
         check(page.evaluate("getComputedStyle(document.querySelector('.top .btn-demo')).animationName") == 'orbit', f'{tag}: Solicitar demo con borde dinámico')
         page.evaluate("scrollTo(0, document.body.scrollHeight)"); page.wait_for_timeout(900)
         check(page.locator('.rv:not(.in)').count() == 0, f'{tag}: landing revela todas las secciones al desplazarse')

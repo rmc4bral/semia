@@ -374,7 +374,7 @@ with sync_playwright() as p:
     s_ = page.request.get(URL + '/api.php?action=state').json()['state']['silos'][0]
     check(s_.get('hum') == 14.5 and s_.get('prio') == 'media', f"silo: humedad al embolsar y prioridad media ({s_.get('hum')}, {s_.get('prio')})")
     check(mdist(s_['latlng2'], (-35.9455, -60.3852)) < 0.5 and 50 < s_['largo'] < 62, f"kml: cola y largo exactos ({s_['largo']} m)")
-    # saludo según la hora y navegación a pie
+    # saludo según la hora y navegación GPS
     g = page.inner_text('.greet')
     check(any(g.startswith(x) for x in ('Buenos días', 'Buenas tardes', 'Buenas noches')) and ', ' in g, f'inicio: saludo según la hora ({g})')
     ctx.set_geolocation({'latitude': -35.9470, 'longitude': -60.3860, 'accuracy': 4}); page.wait_for_timeout(1200)
@@ -383,7 +383,7 @@ with sync_playwright() as p:
     check(page.locator('path.sat-gap').count() >= 1 and page.locator('.sat-gap-lbl').count() >= 1, 'navegar: líneas con la separación a los silos')
     page.locator('.nav-near-row').first.click(); page.wait_for_timeout(500)
     tt = page.inner_text('.nav-top')
-    check(page.locator('path.sat-route').count() == 1 and ' m' in tt and 'a pie' in tt and s_['id'] in tt, f'navegar: ruta, distancia y tiempo hasta el silo ({tt[:60]})')
+    check(page.locator('path.sat-route').count() == 1 and ' m' in tt and 'a pie' not in tt and s_['id'] in tt, f'navegar: ruta, distancia y rumbo hasta el silo ({tt[:60]})')
     ctx.set_geolocation({'latitude': -35.9462, 'longitude': -60.3856, 'accuracy': 4}); page.wait_for_timeout(1500)
     check(page.locator('.nav-me svg').count() == 1, 'navegar: flecha con el rumbo al caminar')
     check(page.locator('path.sat-trail').count() == 1, 'navegar: dibuja el recorrido')

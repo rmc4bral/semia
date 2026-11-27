@@ -39,13 +39,13 @@ writeFileSync('public_html/app.html', idx);
   const caps = existsSync('src/capturas.json') ? JSON.parse(readFileSync('src/capturas.json', 'utf8')) : {};
   const TXT = {
     '01-inicio': [1, 'Tocá + para registrar una silobolsa'], '02-lote': [2, 'Elegí el lote: primero los más cercanos'],
-    '03-cabecera': [3, 'En la cabecera, marcá el punto A con el GPS'], '04-cola': [4, 'Caminá hasta la cola y marcá el punto B'],
+    '03-cabecera': [3, 'En la cabecera, marcá el punto A con el GPS'], '04-cola': [4, 'En la cola de la bolsa, marcá el punto B'],
     '05-kilos': [5, 'Kilos con el teclado de Acopia, en toneladas al instante'], '06-ficha': [6, 'Variedad, humedad y prioridad de salida'],
-    '07-guardada': [7, 'La bolsa queda sobre el borde del lote'], '08-cercanas': [8, 'Navegá a pie hasta cualquier silobolsa'],
+    '07-guardada': [7, 'La bolsa queda sobre el borde del lote'], '08-cercanas': [8, 'Navegá por GPS hasta cualquier silobolsa'],
     '10-llegaste': [8, 'Aviso al llegar a la bolsa'],
   };
   const seq = Object.keys(caps).sort().filter(k => TXT[k] || k.startsWith('09-nav')).map(k => {
-    const c = caps[k], nav = k.startsWith('09-nav'), [g, txt] = TXT[k] || [8, 'Rumbo, distancia y tiempo a pie, en vivo'];
+    const c = caps[k], nav = k.startsWith('09-nav'), [g, txt] = TXT[k] || [8, 'Rumbo y distancia en vivo'];
     return { s: k, g, c: txt, d: nav ? 650 : 2700, fast: nav || undefined, sb: c.sb, ink: c.ink, t: c.taps[0] };
   });
   const LEGAL_FECHA = '27 de noviembre de 2026';

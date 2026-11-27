@@ -1,4 +1,4 @@
-// Navegación a pie en el campo: distancias, rumbos y silos cercanos (plano local en metros)
+// Navegación GPS en el campo (en vehículo o a pie): distancias, rumbos y silos cercanos (plano local en metros)
 const R = 6371008.8, rad = d => (d * Math.PI) / 180, deg = r => (r * 180) / Math.PI;
 
 // lat/lng → metros en un plano local centrado en lat0 (suficiente para distancias de campo)
@@ -45,7 +45,7 @@ export function nearestSilos(p, silos, geo, n = 3, skipId = null) {
 }
 
 export const fmtDist = d => (d < 1000 ? `${Math.round(d)} m` : `${(d / 1000).toFixed(1).replace('.', ',')} km`);
-// a pie por el campo: ~1,2 m/s
+// (ya no se muestra: el recorrido suele hacerse en vehículo) a pie por el campo: ~1,2 m/s
 export const fmtWalk = d => { const m = Math.round(d / 1.2 / 60); return m < 1 ? 'menos de 1 min' : `${m} min a pie`; };
 
 export function trailLength(tr) { let t = 0; for (let i = 1; i < tr.length; i++) t += meters(tr[i - 1], tr[i]); return t; }

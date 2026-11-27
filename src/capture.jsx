@@ -116,7 +116,7 @@ export function GpsCapture({ near: vecinas = [], fix, gpsErr, lots = [], geo, lo
         <p className="cap-sub">Sin GPS: marcá el punto sobre el contorno del lote {lot.num}.</p>
         <button type="button" className="cap-btn" onClick={() => onPickMap(lot.id)}><span className="cap-btn-txt"><Icon name="pin" size={20} />Marcar en el mapa</span></button>
       </> : <>
-        <h2 className="cap-title">{step === 1 ? 'Parate en la cabecera de la bolsa' : 'Caminá hasta la cola de la bolsa'}</h2>
+        <h2 className="cap-title">{step === 1 ? 'Parate en la cabecera de la bolsa' : 'Andá hasta la cola de la bolsa'}</h2>
         {step === 1 ? (
           <p className="cap-sub">Quedate quieto junto a un extremo. Se toman lecturas durante 5 segundos y se promedian.</p>
         ) : (

@@ -10,7 +10,7 @@ import { UpdateButton } from './update.jsx';
 import { cloneGeom, moveVertex, insertVertex, removeVertex, restoreLot, buildShapeChange, isLocked } from './shapes.js';
 import SatMap from './SatMap.jsx';
 import { SiloModal, LotModal, EditMapModal, SiloCard, DespachoModal, prioLabel, splitName, ESTADOS, estadoOf } from './modals.jsx';
-import { meters, bearing, dirName, nearestSilos, nearestOnSeg, siloLL, fmtDist, fmtWalk, trailLength, greeting } from './nav.js';
+import { meters, bearing, dirName, nearestSilos, nearestOnSeg, siloLL, fmtDist, trailLength, greeting } from './nav.js';
 import { StatsScreen } from './stats.jsx';
 import { Kpis, LotPanel, RecentPanel, SilosScreen, LotsScreen, SettingsScreen, MapsScreen, ProfileScreen, UsersScreen } from './screens.jsx';
 
@@ -96,10 +96,10 @@ function GeoGate({ onDone, required, onBack, est }) {
   );
 }
 
-/* ---------- Navegación a pie (estilo Google Maps) ---------- */
+/* ---------- Navegación GPS (estilo Google Maps), en vehículo o a pie ---------- */
 function NavHud({ d, onEnd, onCenter, onDest, onCard }) {
   const dest = d.dest, arrived = dest && dest.d < 12;
-  const rel = dest ? (d.heading != null ? dest.b - d.heading : dest.b) : 0; // con rumbo: relativa a hacia dónde caminás
+  const rel = dest ? (d.heading != null ? dest.b - d.heading : dest.b) : 0; // con rumbo: relativa a hacia dónde avanzás
   const walked = trailLength(d.trail || []);
   return (
     <>
@@ -110,7 +110,7 @@ function NavHud({ d, onEnd, onCenter, onDest, onCard }) {
           <button type="button" className="nav-top-btn" onClick={() => onCard(dest.id)}>Ficha</button>
         </> : <>
           <span className="nav-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" style={{ transform: `rotate(${Math.round(rel)}deg)` }}><path d="M12 3 19 20 12 16 5 20Z" fill="currentColor" /></svg></span>
-          <div className="nav-top-txt"><b>{fmtDist(dest.d)}</b><span>hasta <b className="mono">{dest.id}</b> · {d.heading == null ? `${dirName(dest.b)} · ` : ''}{fmtWalk(dest.d)}</span></div>
+          <div className="nav-top-txt"><b>{fmtDist(dest.d)}</b><span>hasta <b className="mono">{dest.id}</b> · {dirName(dest.b)}</span></div>
         </>) : (
           <div className="nav-top-txt"><b>Navegación</b><span>{d.near.length ? 'Elegí a qué silobolsa ir' : 'No hay silobolsas cargadas cerca'}</span></div>
         )}
@@ -214,7 +214,7 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
   const setEstId = v => { setEstIdRaw(v); setSelLot(null); setSelSilo(null); };
   const [mapJob, setMapJob] = useState(null), [mapEditMeta, setMapEditMeta] = useState(null), [mapEdit, setMapEdit] = useState(null);
   const { fix, err: gpsErr } = useGps(gpsOn);
-  // Navegación a pie (estilo Google Maps): destino, recorrido, rumbo y seguimiento de la cámara
+  // Navegación GPS (estilo Google Maps): destino, recorrido, rumbo y seguimiento de la cámara
   const [nav, setNav] = useState(null); // { dest: id|null, trail: [[lat,lng]], heading, follow, t0 }
   useEffect(() => {
     if (!nav || !fix || fix.acc > 30) return;

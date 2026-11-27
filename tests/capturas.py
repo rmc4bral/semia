@@ -103,7 +103,7 @@ with sync_playwright() as p:
     pg.reload(); pg.wait_for_selector('.satmap')
     registrar(pg, ctx, ULTIMO, frames=True)
     pg.wait_for_timeout(2500); shot(pg, '07-guardada')
-    # navegación a pie hasta la bolsa con prioridad de salida del lote 34
+    # navegación GPS hasta la bolsa con prioridad de salida del lote 34
     (dest, _) = bolsa(34, 220, 0)
     start = (dest[0] + 260 * M_LAT, dest[1] + 330 * M_LNG)
     ctx.set_geolocation({'latitude': start[0], 'longitude': start[1], 'accuracy': 4}); pg.wait_for_timeout(2000)

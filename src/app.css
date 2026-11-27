@@ -638,7 +638,7 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
 .greet { margin: 2px 0 -4px; padding-left: 4px; font-size: 17px; font-weight: 500; letter-spacing: -0.02em; color: var(--muted); flex: none; }
 .greet b { color: var(--text); font-weight: 600; }
 
-/* ---------- Navegación a pie (estilo Google Maps) ---------- */
+/* ---------- Navegación GPS (estilo Google Maps) ---------- */
 .nav-start { position: absolute; right: 10px; top: 104px; z-index: 500; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border: 0; border-radius: var(--r); background: var(--bg); color: var(--text); font: 600 13px var(--font); box-shadow: var(--shadow); cursor: pointer; }
 .nav-start .ic { color: var(--accent-fg); }
 .nav-top { position: absolute; left: 10px; right: 10px; top: 10px; z-index: 600; display: flex; align-items: center; gap: 14px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow); }

@@ -124,7 +124,7 @@ with sync_playwright() as p:
             page.evaluate("document.querySelector('#demo').scrollIntoView({block:'center'})"); page.wait_for_timeout(5200)
             check(page.locator('.touch.show, .touch.press').count() + int(page.inner_text('.cap .n')) > 1, f'{tag}: la demostración avanza y el dedo toca')
             page.goto(URL + '/#solicitar-demo'); page.wait_for_selector('#form')
-            check(page.get_attribute('.seg button[data-m="demo"]', 'aria-checked') == 'true' and 'Solicitar demo' in page.inner_text('#form button[type=submit]'), f'{tag}: formulario arranca en demo de 10 días')
+            check(page.get_attribute('.seg button[data-m="demo"]', 'aria-checked') == 'true' and 'Solicitar Demo' in page.inner_text('#form button[type=submit]'), f'{tag}: formulario arranca en demo de 10 días')
             page.click('#form button[type=submit]'); page.wait_for_timeout(200)
             check(page.locator('#form .f.bad').count() == 5, f'{tag}: contacto valida los 5 obligatorios ({page.locator("#form .f.bad").count()})')
             for n, v in [('nombre', 'Ana'), ('apellido', 'Gómez'), ('email', 'ana@agro.com'), ('tel', '2346 555000'), ('empresa', 'Agro Gómez')]: page.fill(f'#form [name={n}]', v)

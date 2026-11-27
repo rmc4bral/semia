@@ -207,7 +207,7 @@ form{display:grid;grid-template-columns:1fr 1fr;gap:18px 20px}
 .form-foot p{font-size:13px;color:var(--muted);max-width:420px}
 .form-msg{grid-column:1/-1;font-size:14px;color:var(--err)}
 .form-msg:empty{display:none}
-.seg{display:grid;grid-template-columns:1fr 1fr;padding:4px;border-radius:var(--r-lg);background:rgba(10,10,10,.06)}
+.seg{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;padding:4px;border-radius:var(--r-lg);background:rgba(10,10,10,.06)}
 .seg button{height:42px;padding:0 10px;border:0;border-radius:var(--r);background:transparent;color:var(--muted);font:600 14px var(--font);cursor:pointer;transition:background var(--t2) var(--ease),color var(--t2) var(--ease),box-shadow var(--t2) var(--ease)}
 .seg button[aria-checked=true]{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 1px var(--line)}
 .anchor{display:block;position:relative;top:-24px;height:0}
@@ -234,6 +234,7 @@ footer .logo svg{width:24px}
 .cookies{position:fixed;z-index:70;left:16px;right:16px;bottom:16px;max-width:560px;margin:0 auto;display:flex;align-items:center;gap:16px;padding:14px 14px 14px 18px;border-radius:var(--r-lg);background:var(--ink);color:#F2F2F2;font-size:14px;line-height:1.45;box-shadow:0 20px 50px -20px rgba(0,0,0,.5);
   transform:translateY(140%);transition:transform var(--t3) var(--ease)}
 .cookies.show{transform:none}
+.cookies[hidden]{display:none}
 .cookies a{color:var(--lime)}
 .cookies .btn{flex:none;height:38px;background:var(--lime);border-color:var(--lime);color:var(--lime-ink);font-size:14px}
 
@@ -334,7 +335,7 @@ footer .logo svg{width:24px}
         <div class="proof rv" style="--i:4">
           <div><b>A y B</b><span>cabecera y cola por GPS</span></div>
           <div><b>__ID__</b><span>número único por bolsa</span></div>
-          <div><b>A pie</b><span>navegación hasta cada bolsa</span></div>
+          <div><b>A pie</b><span>navegación a cada bolsa</span></div>
         </div>
       </div>
       <figure class="stage rv" style="--i:2" id="demo" aria-label="Acopia en el celular: registro de una silobolsa y navegación a pie hasta otra">
@@ -389,11 +390,11 @@ footer .logo svg{width:24px}
   </section>
 
   <section id="contacto" class="contact">
+    <span id="solicitar-demo" class="anchor" aria-hidden="true"></span>
     <div class="wrap">
-      <span id="solicitar-demo" class="anchor" aria-hidden="true"></span>
       <div class="sec-head"><span class="eyebrow rv"><i></i><span id="f-eyebrow">Demo de 10 días</span></span><h2 class="rv" style="--i:1" id="f-title">Probá Acopia 10 días, sin costo.</h2><p class="rv" style="--i:2" id="f-lead">Completá tus datos y te habilitamos una cuenta de prueba para que registres tus propias silobolsas durante 10 días.</p></div>
       <form id="form" class="rv" style="--i:1" novalidate>
-        <div class="seg full" role="radiogroup" aria-label="Tipo de solicitud"><button type="button" role="radio" aria-checked="true" data-m="demo">Solicitar demo de 10 días</button><button type="button" role="radio" aria-checked="false" data-m="consulta">Hacer una consulta</button></div>
+        <div class="seg full" role="radiogroup" aria-label="Tipo de solicitud"><button type="button" role="radio" aria-checked="true" data-m="demo">Demo de 10 días</button><button type="button" role="radio" aria-checked="false" data-m="consulta">Consulta</button></div>
         <div class="f"><label for="c-nombre">Nombre <i>*</i></label><input id="c-nombre" name="nombre" autocomplete="given-name" maxlength="60" required><small></small></div>
         <div class="f"><label for="c-apellido">Apellido <i>*</i></label><input id="c-apellido" name="apellido" autocomplete="family-name" maxlength="60" required><small></small></div>
         <div class="f"><label for="c-email">Email <i>*</i></label><input id="c-email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="120" required><small></small></div>
@@ -471,8 +472,8 @@ footer .logo svg{width:24px}
 
   // demostración en el iPhone: capturas reales de la app y el dedo que toca
   var demo = document.getElementById('demo');
-  if (demo) {
-    var SEQ = __SEQ__;
+  var SEQ = __SEQ__;
+  if (demo && SEQ.length) {
     var imgs = demo.querySelectorAll('.frames img'), touch = demo.querySelector('.touch'), cap = demo.querySelector('.cap'), stat = demo.querySelector('.status');
     var dots = demo.querySelector('.dots'), groups = [], cur = 0, k = 0, timer = null, visible = false, ready = {}, tt = [];
     SEQ.forEach(function (f) { if (groups.indexOf(f.g) < 0) { groups.push(f.g); dots.appendChild(document.createElement('i')); } });

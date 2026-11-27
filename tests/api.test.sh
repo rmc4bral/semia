@@ -90,6 +90,24 @@ chk est-silo-LG "$(curl -s -b $A "${J[@]}" -d '{"silo":{"lot":"kbb:31","lote":31
 chk est-silo-RB "$(curl -s -b $A "${J[@]}" -d '{"silo":{"lot":"kaa:31","lote":31,"kg":1000,"map":[50,50]}}' $B/api.php?action=saveSilo)" '"id":"RB31001","lote":31,"lot":"kaa:31"'
 chk est-casco-sin-silos "$(curl -s -b $A "${J[@]}" -d '{"silo":{"lot":"kbb:Casco","lote":0,"kg":1,"map":[215,15]}}' $B/api.php?action=saveSilo)" 'sin silobolsas'
 chk est-lote-dup "$(curl -s -b $A "${J[@]}" -d '{"lot":{"_origId":"kaa:31","num":31,"ha":10}}' $B/api.php?action=saveLot)" '"ok":true'
+# humedad y prioridad de salida
+chk humedad-prio "$(curl -s -b $A "${J[@]}" -d '{"silo":{"id":"","lote":31,"kg":1000,"grano":"Soja","hum":13.46,"prio":"alta","map":[10,10]}}' $B/api.php?action=saveSilo)" '"hum":13.5,"prio":"alta"'
+chk humedad-invalida "$(curl -s -b $A "${J[@]}" -d '{"silo":{"id":"","lote":31,"grano":"Soja","hum":55,"map":[10,10]}}' $B/api.php?action=saveSilo)" 'Humedad inválida'
+chk prio-marcar "$(curl -s -b $O "${J[@]}" -d '{"id":"RB16001","prio":"baja"}' $B/api.php?action=setPrio)" '"prio":"baja".*"prioPor":"peon"'
+chk prio-quitar "$(curl -s -b $A "${J[@]}" -d '{"id":"RB16001","prio":"urgente"}' $B/api.php?action=setPrio)" '"id":"RB16001","lote":31,"lot":"kaa:31","kg":180000,"hum":null,"prio":null'
+chk prio-sin-sesion "$(curl -s "${J[@]}" -d '{"id":"RB16001","prio":"alta"}' $B/api.php?action=setPrio)" 'Sesión expirada'
+# formulario de contacto y demo de 10 días (público)
+chk contacto-faltan "$(curl -s "${J[@]}" -d '{"nombre":"Ana"}' $B/api.php?action=contact)" 'Completá el apellido'
+chk contacto-email "$(curl -s "${J[@]}" -d '{"nombre":"Ana","apellido":"G","email":"x","tel":"2346555000","empresa":"Agro"}' $B/api.php?action=contact)" 'email no es válido'
+chk contacto-robot "$(curl -s "${J[@]}" -d '{"web":"spam","nombre":"x"}' $B/api.php?action=contact)" '"ok":true'
+chk contacto-demo "$(curl -s "${J[@]}" -d '{"tipo":"demo","nombre":"Ana","apellido":"Gómez","email":"ana@agro.com","tel":"2346 555000","empresa":"Agro Gómez","fuente":"LinkedIn"}' $B/api.php?action=contact)" '"ok":true'
+chk contactos-admin "$(curl -s -b $A $B/api.php?action=contacts)" '"tipo":"demo"'
+chk contactos-sin-robot "$(curl -s -b $A $B/api.php?action=contacts | grep -c spam)" '^0$'
+chk contactos-supervisor "$(curl -s -b $O $B/api.php?action=contacts)" 'Solo el administrador'
+for i in 1 2 3 4; do curl -s -o /dev/null "${J[@]}" -d '{"nombre":"A","apellido":"B","email":"a@b.co","tel":"2346555000","empresa":"C"}' $B/api.php?action=contact; done
+chk contacto-limite "$(curl -s "${J[@]}" -d '{"nombre":"A","apellido":"B","email":"a@b.co","tel":"2346555000","empresa":"C"}' $B/api.php?action=contact)" 'varias consultas'
+# nombre y apellido por separado
+chk apellido "$(curl -s -b $A "${J[@]}" -d '{"u":{"user":"peon","nombre":"Juan","apellido":"Pérez","rol":"operador"}}' $B/api.php?action=saveUser)" '"nombre":"Juan","apellido":"Pérez"'
 chk borrar "$(curl -s -b $A "${J[@]}" -d '{"id":"RB05001"}' $B/api.php?action=deleteSilo)" '"ok":true'
 chk mapa-borrar "$(curl -s -b $A "${J[@]}" -d "{\"id\":\"$MID\"}" $B/api.php?action=deleteMap)" '"maps":\[\]'
 code=$(curl -s -o /dev/null -w '%{http_code}' $B/api.php?action=nada); chk accion-desconocida "$code" 404

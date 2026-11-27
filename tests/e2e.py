@@ -133,7 +133,7 @@ with sync_playwright() as p:
             page.click('#form button[type=submit]'); page.wait_for_selector('.sent')
             check('demo de 10 días' in page.inner_text('.sent'), f'{tag}: solicitud de demo enviada')
             for path, h in [('/privacidad', 'Política de privacidad'), ('/terminos', 'Términos y condiciones'), ('/cookies', 'Política de cookies')]:
-                r = page.goto(URL + path); check(r.status == 200 and h in page.inner_text('h1') and 'Rodrigo A. Maldonado' in page.inner_text('body'), f'{tag}: {path} con titular')
+                r = page.goto(URL + path); check(r.status == 200 and h in page.inner_text('h1') and 'R. Maldonado' in page.inner_text('.doc') and 'Rodrigo' not in page.inner_text('body') and 'Copyright © ' in page.inner_text('footer'), f'{tag}: {path} con titular')
             page.goto(URL + '/privacidad'); check('25.326' in page.inner_text('.note') and 'AGENCIA DE ACCESO' in page.inner_text('.note'), f'{tag}: privacidad con leyenda de la AAIP')
             r = page.goto(URL + '/no-existe'); check(r.status == 404 and page.locator('.nf .code').count() == 1, f'{tag}: página 404')
         # sin sesión, el panel lleva al login

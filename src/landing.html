@@ -65,9 +65,20 @@ p{margin:0}
 .top nav{display:flex;gap:24px;margin-left:auto}
 .top nav a{font-size:14px;font-weight:600;color:var(--muted);text-decoration:none;transition:color var(--t1) var(--ease)}
 .top nav a:hover{color:var(--ink)}
-.top .btn-sm{margin-left:auto}
-.top nav+.btn-sm{margin-left:0}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:46px;padding:0 20px;border-radius:var(--r);border:1px solid var(--line-2);background:transparent;color:var(--ink);font:600 15px var(--font);text-decoration:none;cursor:pointer;transition:transform var(--t1) var(--ease),background var(--t1) var(--ease),box-shadow var(--t2) var(--ease)}
+.top-act{display:flex;align-items:center;gap:20px}
+.top nav+.top-act{padding-left:22px;border-left:1px solid var(--line-2)}
+.login-link{font-size:14px;font-weight:600;text-decoration:none;color:var(--ink);transition:opacity var(--t1) var(--ease)}
+.login-link:hover{opacity:.65}
+/* Solicitar demo: borde de luz lima que recorre el botón */
+@property --ang{syntax:"<angle>";inherits:false;initial-value:0deg}
+.btn.btn-demo{position:relative;border:1.5px solid transparent;color:#fff;
+  background:linear-gradient(var(--ink),var(--ink)) padding-box,conic-gradient(from var(--ang,0deg),rgba(204,255,0,.15) 0deg,var(--lime) 50deg,#fff 80deg,var(--lime) 110deg,rgba(204,255,0,.15) 170deg,rgba(204,255,0,.15) 360deg) border-box;
+  box-shadow:0 0 0 0 rgba(204,255,0,0),0 8px 24px -12px rgba(10,10,10,.5);animation:orbit 3.2s linear infinite}
+.btn.btn-demo:hover{background:linear-gradient(#000,#000) padding-box,conic-gradient(from var(--ang,0deg),var(--lime),#fff,var(--lime)) border-box;box-shadow:0 0 22px -4px rgba(204,255,0,.7),0 10px 30px -12px rgba(0,0,0,.45)}
+.btn-demo .arr{transition:transform var(--t1) var(--ease)}
+.btn-demo:hover .arr{transform:translateX(3px)}
+@keyframes orbit{to{--ang:360deg}}
+.btn{white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:8px;height:46px;padding:0 20px;border-radius:var(--r);border:1px solid var(--line-2);background:transparent;color:var(--ink);font:600 15px var(--font);text-decoration:none;cursor:pointer;transition:transform var(--t1) var(--ease),background var(--t1) var(--ease),box-shadow var(--t2) var(--ease)}
 .btn:hover{background:var(--paper)}
 .btn:active{transform:scale(.97)}
 .btn-primary{background:var(--ink);border-color:var(--ink);color:#fff}
@@ -142,10 +153,11 @@ section{padding:104px 0}
 .dots i.on{width:20px;background:var(--ink)}
 
 /* funciones: sin tarjetas, separadas por líneas finas */
-.feat{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line)}
-.feat article{padding:34px 30px 38px 0;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
-.feat article:not(:nth-child(3n)){border-right:1px solid var(--line)}
-.feat article:not(:nth-child(3n+1)){padding-left:30px}
+.feat{display:grid;grid-template-columns:repeat(6,1fr);border-top:1px solid var(--line)}
+.feat article{grid-column:span 2;padding:34px 30px 38px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+.feat article:nth-child(n+4){grid-column:span 3}
+.feat article:nth-child(1),.feat article:nth-child(4){padding-left:0}
+.feat article:nth-child(3),.feat article:nth-child(5){border-right:0;padding-right:0}
 .feat .ic{width:44px;height:44px;border-radius:var(--r);display:grid;place-items:center;background:var(--ink);color:var(--lime);transition:transform var(--t2) var(--ease)}
 .feat article:hover .ic{transform:translateY(-3px) rotate(-4deg)}
 .feat h3{font-size:20px}
@@ -270,9 +282,10 @@ footer .logo svg{width:24px}
 }
 @media (max-width:900px){
   .feat{grid-template-columns:1fr 1fr}
-  .feat article,.feat article:not(:nth-child(3n)),.feat article:not(:nth-child(3n+1)){padding:28px 22px 30px 0;border-right:0}
+  .feat article,.feat article:nth-child(n){grid-column:auto;padding:28px 22px 30px 0;border-right:0}
   .feat article:nth-child(odd){border-right:1px solid var(--line)}
   .feat article:nth-child(even){padding-left:22px}
+  .feat article:last-child{grid-column:1/-1;border-right:0}
   .steps{grid-template-columns:1fr;gap:40px;padding-left:76px}
   .steps::before,.steps .bar{left:27px;right:auto;top:0;bottom:0;width:2px;height:100%}
   .steps .bar{transform-origin:top;transform:scaleY(var(--p,0))}
@@ -283,12 +296,14 @@ footer .logo svg{width:24px}
 }
 @media (max-width:600px){
   .top nav{display:none}
-  .top nav+.btn-sm{margin-left:auto}
+  .top-act{margin-left:auto;gap:14px}
+  .top nav+.top-act{border-left:0;padding-left:0}
+  .top .btn-demo{padding:0 14px}
   .top-in{padding:12px 18px}
   .wrap{padding:0 18px}
   .hero{padding:24px 0 64px}
   .feat{grid-template-columns:1fr}
-  .feat article,.feat article:nth-child(odd),.feat article:nth-child(even){border-right:0;padding:26px 0}
+  .feat article,.feat article:nth-child(n){border-right:0;padding:26px 0}
   .proof b{font-size:18px}
   .proof span{font-size:12px}
   form{grid-template-columns:1fr}
@@ -297,6 +312,13 @@ footer .logo svg{width:24px}
   .cookies{flex-direction:column;align-items:stretch;left:12px;right:12px;bottom:12px}
   .browser-bar span{padding:3px 16px}
 }
+@media (max-width:400px){
+  .top-in{gap:12px;padding:12px 14px}
+  .logo b{font-size:22px}
+  .logo svg{width:30px}
+  .top-act{gap:12px}
+}
+@media (max-width:340px){.top .logo b{display:none}}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
   .js .rv{opacity:1;transform:none}
@@ -315,8 +337,8 @@ footer .logo svg{width:24px}
 <header class="top" id="top">
   <div class="top-in">
     <a class="logo" href="/" aria-label="Acopia, inicio"><svg viewBox="0 0 107.1 100" aria-hidden="true"><path fill="#0A0A0A" d="__LOGO__"/></svg><b>Acopia</b></a>
-    <nav aria-label="Secciones"><a href="/#funciones">Funciones</a><a href="/#como-funciona">Cómo funciona</a><a href="/#solicitar-demo" data-mode="demo">Demo gratis</a><a href="/#contacto" data-mode="consulta">Contacto</a></nav>
-    <a class="btn btn-primary btn-sm" href="/login">Ingresar</a>
+    <nav aria-label="Secciones"><a href="/#plataforma">Plataforma</a><a href="/#como-funciona">Cómo funciona</a><a href="/#contacto" data-mode="consulta">Contacto</a></nav>
+    <div class="top-act"><a class="login-link" href="/login">Ingresar</a><a class="btn btn-demo btn-sm" href="/#solicitar-demo" data-mode="demo">Solicitar demo</a></div>
   </div>
 </header>
 
@@ -329,8 +351,8 @@ footer .logo svg{width:24px}
         <h1 class="rv" style="--i:1">Control preciso de tu <em>Producción</em></h1>
         <p class="lead rv" style="--i:2">Registrá cada silobolsa en el lote correcto con el GPS del celular. Ubicación, variedad, kilos, humedad y responsable, al alcance de toda la empresa.</p>
         <div class="cta rv" style="--i:3">
-          <a class="btn btn-primary" href="/login">Ingresar <span class="arr" aria-hidden="true">→</span></a>
-          <a class="btn" href="#solicitar-demo" data-mode="demo">Probalo 10 días gratis</a>
+          <a class="btn btn-demo" href="#solicitar-demo" data-mode="demo">Solicitar demo <span class="arr" aria-hidden="true">→</span></a>
+          <a class="btn" href="#como-funciona">Ver cómo funciona</a>
         </div>
         <div class="proof rv" style="--i:4">
           <div><b>A y B</b><span>cabecera y cola por GPS</span></div>
@@ -356,16 +378,15 @@ footer .logo svg{width:24px}
     </div>
   </section>
 
-  <section id="funciones">
+  <section id="plataforma">
     <div class="wrap">
-      <div class="sec-head"><span class="eyebrow rv"><i></i>Funciones</span><h2 class="rv" style="--i:1">Todo lo que pasa en el campo, registrado con método.</h2><p class="rv" style="--i:2">Pensado para trabajar al aire libre, con una mano y sin perder tiempo.</p></div>
+      <div class="sec-head"><span class="eyebrow rv"><i></i>Plataforma</span><h2 class="rv" style="--i:1">Todo lo que pasa en el campo, registrado con método.</h2><p class="rv" style="--i:2">Cinco pilares para ordenar tu acopio, del lote al despacho.</p></div>
       <div class="feat">
-        <article class="rv" style="--i:0"><span class="ic">__IC_LOTS__</span><h3>Lotes por sección</h3><p>Cargá los lotes desde un KML o sectorizalos sobre el mapa satelital, con número o nombre y sus hectáreas.</p></article>
-        <article class="rv" style="--i:1"><span class="ic">__IC_GPS__</span><h3>Ubicación por GPS</h3><p>Primero elegís el lote; después marcás cabecera y cola de la bolsa, sobre el borde del lote, con lecturas promediadas.</p></article>
-        <article class="rv" style="--i:2"><span class="ic">__IC_ID__</span><h3>Número único</h3><p>Sigla de la sección, lote y número de bolsa, generado solo: <code>__ID__</code>.</p></article>
-        <article class="rv" style="--i:0"><span class="ic">__IC_NAV__</span><h3>Navegación a pie</h3><p>Rumbo, distancia y tiempo hasta cada silobolsa, con aviso de llegada y la separación con las bolsas vecinas.</p></article>
-        <article class="rv" style="--i:1"><span class="ic">__IC_USERS__</span><h3>Roles por sección</h3><p>El administrador gestiona todo; cada supervisor elige su sección y registra en el campo.</p></article>
-        <article class="rv" style="--i:2"><span class="ic">__IC_SAFE__</span><h3>Datos resguardados</h3><p>La base vive fuera de la web, con respaldos diarios automáticos de los últimos 60 días.</p></article>
+        <article class="rv" style="--i:0"><span class="ic">__IC_LOTS__</span><h3>Cargá o marcá tus lotes</h3><p>Importá un KML o delimitá tus lotes directamente sobre el mapa satelital.</p></article>
+        <article class="rv" style="--i:1"><span class="ic">__IC_ID__</span><h3>Identidad de cada silo</h3><p>Cada silobolsa georreferenciada con su ficha completa: grano, kilos, humedad y prioridad de salida, bajo un código único como <code>__ID__</code>.</p></article>
+        <article class="rv" style="--i:2"><span class="ic">__IC_NAV__</span><h3>Sistema de navegación</h3><p>Con los lotes trazados y los silos ubicados por GPS, recorrés el campo y verificás la posición real de cada bolsa.</p></article>
+        <article class="rv" style="--i:0"><span class="ic">__IC_USERS__</span><h3>Gestioná tu equipo</h3><p>Asigná a cada persona su sección y su rol, y sabé quién registró cada silo.</p></article>
+        <article class="rv" style="--i:1"><span class="ic">__IC_SAFE__</span><h3>Datos confidenciales</h3><p>Los lotes y registros de cada empresa son privados: solo los ve tu equipo, con respaldo diario.</p></article>
       </div>
     </div>
   </section>
@@ -416,7 +437,7 @@ footer .logo svg{width:24px}
   <section class="end">
     <div class="wrap">
       <h2 class="rv">Tu producción, ordenada desde el primer registro.</h2>
-      <a class="btn btn-primary rv" style="--i:1" href="/login">Ingresar a Acopia <span class="arr" aria-hidden="true">→</span></a>
+      <div class="cta rv" style="--i:1"><a class="btn btn-demo" href="#solicitar-demo" data-mode="demo">Solicitar demo de 10 días <span class="arr" aria-hidden="true">→</span></a><a class="btn" href="/login">Ingresar</a></div>
     </div>
   </section>
 <!--/MAIN-->

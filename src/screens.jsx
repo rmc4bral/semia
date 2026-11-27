@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Field, TextInput, Select, Segmented, Icon, Modal, useToast, fmtKg, fmtNum, fmtDate } from './ui.jsx';
 import { fmtFecha } from './maplayers.js';
 import { areaHa, lotCorners, migrateGeoref, pointKey, isSiloLot, lotName, siloLot, estanciaNombre } from './geo.js';
-import { PhotoView, GRANOS, userName, PrioTag, PRIOS, prioOf, splitName, fullName } from './modals.jsx';
+import { PhotoView, GRANOS, userName, PrioTag, PRIOS, prioOf, splitName, fullName, EstadoTag, estadoOf } from './modals.jsx';
 import { KmlImport } from './kmlImport.jsx';
 import { buildKmlRename } from './kml.js';
 import GlobalMap from './GlobalMap.jsx';
@@ -83,17 +83,26 @@ export function LotPanel({ lot, state, geo, onEdit, onShape, onSelectSilo, onOpe
   );
 }
 
-export function SiloRow({ s, onClick, thumb, state, est }) {
+export function SiloRow({ s, onClick, thumb, state, est, onDespacho }) {
   const hasKg = s.kg != null && s.kg !== '';
-  return (
-    <button type="button" className="silo-row" onClick={onClick}>
+  const row = (
+    <button type="button" className={`silo-row ${s.fin ? 'is-fin' : ''}`} onClick={onClick}>
       <span className="silo-ic"><Icon name="silo" size={18} /></span>
-      <span className="silo-row-main"><span className="silo-row-id"><b className="mono">{s.id}</b><PrioTag p={s.prio} short /></span>
+      <span className="silo-row-main"><span className="silo-row-id"><b className="mono">{s.id}</b>{!s.fin && <PrioTag p={s.prio} short />}<EstadoTag s={s} /></span>
         <span className="muted small">{est && state ? `${estanciaNombre(siloLot(s, state.lots), state) || state.estancia.nombre} · ` : ''}Lote {s.lote}{s.grano ? ` · ${s.grano}` : ''}{s.hum != null ? ` · ${fmtNum(s.hum, 1)} % hum.` : ''}</span>
         <span className="muted small">{fmtDate(s.creadoEn)}{state ? ` · ${userName(s.creadoPor, state)}` : ''}</span></span>
       {thumb && s.foto && <PhotoView refPath={s.foto} className="silo-thumb" />}
       <span className="silo-row-kg">{hasKg ? <><b>{fmtNum(s.kg / 1000, 1)}</b><span className="muted small">t</span></> : <span className="muted small">sin kg</span>}</span>
     </button>
+  );
+  if (!onDespacho) return row;
+  const e = estadoOf(s);
+  return (
+    <div className="silo-line">{row}
+      <button type="button" className={`row-act ${e === 'fin' ? 'is-done' : ''}`} onClick={() => onDespacho(s.id)} aria-label={`Despacho de ${s.id}`} title={e === 'fin' ? 'Finalizada · ver fechas' : e === 'ext' ? 'Marcar finalizada' : 'Iniciar despacho o finalizar'}>
+        <Icon name={e === 'fin' ? 'check' : 'flag'} size={16} /><span>{e === 'fin' ? 'Finalizada' : e === 'ext' ? 'Finalizar' : 'Despacho'}</span>
+      </button>
+    </div>
   );
 }
 
@@ -123,20 +132,24 @@ const ORDEN = {
 };
 const ORDEN_OPTS = [{ value: 'prio', label: 'Prioridad', meta: 'Alta primero, luego menor humedad' }, { value: 'kg', label: 'Mayor kg' }, { value: 'fecha', label: 'Recientes' }, { value: 'id', label: 'Número' }];
 
-export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est = 'all', estOpts, onEst, inEst = () => true }) {
-  const [q, setQ] = useState(''), [lote, setLote] = useState('all'), [grano, setGrano] = useState('all'), [hum, setHum] = useState('all'), [prio, setPrio] = useState('all'), [orden, setOrden] = useState('prio');
+const EST_OPTS = [{ value: 'vivas', label: 'Activas', meta: 'Incluye en extracción' }, { value: 'ext', label: 'En extracción' }, { value: 'fin', label: 'Finalizadas' }, { value: 'all', label: 'Todas' }];
+const EST_OK = { vivas: e => e !== 'fin', ext: e => e === 'ext', fin: e => e === 'fin', all: () => true };
+
+export function SilosScreen({ state, onOpenSilo, onDespacho, onExportCsv, onExportKml, est = 'all', estOpts, onEst, inEst = () => true }) {
+  const [q, setQ] = useState(''), [lote, setLote] = useState('all'), [grano, setGrano] = useState('all'), [hum, setHum] = useState('all'), [prio, setPrio] = useState('all'), [orden, setOrden] = useState('prio'), [estado, setEstado] = useState('vivas');
   const list = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return state.silos.filter(s => inEst(siloLot(s, state.lots)) && (lote === 'all' || s.lot === lote) && (grano === 'all' || s.grano === grano) && HUM[hum](s.hum) && (prio === 'all' || (prio === 'sin' ? !prioOf(s.prio) : prioOf(s.prio) === prio))
+    return state.silos.filter(s => inEst(siloLot(s, state.lots)) && EST_OK[estado](estadoOf(s)) && (lote === 'all' || s.lot === lote) && (grano === 'all' || s.grano === grano) && HUM[hum](s.hum) && (prio === 'all' || (prio === 'sin' ? !prioOf(s.prio) : prioOf(s.prio) === prio))
       && (!t || s.id.toLowerCase().includes(t) || (s.obs || '').toLowerCase().includes(t)))
       .sort(ORDEN[orden]);
-  }, [state.silos, q, lote, grano, hum, prio, orden, inEst]);
-  const nEst = state.silos.filter(s => inEst(siloLot(s, state.lots))).length;
+  }, [state.silos, q, lote, grano, hum, prio, orden, estado, inEst]);
+  const nEst = state.silos.filter(s => inEst(siloLot(s, state.lots)) && EST_OK[estado](estadoOf(s))).length;
+  const nFin = state.silos.filter(s => s.fin && inEst(siloLot(s, state.lots))).length;
   const lotOpts = [{ value: 'all', label: 'Todos' }, ...state.lots.filter(l => isSiloLot(l) && inEst(l)).map(l => ({ value: l.id, label: `Lote ${l.num}`, meta: estanciaNombre(l, state) }))];
   return (
     <div className="screen">
       <div className="screen-head">
-        <div><h1>Silobolsas</h1><p className="muted">{list.length} de {nEst} activas · {fmtTon(sumKg(list))}</p></div>
+        <div><h1>Silobolsas</h1><p className="muted">{list.length} de {nEst} {estado === 'fin' ? 'finalizadas' : estado === 'all' ? 'en total' : estado === 'ext' ? 'en extracción' : 'activas'} · {fmtTon(sumKg(list))}{estado === 'vivas' && nFin ? ` · ${nFin} finalizada${nFin === 1 ? '' : 's'}` : ''}</p></div>
         {(onExportKml || onExportCsv) && <div className="row gap-s">{onExportKml && <Button icon="download" onClick={onExportKml}>KML</Button>}{onExportCsv && <Button icon="download" onClick={onExportCsv}>CSV</Button>}</div>}
       </div>
       <div className={`filters ${estOpts ? 'has-est' : ''}`}>
@@ -146,10 +159,11 @@ export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est =
         <Field label="Grano"><Select value={grano} options={[{ value: 'all', label: 'Todos' }, ...GRANOS.map(g => ({ value: g, label: g }))]} onChange={setGrano} /></Field>
         <Field label="Humedad"><Select value={hum} options={HUM_OPTS} onChange={setHum} /></Field>
         <Field label="Prioridad"><Select value={prio} options={PRIO_OPTS} onChange={setPrio} /></Field>
+        <Field label="Estado"><Select value={estado} options={EST_OPTS} onChange={setEstado} /></Field>
         <Field label="Ordenar"><Select value={orden} options={ORDEN_OPTS} onChange={setOrden} /></Field>
       </div>
       <div className="card list-card">
-        {list.map(s => <SiloRow key={s.id} s={s} state={state} est={est === 'all' && !!estOpts} thumb onClick={() => onOpenSilo(s.id)} />)}
+        {list.map(s => <SiloRow key={s.id} s={s} state={state} est={est === 'all' && !!estOpts} thumb onClick={() => onOpenSilo(s.id)} onDespacho={onDespacho} />)}
         {!list.length && <div className="empty"><Icon name="search" size={28} /><p>No hay silobolsas que coincidan.</p></div>}
       </div>
     </div>
@@ -311,6 +325,7 @@ export function ProfileScreen({ me, store, onState, onMe, theme, setTheme, onLog
         {isAdmin && onGo && (
           <div className="set-links only-mobile">
             <button type="button" className="set-link" onClick={() => onGo('usuarios')}><Icon name="users" size={18} /><span><b>Usuarios</b><small>Altas, roles y contactos</small></span><Icon name="chev" size={16} className="set-link-go" /></button>
+            <button type="button" className="set-link" onClick={() => onGo('mapas')}><Icon name="layers" size={18} /><span><b>Mapas</b><small>Mapas propios e imágenes sobre el satélite</small></span><Icon name="chev" size={16} className="set-link-go" /></button>
             <button type="button" className="set-link" onClick={() => onGo('ajustes')}><Icon name="gear" size={18} /><span><b>Ajustes</b><small>Empresa, secciones, lotes y datos</small></span><Icon name="chev" size={16} className="set-link-go" /></button>
           </div>
         )}

@@ -9,8 +9,9 @@ import { GpsCapture } from './capture.jsx';
 import { UpdateButton } from './update.jsx';
 import { cloneGeom, moveVertex, insertVertex, removeVertex, restoreLot, buildShapeChange, isLocked } from './shapes.js';
 import SatMap from './SatMap.jsx';
-import { SiloModal, LotModal, EditMapModal, SiloCard , prioLabel, splitName } from './modals.jsx';
+import { SiloModal, LotModal, EditMapModal, SiloCard, DespachoModal, prioLabel, splitName, ESTADOS, estadoOf } from './modals.jsx';
 import { meters, bearing, dirName, nearestSilos, nearestOnSeg, siloLL, fmtDist, fmtWalk, trailLength, greeting } from './nav.js';
+import { StatsScreen } from './stats.jsx';
 import { Kpis, LotPanel, RecentPanel, SilosScreen, LotsScreen, SettingsScreen, MapsScreen, ProfileScreen, UsersScreen } from './screens.jsx';
 
 const pref = {
@@ -20,7 +21,7 @@ const pref = {
 
 /* ---------- Rutas: /login y /dashboard/<menú> (en file:// no hay rutas) ---------- */
 const ROUTED = location.protocol !== 'file:';
-const TAB_PATH = { mapa: 'inicio', silos: 'silos', lotes: 'lotes', mapas: 'mapas', usuarios: 'usuarios', ajustes: 'ajustes', perfil: 'perfil' };
+const TAB_PATH = { mapa: 'inicio', silos: 'silos', estadisticas: 'estadisticas', lotes: 'lotes', mapas: 'mapas', usuarios: 'usuarios', ajustes: 'ajustes', perfil: 'perfil' };
 const PATH_TAB = Object.fromEntries(Object.entries(TAB_PATH).map(([k, v]) => [v, k]));
 const tabFromPath = () => { const m = location.pathname.match(/^\/dashboard\/([a-z]+)/); return (m && PATH_TAB[m[1]]) || 'mapa'; };
 function go(path, replace = false) {
@@ -236,6 +237,9 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
   const inEst = useMemo(() => estanciaFilter(state, effEst), [state.georef, effEst]); // eslint-disable-line
   const lots = state.lots;
   const shownState = useMemo(() => (effEst === 'all' ? state : { ...state, lots: state.lots.filter(inEst), silos: state.silos.filter(s => inEst(siloLot(s, state.lots))) }), [state, effEst, inEst]);
+  const live = ss => (ss.silos.some(x => x.fin) ? { ...ss, silos: ss.silos.filter(x => !x.fin) } : ss);
+  const liveShown = useMemo(() => live(shownState), [shownState]); // eslint-disable-line
+  const liveAll = useMemo(() => live(state), [state]); // eslint-disable-line
   const estOpts = [{ value: 'all', label: 'Todas las secciones', meta: `${state.lots.length} lotes` }, ...estList.map(e => ({ value: e.id, label: e.nombre, meta: `${e.sigla} · ${e.n} lotes` }))];
   const maps = state.maps || [];
   useEffect(() => {
@@ -299,6 +303,7 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
   }
 
   const [card, setCard] = useState(null); // ficha de información de un silo
+  const [desp, setDesp] = useState(null); // despacho: inicio de extracción y finalización
   const showCard = useCallback(id => setCard(id), []);
   const openSilo = useCallback(id => {
     const s = state.silos.find(x => x.id === id); if (!s) return;
@@ -318,7 +323,7 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
   const here = fix ? [fix.lat, fix.lng] : null;
   const navData = useMemo(() => {
     if (!here || !geo) return null;
-    const silosV = shownState.silos;
+    const silosV = liveShown.silos;
     if (nav) {
       const near = nearestSilos(here, silosV, geo, 3);
       let dest = null;
@@ -442,9 +447,9 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
   }
   const today = () => new Date().toISOString().slice(0, 10);
   function exportCsv() {
-    const head = ['ID', 'Lote', 'Kg', 'Humedad_%', 'Prioridad_salida', 'Grano', 'Observacion', 'Latitud', 'Longitud', 'Latitud_fin', 'Longitud_fin', 'Largo_m', 'Precision_m', 'Origen', 'Registrado_por', 'Fecha'];
+    const head = ['ID', 'Lote', 'Kg', 'Humedad_%', 'Prioridad_salida', 'Estado', 'Inicio_extraccion', 'Finalizacion', 'Grano', 'Observacion', 'Latitud', 'Longitud', 'Latitud_fin', 'Longitud_fin', 'Largo_m', 'Precision_m', 'Origen', 'Registrado_por', 'Fecha'];
     const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const rows = state.silos.map(s => [s.id, s.lote, s.kg, s.hum, prioLabel(s.prio), s.grano, s.obs, s.latlng?.[0], s.latlng?.[1], s.latlng2?.[0], s.latlng2?.[1], s.largo, s.gps?.acc, s.origen, s.creadoPor, s.creadoEn].map(q).join(';'));
+    const rows = state.silos.map(s => [s.id, s.lote, s.kg, s.hum, prioLabel(s.prio), ESTADOS[estadoOf(s)], s.inicio, s.fin, s.grano, s.obs, s.latlng?.[0], s.latlng?.[1], s.latlng2?.[0], s.latlng2?.[1], s.largo, s.gps?.acc, s.origen, s.creadoPor, s.creadoEn].map(q).join(';'));
     download('\ufeff' + [head.join(';'), ...rows].join('\n'), `silobolsas-${today()}.csv`, 'text/csv');
   }
   function exportKmlFile() {
@@ -456,14 +461,14 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
   // Administrador: Usuarios, Ajustes y Perfil en el menú lateral; en el celular se llega desde el avatar (Perfil)
   const tabs = isAdmin ? [
     { k: 'mapa', label: 'Inicio', icon: 'map' }, { k: 'silos', label: 'Silos', icon: 'silo' },
-    { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'mapas', label: 'Mapas', icon: 'layers' },
+    { k: 'estadisticas', label: 'Estadísticas', icon: 'chart' }, { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'mapas', label: 'Mapas', icon: 'layers', desk: true },
     { k: 'usuarios', label: 'Usuarios', icon: 'users', desk: true }, { k: 'ajustes', label: 'Ajustes', icon: 'gear', desk: true }, { k: 'perfil', label: 'Perfil', icon: 'user', desk: true },
   ] : [
     { k: 'mapa', label: 'Inicio', icon: 'map' }, { k: 'silos', label: 'Silos', icon: 'silo' },
     { k: 'lotes', label: 'Lotes', icon: 'lots' }, { k: 'perfil', label: 'Perfil', icon: 'user' },
   ];
   // menús que el rol no puede ver vuelven a Inicio
-  useEffect(() => { if (!isAdmin && ['usuarios', 'ajustes', 'mapas'].includes(tab)) setTab('mapa'); }, [tab, isAdmin]); // eslint-disable-line
+  useEffect(() => { if (!isAdmin && ['usuarios', 'ajustes', 'mapas', 'estadisticas'].includes(tab)) setTab('mapa'); }, [tab, isAdmin]); // eslint-disable-line
   // pestaña del navegador: solo «Acopia · menú activo»
   const tabLabel = (tabs.find(t => t.k === tab) || {}).label;
   useEffect(() => { document.title = tabLabel ? `Acopia · ${tabLabel}` : 'Acopia'; }, [tabLabel]);
@@ -478,7 +483,7 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
         <div className="top-act">
           <span className={`gps-chip ${fix && !gpsErr ? (fix.acc <= 5 ? 'is-good' : fix.acc <= 15 ? 'is-mid' : 'is-bad') : 'is-off'}`} title={gpsLabel}><Icon name="gps" size={15} /><span>{gpsLabel}</span></span>
           <button type="button" className="round-btn" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Cambiar tema"><Icon name={theme === 'dark' ? 'sun' : 'moon'} size={18} /></button>
-          {isAdmin && <button type="button" className={`round-btn avatar-btn ${['perfil', 'usuarios', 'ajustes'].includes(tab) ? 'is-on' : ''}`} onClick={() => goTab('perfil')} aria-label="Perfil" title={`${me.nombre} · Perfil`}>{(me.nombre || me.user).slice(0, 1).toUpperCase()}</button>}
+          {isAdmin && <button type="button" className={`round-btn avatar-btn ${['perfil', 'usuarios', 'ajustes', 'mapas'].includes(tab) ? 'is-on' : ''}`} onClick={() => goTab('perfil')} aria-label="Perfil" title={`${me.nombre} · Perfil`}>{(me.nombre || me.user).slice(0, 1).toUpperCase()}</button>}
         </div>
       </header>
 
@@ -500,7 +505,7 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
         {tab === 'mapa' && (
           <div className="dash">
             {(() => { const g = greeting(splitName(me).nombre || me.user); return <p className="greet">{g.g}{g.first ? <>, <b>{g.first}</b></> : ''}</p>; })()}
-            <Kpis state={shownState} />
+            <Kpis state={liveShown} />
             <div className="dash-body">
               <div className="card map-card">
                 {!shape && !mapEdit && !cap && <div className="map-top">
@@ -516,7 +521,7 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
                     </div>
                   )}
                 </div>}
-                <SatMap nav={navData} onUserPan={() => setNav(n => (n && n.follow ? { ...n, follow: false } : n))} data={shownState} silos={shownState.silos} geo={geo} fitKey={effEst} selectedLot={selLot} onSelectLot={setSelLot} selectedSilo={selSilo}
+                <SatMap nav={navData} onUserPan={() => setNav(n => (n && n.follow ? { ...n, follow: false } : n))} data={liveShown} silos={liveShown.silos} geo={geo} fitKey={effEst} selectedLot={selLot} onSelectLot={setSelLot} selectedSilo={selSilo}
                   onSelectSilo={id => { setSelSilo(id); }} pickMode={!!pick} onPick={onPick} gps={fix} onNeedGeoref={() => isAdmin && setTab('mapas')}
                   moving={moving} onMoveDraft={onMoveDraft}
                   capture={cap?.a ? { a: [cap.a.lat, cap.a.lng] } : null} editing={shape} overlays={mapEdit ? [{ id: mapEdit.id, url: mapUrls[mapEdit.id], corners: mapEdit.corners }] : overlays} overlayOpacity={mapOpacity} mapEdit={mapEdit} onMapCorners={cs => setMapEdit(me_ => ({ ...me_, corners: cs }))} onVertexMove={onVertexMove} onInsertVertex={onInsertVertex} onSelectVertex={pt => setShape(sh => ({ ...sh, sel: pt }))} />
@@ -551,20 +556,21 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
                 {selSilo && !cap && !moving && !shape && !mapEdit && (() => { const s = state.silos.find(x => x.id === selSilo); return s ? (
                   <div className="lot-bar silo-bar"><div className="lot-bar-main"><b className="mono">{s.id}</b><span className="muted">{s.kg != null && s.kg !== '' ? `${fmtNum(s.kg)} kg` : 'kg sin cargar'}{s.grano ? ` · ${s.grano}` : ''} · lote {s.lote}{s.largo ? ` · ${fmtNum(s.largo)} m` : ''}</span></div>
                     {isAdmin && <Button size="sm" variant="ghost" icon="move" onClick={() => startMove(s.id)}>Mover</Button>}{gpsOk && <Button size="sm" icon="navi" onClick={() => startNav(s.id)}>Ir</Button>}<Button size="sm" variant="primary" onClick={() => showCard(s.id)}>Ficha</Button></div>) : null; })()}
-                {lot && !cap && !moving && !pick && !shape && !mapEdit && !selSilo && <div className="only-mobile"><LotPanel lot={lot} state={state} geo={geo} onEdit={isAdmin ? setLotEdit : null} onShape={isAdmin && geo ? startShape : null} compact /></div>}
+                {lot && !cap && !moving && !pick && !shape && !mapEdit && !selSilo && <div className="only-mobile"><LotPanel lot={lot} state={liveAll} geo={geo} onEdit={isAdmin ? setLotEdit : null} onShape={isAdmin && geo ? startShape : null} compact /></div>}
                 {cap && <GpsCapture near={navData && !navData.on ? navData.near : []} fix={fix} gpsErr={gpsErr} lots={capLots} geo={geo} lotId={cap.lot} noGps={!gpsOk}
                   onLot={id => { setCap(c => (c ? { ...c, lot: id, a: null } : c)); setSelLot(id); }}
                   onPickMap={id => { const form = cap.form || {}; setCap(null); setPick({ purpose: 'new', form, lot: id }); }}
                   onCancel={() => setCap(null)} onDone={finishCap} onProgress={p => setCap(c => (c ? { ...c, a: p.a } : c))} />}
               </div>
               <aside className="side-panel">
-                {lot ? <LotPanel lot={lot} state={state} geo={geo} onEdit={isAdmin ? setLotEdit : null} onShape={isAdmin ? startShape : null} onSelectSilo={id => setSelSilo(id)} onOpenSilo={showCard} /> : <RecentPanel state={shownState} onSelectSilo={id => { const s = state.silos.find(x => x.id === id); if (s) { setSelLot(s.lot); setSelSilo(id); } }} />}
+                {lot ? <LotPanel lot={lot} state={liveAll} geo={geo} onEdit={isAdmin ? setLotEdit : null} onShape={isAdmin ? startShape : null} onSelectSilo={id => setSelSilo(id)} onOpenSilo={showCard} /> : <RecentPanel state={liveShown} onSelectSilo={id => { const s = state.silos.find(x => x.id === id); if (s) { setSelLot(s.lot); setSelSilo(id); } }} />}
               </aside>
             </div>
           </div>
         )}
-        {tab === 'silos' && <SilosScreen state={state} onOpenSilo={showCard} onExportCsv={isAdmin ? exportCsv : null} onExportKml={isAdmin ? exportKmlFile : null} est={effEst} estOpts={estFilterOpts ? estOpts : null} onEst={setEstId} inEst={inEst} />}
-        {tab === 'lotes' && <LotsScreen state={state} onEditLot={isAdmin ? setLotEdit : null} onShowLot={n => { setSelLot(n); setSelSilo(null); setTab('mapa'); }} onOpenSilo={showCard} est={effEst} estOpts={estFilterOpts ? estOpts : null} onEst={setEstId} inEst={inEst} />}
+        {tab === 'silos' && <SilosScreen state={state} onOpenSilo={showCard} onDespacho={setDesp} onExportCsv={isAdmin ? exportCsv : null} onExportKml={isAdmin ? exportKmlFile : null} est={effEst} estOpts={estFilterOpts ? estOpts : null} onEst={setEstId} inEst={inEst} />}
+        {tab === 'estadisticas' && <StatsScreen state={state} est={effEst} estOpts={estFilterOpts ? estOpts : null} onEst={setEstId} inEst={inEst} onOpenSilo={showCard} />}
+        {tab === 'lotes' && <LotsScreen state={liveAll} onEditLot={isAdmin ? setLotEdit : null} onShowLot={n => { setSelLot(n); setSelSilo(null); setTab('mapa'); }} onOpenSilo={showCard} est={effEst} estOpts={estFilterOpts ? estOpts : null} onEst={setEstId} inEst={inEst} />}
         {tab === 'mapas' && <MapsScreen state={state} me={me} job={mapJob} onPick={startMapJob} onCancel={cancelMapJob} onSend={sendMapJob}
           onJobChange={patch => setMapJob(j => (j ? { ...j, ...patch } : j))}
           onShowMap={id => { setMapFilter(id); setTab('mapa'); }} onAdjustMap={startMapEdit} onEditMap={setMapEditMeta}
@@ -579,7 +585,8 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
         onRelocate={form => { setDraft(null); setTab('mapa'); setPick({ purpose: 'relocate', form: { kg: form.kg, hum: form.hum, prio: form.prio, grano: form.grano, obs: form.obs, fotoData: form.fotoData } }); }}
         onRemeasure={form => onAdd({ kg: form.kg, hum: form.hum, prio: form.prio, grano: form.grano, obs: form.obs, fotoData: form.fotoData })}
         onStartMove={startMove} />}
-      {card && state.silos.find(x => x.id === card) && <SiloCard silo={state.silos.find(x => x.id === card)} state={state} me={me} geo={geo} store={store} onState={setState} onClose={() => setCard(null)}
+      {desp && state.silos.find(x => x.id === desp) && <DespachoModal silo={state.silos.find(x => x.id === desp)} me={me} store={store} onState={setState} onClose={() => setDesp(null)} />}
+      {card && state.silos.find(x => x.id === card) && <SiloCard silo={state.silos.find(x => x.id === card)} state={state} me={me} geo={geo} store={store} onState={setState} onClose={() => setCard(null)} onDespacho={id => { setCard(null); setDesp(id); }}
         onEdit={id => { setCard(null); openSilo(id); }}
         onMap={id => { const s = state.silos.find(x => x.id === id); setCard(null); setTab('mapa'); if (s) { setSelLot(s.lot); setSelSilo(id); } }} />}
       {mapEditMeta && maps.find(m => m.id === mapEditMeta) && <EditMapModal map={maps.find(m => m.id === mapEditMeta)} me={me} store={store} onClose={() => setMapEditMeta(null)} onSaved={st => { setState(st); setMapEditMeta(null); }} />}

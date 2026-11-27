@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Button, Field, TextInput, TextArea, Select, Icon, useToast, fmtKg, fmtDate, fmtNum, parseNum } from './ui.jsx';
+import { Modal, Button, Field, TextInput, TextArea, Select, Icon, useToast, fmtKg, fmtDate, fmtNum, parseNum, DateField, dayOf, fmtDay, isoDay } from './ui.jsx';
 import { NumField, KbTextArea, kgToT, fmtTyped } from './keyboard.jsx';
 import { nextSiloId, snapToBorder, areaHa, pointInPoly, isSiloLot, parseLotCode, lotName, siloLot, siglaOf, estanciaNombre } from './geo.js';
 import { resolvePhoto } from './store.js';
@@ -215,6 +215,35 @@ export const fullName = u => [u?.nombre, u?.apellido].filter(Boolean).join(' ') 
 export const userName = (u, state) => { const x = (state.users || []).find(y => y.user === u); return x ? fullName(x) : u || '—'; };
 
 /* ---------- Prioridad de salida: alta = menos humedad, se despacha primero ---------- */
+/* ---------- Estado de la bolsa: activa → en extracción → finalizada (despacho completo) ---------- */
+export const estadoOf = s => (s.fin ? 'fin' : s.inicio ? 'ext' : 'act');
+export const ESTADOS = { act: 'Activa', ext: 'En extracción', fin: 'Finalizada' };
+export function EstadoTag({ s }) { const e = estadoOf(s); return e === 'act' ? null : <span className={`est-tag is-${e}`}>{e === 'fin' ? `Finalizada ${fmtDay(s.fin)}` : 'En extracción'}</span>; }
+export function DespachoModal({ silo: s, me, store, onState, onClose }) {
+  const toast = useToast();
+  const emb = dayOf(s.creadoEn), hoy = isoDay(new Date());
+  const [ini, setIni] = useState(s.inicio || null), [fin, setFin] = useState(s.fin || null), [busy, setBusy] = useState(false);
+  const save = async (i, f) => {
+    setBusy(true);
+    try { onState(await store.setDespacho(s.id, i, f, me)); toast(f ? `${s.id} finalizada` : i ? `${s.id} en extracción` : `${s.id} vuelve a estar activa`, 'ok'); onClose(); }
+    catch (e) { toast(e.message, 'error'); setBusy(false); }
+  };
+  return (
+    <Modal title="Despacho de la bolsa" subtitle={`${s.id} · ${s.grano || 'Sin grano'}${s.kg ? ` · ${fmtNum(s.kg / 1000, 1)} t` : ''}`} onClose={onClose}
+      footer={<>{(s.inicio || s.fin) && <Button variant="ghost" disabled={busy} onClick={() => save(null, null)}>Reabrir bolsa</Button>}
+        <Button disabled={busy} onClick={onClose}>Cancelar</Button>
+        <Button variant="primary" icon="check" disabled={busy || (!ini && !fin)} onClick={() => save(ini, fin)}>{fin ? 'Marcar finalizada' : 'Guardar inicio'}</Button></>}>
+      <div className="form-grid">
+        <Field label="Embolsado"><div className="input is-static">{fmtDay(emb) || '—'}</div></Field>
+        <Field label="Inicio de extracción"><DateField value={ini} min={emb} max={hoy} onChange={v => { setIni(v); if (fin && v && fin < v) setFin(v); }} placeholder="Elegir fecha" /></Field>
+        <Field label="Finalización" className="span-2" hint="Al finalizar, la bolsa deja de contar en el stock y sale del mapa. Queda en el historial.">
+          <DateField value={fin} min={ini || emb} max={hoy} clearable onChange={v => { setFin(v); if (v && !ini) setIni(v); }} placeholder="Sin finalizar" />
+        </Field>
+      </div>
+    </Modal>
+  );
+}
+
 export const PRIOS = [{ v: 'alta', l: 'Alta' }, { v: 'media', l: 'Media' }, { v: 'baja', l: 'Baja' }];
 export const prioOf = v => (v === true ? 'alta' : PRIOS.some(p => p.v === v) ? v : null);
 export const prioLabel = v => PRIOS.find(p => p.v === prioOf(v))?.l || '';
@@ -227,7 +256,7 @@ export function PrioPick({ value, onChange, disabled }) {
     </div>
   );
 }
-export function SiloCard({ silo: s, state, me, geo, store, onState, onClose, onEdit, onMap }) {
+export function SiloCard({ silo: s, state, me, geo, store, onState, onClose, onEdit, onMap, onDespacho }) {
   const toast = useToast();
   const setPrio = async p => { try { onState(await store.setPrio(s.id, p, me)); toast(p ? `Prioridad de salida ${prioLabel(p).toLowerCase()}` : 'Prioridad quitada', 'ok'); } catch (e) { toast(e.message, 'error'); } };
   const lot = siloLot(s, state.lots);
@@ -237,7 +266,7 @@ export function SiloCard({ silo: s, state, me, geo, store, onState, onClose, onE
   const hasKg = s.kg != null && s.kg !== '';
   return (
     <Modal title={`Silobolsa ${s.id}`} subtitle={`${estanciaNombre(lot, state) || state.estancia.nombre} · ${lotName(s.lote)}`} onClose={onClose}
-      footer={<><Button icon="map" onClick={() => onMap(s.id)}>Ver en el mapa</Button>{canEdit && <Button variant="primary" icon="edit" onClick={() => onEdit(s.id)}>Editar</Button>}</>}>
+      footer={<>{onDespacho && <Button icon="flag" onClick={() => onDespacho(s.id)}>{s.fin ? 'Despacho' : s.inicio ? 'Finalizar' : 'Despacho'}</Button>}{!s.fin && <Button icon="map" onClick={() => onMap(s.id)}>Ver en el mapa</Button>}{canEdit && <Button variant="primary" icon="edit" onClick={() => onEdit(s.id)}>Editar</Button>}</>}>
       <div className="silo-id" aria-label={`Número de silobolsa ${s.id}`}>
         <span className="silo-id-num mono">{s.id}</span>
         <div className="silo-id-parts">
@@ -257,7 +286,10 @@ export function SiloCard({ silo: s, state, me, geo, store, onState, onClose, onE
           {s.largo ? <span>Bolsa de {fmtNum(s.largo)} m{s.gps ? ` · GPS ±${fmtNum(s.gps.acc)} m` : ''}</span> : <span>{s.origen === 'gps' ? `Punto GPS${s.gps ? ` ±${fmtNum(s.gps.acc)} m` : ''}` : 'Marcado en el mapa'}</span>}
           <span className="mono small muted">{ll2 ? `A ${c(ll)}` : c(ll)}</span>{ll2 && <span className="mono small muted">B {c(ll2)}</span>}
         </> : <span className="muted">Sin coordenadas</span>}</dd></div>
-        <div><dt>Registrado</dt><dd>{fmtDate(s.creadoEn)}</dd></div>
+        <div><dt>Embolsado</dt><dd>{fmtDate(s.creadoEn)}</dd></div>
+        <div><dt>Estado</dt><dd>{ESTADOS[estadoOf(s)]}</dd></div>
+        {(s.inicio || s.fin) && <div><dt>Inicio de extracción</dt><dd>{fmtDay(s.inicio) || '—'}</dd></div>}
+        {(s.inicio || s.fin) && <div><dt>Finalización</dt><dd>{s.fin ? fmtDay(s.fin) : <span className="muted">En curso</span>}</dd></div>}
         <div><dt>Usuario</dt><dd>{userName(s.creadoPor, state)}</dd></div>
         {s.editadoPor && s.editadoEn && s.editadoEn !== s.creadoEn && <div className="span-2"><dt>Última edición</dt><dd>{fmtDate(s.editadoEn)} · {userName(s.editadoPor, state)}</dd></div>}
         {s.obs && <div className="span-2"><dt>Observaciones</dt><dd className="card-obs">{s.obs}</dd></div>}

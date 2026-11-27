@@ -153,11 +153,10 @@ section{padding:104px 0}
 .dots i.on{width:20px;background:var(--ink)}
 
 /* funciones: sin tarjetas, separadas por líneas finas */
-.feat{display:grid;grid-template-columns:repeat(6,1fr);border-top:1px solid var(--line)}
-.feat article{grid-column:span 2;padding:34px 30px 38px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
-.feat article:nth-child(n+4){grid-column:span 3}
-.feat article:nth-child(1),.feat article:nth-child(4){padding-left:0}
-.feat article:nth-child(3),.feat article:nth-child(5){border-right:0;padding-right:0}
+.feat{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-top:1px solid var(--line)}
+.feat article{padding:34px 30px 38px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:12px}
+.feat article:nth-child(3n+1){padding-left:0}
+.feat article:nth-child(3n){border-right:0;padding-right:0}
 .feat .ic{width:44px;height:44px;border-radius:var(--r);display:grid;place-items:center;background:var(--ink);color:var(--lime);transition:transform var(--t2) var(--ease)}
 .feat article:hover .ic{transform:translateY(-3px) rotate(-4deg)}
 .feat h3{font-size:20px}
@@ -285,7 +284,6 @@ footer .logo svg{width:24px}
   .feat article,.feat article:nth-child(n){grid-column:auto;padding:28px 22px 30px 0;border-right:0}
   .feat article:nth-child(odd){border-right:1px solid var(--line)}
   .feat article:nth-child(even){padding-left:22px}
-  .feat article:last-child{grid-column:1/-1;border-right:0}
   .steps{grid-template-columns:1fr;gap:40px;padding-left:76px}
   .steps::before,.steps .bar{left:27px;right:auto;top:0;bottom:0;width:2px;height:100%}
   .steps .bar{transform-origin:top;transform:scaleY(var(--p,0))}
@@ -380,13 +378,14 @@ footer .logo svg{width:24px}
 
   <section id="plataforma">
     <div class="wrap">
-      <div class="sec-head"><span class="eyebrow rv"><i></i>Plataforma</span><h2 class="rv" style="--i:1">Todo lo que pasa en el campo, registrado con método.</h2><p class="rv" style="--i:2">Cinco pilares para ordenar tu acopio, del lote al despacho.</p></div>
+      <div class="sec-head"><span class="eyebrow rv"><i></i>Plataforma</span><h2 class="rv" style="--i:1">Todo lo que pasa en el campo, registrado con método.</h2><p class="rv" style="--i:2">Seis pilares para ordenar tu acopio, del lote al despacho.</p></div>
       <div class="feat">
         <article class="rv" style="--i:0"><span class="ic">__IC_LOTS__</span><h3>Cargá o marcá tus lotes</h3><p>Importá un KML o delimitá tus lotes directamente sobre el mapa satelital.</p></article>
         <article class="rv" style="--i:1"><span class="ic">__IC_ID__</span><h3>Identidad de cada silo</h3><p>Cada silobolsa georreferenciada con su ficha completa: grano, kilos, humedad y prioridad de salida, bajo un código único como <code>__ID__</code>.</p></article>
         <article class="rv" style="--i:2"><span class="ic">__IC_NAV__</span><h3>Sistema de navegación</h3><p>Con los lotes trazados y los silos ubicados por GPS, recorrés el campo y verificás la posición real de cada bolsa.</p></article>
-        <article class="rv" style="--i:0"><span class="ic">__IC_USERS__</span><h3>Gestioná tu equipo</h3><p>Asigná a cada persona su sección y su rol, y sabé quién registró cada silo.</p></article>
-        <article class="rv" style="--i:1"><span class="ic">__IC_SAFE__</span><h3>Datos confidenciales</h3><p>Los lotes y registros de cada empresa son privados: solo los ve tu equipo, con respaldo diario.</p></article>
+        <article class="rv" style="--i:0"><span class="ic">__IC_CHART__</span><h3>Panel de estadísticas</h3><p>Stock, toneladas por variedad y lote, humedad promedio, prioridades y despachos, filtrados por fecha y en tiempo real.</p></article>
+        <article class="rv" style="--i:1"><span class="ic">__IC_USERS__</span><h3>Gestioná tu equipo</h3><p>Asigná a cada persona su sección y su rol, y sabé quién registró cada silo.</p></article>
+        <article class="rv" style="--i:2"><span class="ic">__IC_SAFE__</span><h3>Datos confidenciales</h3><p>Los lotes y registros de cada empresa son privados: solo los ve tu equipo, con respaldo diario.</p></article>
       </div>
     </div>
   </section>
@@ -398,14 +397,14 @@ footer .logo svg{width:24px}
         <span class="bar" aria-hidden="true"></span>
         <div class="step rv" style="--i:0"><span class="n">1</span><h3>Cargá o sectorizá tus lotes</h3><ul><li><span>Número o nombre</span></li><li><span>Cantidad de hectáreas <b>(opcional)</b></span></li><li><span>Sectorizá desde un mapa satelital o mediante un KML</span></li></ul></div>
         <div class="step rv" style="--i:1"><span class="n">2</span><h3>Registro por georreferencia (GPS)</h3><ul><li><span>Ubicá la silobolsa en el mapa satelital</span></li><li><span>Cargá la variedad</span></li><li><span>Kg o toneladas</span></li><li><span>Foto de referencia</span></li><li><span>Agregá observaciones</span></li></ul></div>
-        <div class="step rv" style="--i:2"><span class="n">3</span><h3>Desde el dashboard</h3><ul><li><span>Control de toda la producción registrada</span></li><li><span>Filtrá por lote, campo, variedad y humedad</span></li><li><span>Ordená de mayor a menor kg</span></li><li><span>Dale prioridad de salida</span></li></ul></div>
+        <div class="step rv" style="--i:2"><span class="n">3</span><h3>Desde el dashboard</h3><ul><li><span>Control de toda la producción registrada</span></li><li><span>Filtrá por lote, campo, variedad y humedad</span></li><li><span>Ordená de mayor a menor kg</span></li><li><span>Dale prioridad de salida</span></li><li><span>Marcá cada bolsa finalizada al despacharla</span></li></ul></div>
       </div>
       <figure class="desk rv" id="desk">
         <div class="browser">
-          <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>acopia.app/dashboard/silos</span></div>
-          <img src="/img/app/escritorio-silos.webp" alt="Panel de Acopia en la computadora: silobolsas filtradas y ordenadas por prioridad de salida" width="1440" height="900" loading="lazy" decoding="async">
+          <div class="browser-bar" aria-hidden="true"><i></i><i></i><i></i><span>acopia.app/dashboard/estadisticas</span></div>
+          <img src="/img/app/escritorio-estadisticas.webp" alt="Estadísticas de Acopia: stock, variedades, humedad promedio, prioridades de salida y despachos" width="1440" height="900" loading="lazy" decoding="async">
         </div>
-        <figcaption>El panel en la computadora: cada bolsa con su lote, variedad, humedad, toneladas y prioridad de salida.</figcaption>
+        <figcaption>Estadísticas en la computadora: stock total, variedades, humedad promedio, prioridades de salida y despachos por mes.</figcaption>
       </figure>
     </div>
   </section>

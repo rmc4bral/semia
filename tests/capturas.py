@@ -123,7 +123,22 @@ with sync_playwright() as p:
     shot(pg, '10-llegaste')
     pg.click('.navi-foot button:has-text("Terminar")'); pg.wait_for_timeout(600)
     # panel: silobolsas ordenadas por prioridad de salida
+    # historia de la temporada: embolsados en distintos meses, bolsas ya despachadas y una en extracción
+    d = json.loads((DAT / 'data.json').read_text())
+    emb = {'LA31001': '2026-04-16', 'LA31002': '2026-04-22', 'LA32001': '2026-05-08', 'LA33001': '2026-06-12', 'LA34001': '2026-05-27', 'LA35001': '2026-07-03', 'LA36001': '2026-11-27'}
+    for x in d['silos']:
+        if x['id'] in emb: x['creadoEn'] = emb[x['id']] + 'T15:10:00+00:00'
+    byid = {x['id']: x for x in d['silos']}
+    byid['LA32001'].update(inicio='2026-11-20')
+    hist = [('LA31001', 'LA31003', '2026-03-24', '2026-08-04', '2026-08-06', 196400, 12.4, 'Soja'), ('LA31001', 'LA31004', '2026-03-28', '2026-09-15', '2026-09-17', 203100, 13.1, 'Soja'),
+            ('LA33001', 'LA33002', '2026-01-12', '2026-06-20', '2026-06-21', 171800, 12.0, 'Trigo'), ('LA34001', 'LA34002', '2026-04-30', '2026-10-02', '2026-10-05', 221500, 15.8, 'Maíz'),
+            ('LA35001', 'LA35002', '2026-02-18', '2026-07-22', '2026-07-23', 158300, 8.9, 'Girasol'), ('LA32001', 'LA32002', '2026-05-02', '2026-11-03', '2026-11-06', 229700, 14.6, 'Maíz')]
+    for src, nid, e, ini, fin, kg, hum, gr in hist:
+        c = dict(byid[src]); c.update(id=nid, creadoEn=e + 'T15:10:00+00:00', inicio=ini, fin=fin, kg=kg, hum=hum, grano=gr, prio='alta', foto=None, obs='')
+        d['silos'].append(c)
+    (DAT / 'data.json').write_text(json.dumps(d, ensure_ascii=False))
     pg.goto(URL + '/dashboard/silos'); pg.wait_for_selector('.silo-row'); pg.wait_for_timeout(800); shot(pg, '11-silos')
+    pg.goto(URL + '/dashboard/estadisticas'); pg.wait_for_selector('.st-kpis'); pg.wait_for_timeout(1600); shot(pg, '13-estadisticas')
     pg.goto(URL + '/dashboard/lotes'); pg.wait_for_selector('.lot-card'); pg.wait_for_timeout(800); shot(pg, '12-lotes')
     # escritorio
     d = br.new_context(viewport={'width': 1440, 'height': 900}, device_scale_factor=2, permissions=['geolocation'],
@@ -134,6 +149,7 @@ with sync_playwright() as p:
         if dp.locator(f'button:has-text("{t}")').count(): dp.click(f'button:has-text("{t}")'); break
     dp.wait_for_selector('.satmap'); dp.wait_for_timeout(4000); dp.screenshot(path=str(OUT / '20-escritorio-inicio.png'))
     dp.goto(URL + '/dashboard/silos'); dp.wait_for_selector('.silo-row'); dp.wait_for_timeout(1200); dp.screenshot(path=str(OUT / '21-escritorio-silos.png'))
+    dp.goto(URL + '/dashboard/estadisticas'); dp.wait_for_selector('.st-kpis'); dp.wait_for_timeout(1800); dp.screenshot(path=str(OUT / '22-escritorio-estadisticas.png'))
     br.close()
 (OUT / 'boxes.json').write_text(json.dumps(boxes, indent=1))
 print('capturas:', sorted(x.name for x in OUT.glob('*.png')))

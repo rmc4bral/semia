@@ -158,6 +158,15 @@ export function createStore(mode) {
       }
       return (await api('saveSilo', { silo, prevId })).state;
     },
+    async setDespacho(id, inicio, fin, me) {
+      if (local) {
+        const d = localLoad(); const s = d.silos.find(x => x.id === id); if (!s) throw new Error('El silo ya no existe');
+        if (fin && !inicio) inicio = fin;
+        if (inicio && fin && fin < inicio) throw new Error('La finalización no puede ser anterior al inicio');
+        Object.assign(s, { inicio: inicio || null, fin: fin || null, despachoPor: me.user, despachoEn: new Date().toISOString() }); localSave(d); return publicState(d);
+      }
+      return (await api('setDespacho', { id, inicio, fin })).state;
+    },
     async setPrio(id, prio, me) {
       if (local) {
         const d = localLoad(); const s = d.silos.find(x => x.id === id); if (!s) throw new Error('El silo ya no existe');

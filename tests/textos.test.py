@@ -34,7 +34,7 @@ def run(w, h, who='rodma', pw='rmaldonado'):
             pass
         pg.click('.nav-add'); pg.wait_for_timeout(900); res['elegir-lote'] = pg.evaluate(JS)
         if pg.locator('.cap-foot button:has-text("Cancelar")').count(): pg.click('.cap-foot button:has-text("Cancelar")')
-        for tab in ['Silos', 'Lotes', 'Mapas', 'Usuarios', 'Ajustes', 'Perfil']:
+        for tab in ['Silos', 'Estadísticas', 'Lotes', 'Mapas', 'Usuarios', 'Ajustes', 'Perfil']:
             loc = pg.locator(f'.nav button:has-text("{tab}")')
             if loc.count() and loc.first.is_visible(): loc.first.click(); pg.wait_for_timeout(900); res[tab] = pg.evaluate(JS)
             if tab == 'Silos' and pg.locator('.list-card .silo-row').count():

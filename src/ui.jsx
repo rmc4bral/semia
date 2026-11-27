@@ -43,6 +43,11 @@ const P = {
   enter: 'M20 5v7a3 3 0 0 1-3 3H5m0 0 4-4m-4 4 4 4',
   mic: 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Zm-7 9a7 7 0 0 0 14 0M12 19v2',
   navi: 'M12 3 19 20 12 16 5 20Z',
+  cal: 'M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v12a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5ZM4 10h16M8.5 3v4M15.5 3v4',
+  chart: 'M4 20h16M7 16v-5M12 16V6M17 16v-8',
+  flag: 'M5 21V4M5 4h11l-2 4 2 4H5',
+  chevl: 'M15 6l-6 6 6 6',
+  chevr: 'M9 6l6 6-6 6',
   layers: 'm12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5',
 };
 export function Icon({ name, size = 20, className = '', ...rest }) {
@@ -217,3 +222,116 @@ export const fmtKg = n => (isFinite(n) && n !== '' && n !== null ? Number(n).toL
 export const fmtNum = (n, d = 0) => (isFinite(n) ? Number(n).toLocaleString('es-AR', { maximumFractionDigits: d, minimumFractionDigits: d }) : '—');
 export const fmtDate = iso => { if (!iso) return '—'; const d = new Date(iso); return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }); };
 export const parseNum = s => { if (s === '' || s == null) return null; const n = Number(String(s).replace(/\./g, '').replace(',', '.')); return isFinite(n) ? n : NaN; };
+
+
+/* ---------- Fechas: calendario propio (sin el control nativo del navegador) ---------- */
+const pad2 = n => String(n).padStart(2, '0');
+export const isoDay = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+export const dayOf = iso => { if (!iso) return null; if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso; const d = new Date(iso); return isNaN(d) ? null : isoDay(d); };
+export const fmtDay = s => { if (!s) return ''; const [y, m, d] = s.split('-'); return `${d}/${m}/${y.slice(2)}`; };
+const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const addDays = (iso, n) => { const [y, m, d] = iso.split('-').map(Number); return isoDay(new Date(y, m - 1, d + n)); };
+
+function usePopover() {
+  const [open, setOpen] = useState(false), [rect, setRect] = useState(null);
+  const btn = useRef(null), pop = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = e => { if (!btn.current?.contains(e.target) && !pop.current?.contains(e.target)) setOpen(false); };
+    const esc = e => e.key === 'Escape' && setOpen(false);
+    const reflow = () => btn.current && setRect(btn.current.getBoundingClientRect());
+    document.addEventListener('pointerdown', close); document.addEventListener('keydown', esc);
+    window.addEventListener('resize', reflow); window.addEventListener('scroll', reflow, true);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc); window.removeEventListener('resize', reflow); window.removeEventListener('scroll', reflow, true); };
+  }, [open]);
+  const toggle = () => { setRect(btn.current.getBoundingClientRect()); setOpen(o => !o); };
+  const style = w => {
+    if (!rect) return {};
+    const vw = window.innerWidth, width = Math.min(w, vw - 16), left = Math.max(8, Math.min(rect.left, vw - width - 8));
+    const below = window.innerHeight - rect.bottom, up = below < 380 && rect.top > below;
+    return up ? { left, width, bottom: window.innerHeight - rect.top + 4 } : { left, width, top: rect.bottom + 4 };
+  };
+  return { open, setOpen, toggle, btn, pop, style };
+}
+
+export function Calendar({ value, range, onPick, min, max }) {
+  const today = isoDay(new Date());
+  const start = (range ? value?.desde : value) || today;
+  const [ym, setYm] = useState(() => start.slice(0, 7));
+  const [y, m] = ym.split('-').map(Number);
+  const first = new Date(y, m - 1, 1), lead = (first.getDay() + 6) % 7, days = new Date(y, m, 0).getDate();
+  const shift = k => { const d = new Date(y, m - 1 + k, 1); setYm(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}`); };
+  const cells = [];
+  for (let i = 0; i < lead; i++) cells.push(null);
+  for (let d = 1; d <= days; d++) cells.push(`${ym}-${pad2(d)}`);
+  const a = range ? value?.desde : value, b = range ? value?.hasta : null;
+  return (
+    <div className="cal">
+      <div className="cal-head">
+        <button type="button" className="cal-nav" onClick={() => shift(-1)} aria-label="Mes anterior"><Icon name="chevl" size={16} /></button>
+        <b>{MESES[m - 1]} {y}</b>
+        <button type="button" className="cal-nav" onClick={() => shift(1)} aria-label="Mes siguiente"><Icon name="chevr" size={16} /></button>
+      </div>
+      <div className="cal-grid" role="grid">
+        {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => <span key={i} className="cal-dow">{d}</span>)}
+        {cells.map((d, i) => d ? (
+          <button type="button" key={d} data-day={d} disabled={(min && d < min) || (max && d > max)}
+            className={`cal-day ${d === a || d === b ? 'is-sel' : ''} ${a && b && d > a && d < b ? 'is-in' : ''} ${d === today ? 'is-today' : ''}`}
+            onClick={() => onPick(d)} aria-pressed={d === a || d === b}>{+d.slice(8)}</button>
+        ) : <span key={'e' + i} />)}
+      </div>
+    </div>
+  );
+}
+
+export function DateField({ value, onChange, placeholder = 'Elegir fecha', min, max, clearable, disabled }) {
+  const p = usePopover();
+  return (
+    <>
+      <button type="button" ref={p.btn} className={`input select date-btn ${p.open ? 'is-open' : ''}`} onClick={p.toggle} disabled={disabled} aria-haspopup="dialog" aria-expanded={p.open}>
+        <span className={value ? '' : 'muted'}>{value ? fmtDay(value) : placeholder}</span><Icon name="cal" size={16} />
+      </button>
+      {p.open && createPortal(
+        <div className="select-menu cal-pop" ref={p.pop} style={p.style(300)} role="dialog" aria-label="Calendario">
+          <Calendar value={value} min={min} max={max} onPick={d => { onChange(d); p.setOpen(false); }} />
+          <div className="cal-foot">
+            <button type="button" className="cal-link" onClick={() => { onChange(isoDay(new Date())); p.setOpen(false); }}>Hoy</button>
+            {clearable && value && <button type="button" className="cal-link" onClick={() => { onChange(null); p.setOpen(false); }}>Quitar fecha</button>}
+          </div>
+        </div>, document.body)}
+    </>
+  );
+}
+
+// período con accesos rápidos; {desde, hasta} en AAAA-MM-DD, vacío = todo el período
+export function DateRange({ value, onChange }) {
+  const p = usePopover();
+  const [tmp, setTmp] = useState(null);
+  const t = isoDay(new Date());
+  const presets = [
+    ['Todo el período', null, null], ['Últimos 7 días', addDays(t, -6), t], ['Últimos 30 días', addDays(t, -29), t],
+    ['Este mes', t.slice(0, 8) + '01', t], ['Últimos 90 días', addDays(t, -89), t], ['Este año', t.slice(0, 4) + '-01-01', t],
+  ];
+  const label = value?.desde ? (value.hasta && value.hasta !== value.desde ? `${fmtDay(value.desde)} – ${fmtDay(value.hasta)}` : fmtDay(value.desde)) : 'Todo el período';
+  const cur = presets.find(([, a, b]) => (a || null) === (value?.desde || null) && (b || null) === (value?.hasta || null));
+  const pick = d => {
+    if (!tmp || tmp.hasta) return setTmp({ desde: d, hasta: null });
+    const r = d < tmp.desde ? { desde: d, hasta: tmp.desde } : { desde: tmp.desde, hasta: d };
+    setTmp(null); onChange(r); p.setOpen(false);
+  };
+  return (
+    <>
+      <button type="button" ref={p.btn} className={`input select date-btn ${p.open ? 'is-open' : ''}`} onClick={() => { setTmp(null); p.toggle(); }} aria-haspopup="dialog" aria-expanded={p.open}>
+        <span>{cur ? cur[0] : label}</span><Icon name="cal" size={16} />
+      </button>
+      {p.open && createPortal(
+        <div className="select-menu cal-pop cal-range" ref={p.pop} style={p.style(500)} role="dialog" aria-label="Elegir período">
+          <div className="cal-presets">{presets.map(([l, a, b]) => <button type="button" key={l} className={`select-opt ${cur && cur[0] === l ? 'is-sel' : ''}`} onClick={() => { onChange(a ? { desde: a, hasta: b } : null); p.setOpen(false); }}>{l}</button>)}</div>
+          <div>
+            <Calendar range value={tmp || value || null} max={t} onPick={pick} />
+            <p className="cal-hint muted small">{tmp && !tmp.hasta ? 'Elegí el día final' : 'Elegí el día inicial y el final'}</p>
+          </div>
+        </div>, document.body)}
+    </>
+  );
+}

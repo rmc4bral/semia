@@ -52,7 +52,7 @@ writeFileSync('public_html/app.html', idx);
   const base = readFileSync('src/landing.html', 'utf8')
     .replaceAll('__LOGO__', logo).replace('__FURROWS__', furrows)
     .replace('__IC_LOTS__', svg(icon('lots'))).replace('__IC_GPS__', svg(icon('gps'))).replace('__IC_ID__', svg(icon('silo')))
-    .replace('__IC_NAV__', svg(icon('navi'))).replace('__IC_USERS__', svg(icon('users'))).replace('__IC_SAFE__', svg(shield))
+    .replace('__IC_NAV__', svg(icon('navi'))).replace('__IC_USERS__', svg(icon('users'))).replace('__IC_CHART__', svg(icon('chart'))).replace('__IC_SAFE__', svg(shield))
     .replaceAll('__ID__', 'LA36001').replace('__SEQ__', JSON.stringify(seq))
     .replace(/<style>([\s\S]*?)<\/style>/, (_, css) => `<style>${css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\s*\n\s*/g, '').replace(/\s*([{}:;,>])\s*/g, '$1').replace(/;}/g, '}')}</style>`);
   const PAGES = [

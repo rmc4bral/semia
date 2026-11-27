@@ -96,6 +96,16 @@ chk humedad-invalida "$(curl -s -b $A "${J[@]}" -d '{"silo":{"id":"","lote":31,"
 chk prio-marcar "$(curl -s -b $O "${J[@]}" -d '{"id":"RB16001","prio":"baja"}' $B/api.php?action=setPrio)" '"prio":"baja".*"prioPor":"peon"'
 chk prio-quitar "$(curl -s -b $A "${J[@]}" -d '{"id":"RB16001","prio":"urgente"}' $B/api.php?action=setPrio)" '"id":"RB16001","lote":31,"lot":"kaa:31","kg":180000,"hum":null,"prio":null'
 chk prio-sin-sesion "$(curl -s "${J[@]}" -d '{"id":"RB16001","prio":"alta"}' $B/api.php?action=setPrio)" 'Sesión expirada'
+# despacho: inicio de extracción y finalización
+HOY=$(date +%Y-%m-%d); AYER=$(date -d yesterday +%Y-%m-%d); FUT=$(date -d '+5 days' +%Y-%m-%d)
+chk despacho-inicio "$(curl -s -b $O "${J[@]}" -d "{\"id\":\"RB16001\",\"inicio\":\"$HOY\"}" $B/api.php?action=setDespacho)" "\"inicio\":\"$HOY\",\"fin\":null"
+chk despacho-orden "$(curl -s -b $A "${J[@]}" -d "{\"id\":\"RB16001\",\"inicio\":\"$HOY\",\"fin\":\"$AYER\"}" $B/api.php?action=setDespacho)" 'anterior al inicio'
+chk despacho-futuro "$(curl -s -b $A "${J[@]}" -d "{\"id\":\"RB16001\",\"fin\":\"$FUT\"}" $B/api.php?action=setDespacho)" 'no pueden ser futuras'
+chk despacho-fecha "$(curl -s -b $A "${J[@]}" -d '{"id":"RB16001","fin":"2026-02-31"}' $B/api.php?action=setDespacho)" 'inválida'
+chk despacho-embolsado "$(curl -s -b $A "${J[@]}" -d '{"id":"RB16001","inicio":"2020-01-01"}' $B/api.php?action=setDespacho)" 'anterior al embolsado'
+chk despacho-fin "$(curl -s -b $A "${J[@]}" -d "{\"id\":\"RB16001\",\"inicio\":\"$HOY\",\"fin\":\"$HOY\"}" $B/api.php?action=setDespacho)" "\"fin\":\"$HOY\",\"despachoPor\":\"rodma\""
+chk despacho-reabrir "$(curl -s -b $A "${J[@]}" -d '{"id":"RB16001","inicio":null,"fin":null}' $B/api.php?action=setDespacho)" '"inicio":null,"fin":null'
+chk despacho-sin-sesion "$(curl -s "${J[@]}" -d '{"id":"RB16001"}' $B/api.php?action=setDespacho)" 'Sesión expirada'
 # formulario de contacto y demo de 10 días (público)
 chk contacto-faltan "$(curl -s "${J[@]}" -d '{"nombre":"Ana"}' $B/api.php?action=contact)" 'Completá el apellido'
 chk contacto-email "$(curl -s "${J[@]}" -d '{"nombre":"Ana","apellido":"G","email":"x","tel":"2346555000","empresa":"Agro"}' $B/api.php?action=contact)" 'email no es válido'

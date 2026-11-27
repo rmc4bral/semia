@@ -11,7 +11,7 @@ meta = {}
 for png in sorted(SRC.glob('*.png')):
     im = Image.open(png).convert('RGB')
     if png.stem.startswith('2'):  # escritorio
-        name = {'20-escritorio-inicio': 'escritorio-inicio', '21-escritorio-silos': 'escritorio-silos'}.get(png.stem, png.stem)
+        name = {'20-escritorio-inicio': 'escritorio-inicio', '21-escritorio-silos': 'escritorio-silos', '22-escritorio-estadisticas': 'escritorio-estadisticas'}.get(png.stem, png.stem)
         im.resize((1440, round(im.height * 1440 / im.width)), Image.LANCZOS).save(OUT / f'{name}.webp', 'WEBP', quality=74, method=6)
         continue
     # color de la franja superior: la barra de estado del iPhone lo continúa

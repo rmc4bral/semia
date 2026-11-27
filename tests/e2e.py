@@ -1,5 +1,5 @@
 """Prueba de punta a punta sin capturas: python3 tests/e2e.py <url_servidor> <carpeta_servidor>"""
-import json, sys, shutil, pathlib, numpy as np
+import json, time, sys, shutil, pathlib, numpy as np
 from playwright.sync_api import sync_playwright
 
 URL = sys.argv[1]; SRV = pathlib.Path(sys.argv[2]); ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -85,6 +85,14 @@ def layout_checks(page, tag):
         check(r['card']['bottom'] <= r['main']['bottom'] + 0.5, f'{tag}: el mapa no pisa la barra')
         check(r['main']['bottom'] - r['card']['bottom'] < 20, f'{tag}: el mapa ocupa todo el alto ({r["main"]["bottom"] - r["card"]["bottom"]:.0f}px libres)')
 
+def mapas(pg):
+    """Mapas del administrador: pestaña en escritorio; en el celular se entra desde Perfil."""
+    nb = pg.locator('.nav button:has-text("Mapas")')
+    if nb.count() and nb.first.is_visible(): nb.first.click()
+    else:
+        pg.click('.avatar-btn'); pg.wait_for_selector('.set-link'); pg.click('.set-link:has-text("Mapas")')
+    pg.wait_for_timeout(300)
+
 def ajustes(pg):
     """Ajustes del administrador: pestaña en escritorio; en el celular se entra desde Perfil."""
     nb = pg.locator('.nav button:has-text("Ajustes")')
@@ -104,7 +112,7 @@ with sync_playwright() as p:
         page.goto(URL + '/'); page.wait_for_selector('.hero h1')
         check('Control preciso de tu Producción' in page.inner_text('.hero h1') and page.locator('a[href="/login"]').count() >= 2, f'{tag}: landing con lema e «Ingresar»')
         check(page.evaluate("getComputedStyle(document.querySelector('.bg')).position") == 'fixed', f'{tag}: landing con fondo fijo')
-        check(page.locator('.top .btn-demo').is_visible() and page.locator('.top .login-link').is_visible() and page.locator('#plataforma .feat article').count() == 5, f'{tag}: barra con Ingresar y Solicitar demo; Plataforma con 5 pilares')
+        check(page.locator('.top .btn-demo').is_visible() and page.locator('.top .login-link').is_visible() and page.locator('#plataforma .feat article').count() == 6, f'{tag}: barra con Ingresar y Solicitar demo; Plataforma con 6 pilares')
         check(page.evaluate("getComputedStyle(document.querySelector('.top .btn-demo')).animationName") == 'orbit', f'{tag}: Solicitar demo con borde dinámico')
         page.evaluate("scrollTo(0, document.body.scrollHeight)"); page.wait_for_timeout(900)
         check(page.locator('.rv:not(.in)').count() == 0, f'{tag}: landing revela todas las secciones al desplazarse')
@@ -265,7 +273,7 @@ with sync_playwright() as p:
             cols = page.evaluate("""() => { const g=s=>getComputedStyle(document.querySelector(s)).backgroundColor; return [g('body'), g('.topbar'), g('.nav')]; }""")
             check(cols[0] == cols[1] == cols[2], f'{tag} {th}: barra, menú y fondo con el mismo tono {cols}')
         # mapas propios: GeoTIFF georreferenciado
-        page.click('.nav button:has-text("Mapas")'); page.wait_for_selector('.dropzone')
+        mapas(page); page.wait_for_selector('.dropzone')
         page.set_input_files('.maps-screen input[accept*=".tif"]', str(TIF)); page.wait_for_selector('.pbar'); page.wait_for_selector('.map-prev img', timeout=60000)
         check(page.get_attribute('.pbar', 'aria-valuenow') == '100', f'{tag}: barra de proceso completa al convertir')
         check('UTM 21S' in page.inner_text('.maps-screen .loc-box'), f'{tag}: detecta UTM 21S')
@@ -287,7 +295,7 @@ with sync_playwright() as p:
         pick('Solo satélite'); check(page.locator('.warp-img').count() == 0, f'{tag}: filtro solo satélite')
         pick('Todos los mapas'); check(page.locator('.warp-img').count() == 1, f'{tag}: filtro todos')
         # imagen común: se ubica arrastrando esquinas
-        page.click('.nav button:has-text("Mapas")'); page.set_input_files('.maps-screen input[accept*=".tif"]', str(PNG)); page.wait_for_selector('.map-prev img')
+        mapas(page); page.set_input_files('.maps-screen input[accept*=".tif"]', str(PNG)); page.wait_for_selector('.map-prev img')
         check('sin coordenadas' in page.inner_text('.maps-screen .loc-box').lower(), f'{tag}: imagen sin coordenadas')
         page.click('.maps-screen button:has-text("Subir mapa") >> nth=-1'); page.wait_for_selector('.edit-bar'); page.wait_for_timeout(500)
         check(page.locator('.map-corner').count() == 4 and page.locator('.map-center').count() == 1, f'{tag}: manijas de esquinas y centro')
@@ -298,14 +306,14 @@ with sync_playwright() as p:
         after_c = next(m for m in page.request.get(URL + '/api.php?action=state').json()['state']['maps'] if m['nombre'] == 'croquis')['corners']
         check(after_c[1] != before_c[1] and after_c[0] == before_c[0], f'{tag}: esquina NE reubicada a mano')
         # PDF: se convierte a imagen y se sube
-        page.click('.nav button:has-text("Mapas")'); page.set_input_files('.maps-screen input[accept*=".tif"]', str(PDF)); page.wait_for_selector('.map-prev img', timeout=60000)
+        mapas(page); page.set_input_files('.maps-screen input[accept*=".tif"]', str(PDF)); page.wait_for_selector('.map-prev img', timeout=60000)
         check('sin coordenadas' in page.inner_text('.maps-screen .loc-box').lower() and '1 de 1' not in page.inner_text('.maps-screen .loc-box'), f'{tag}: PDF convertido a imagen')
         page.click('.maps-screen button:has-text("Subir mapa") >> nth=-1'); page.wait_for_selector('.edit-bar'); page.wait_for_timeout(400)
         page.click('.edit-bar button:has-text("Guardar")'); page.wait_for_selector('.edit-bar', state='detached')
         check(len(page.request.get(URL + '/api.php?action=state').json()['state']['maps']) == 3, f'{tag}: 3 mapas con el PDF')
         pick('Todos los mapas (3)'); check(page.locator('.warp-img').count() == 3, f'{tag}: todos = 3 mapas')
         pick('Vuelo octubre'); check(page.locator('.warp-img').count() == 1, f'{tag}: un solo mapa')
-        page.click('.nav button:has-text("Mapas")'); page.wait_for_selector('.maps-item'); page.wait_for_timeout(400)
+        mapas(page); page.wait_for_selector('.maps-item'); page.wait_for_timeout(400)
         check(page.locator('.maps-item').count() == 3 and page.locator('path.glob-foot').count() == 3, f'{tag}: listado general y mapa global con 3 mapas')
         check('PDF' in page.inner_text('.maps-list') and 'Imagen' in page.inner_text('.maps-list'), f'{tag}: tipo de cada mapa en el listado')
         page.fill('.maps-filters input', 'plano'); page.wait_for_timeout(150)
@@ -335,7 +343,7 @@ with sync_playwright() as p:
     page.goto(URL + '/login'); page.wait_for_selector('.login-card')
     page.fill('input[autocomplete=username]', 'rodma'); page.fill('input[type=password]', 'rmaldonado'); page.click('button[type=submit]')
     page.wait_for_selector('.satmap')
-    page.click('.nav button:has-text("Mapas")'); page.wait_for_selector('.kml-sec')
+    mapas(page); page.wait_for_selector('.kml-sec')
     page.set_input_files('.kml-sec input[type=file]', str(KML)); page.wait_for_selector('.kml-row')
     check(page.locator('.kml-row').count() == 3 and page.locator('.kml-prev polygon').count() == 3, 'kml: 3 polígonos con vista previa')
     btn = page.locator('.kml-sec .btn-primary')
@@ -383,6 +391,48 @@ with sync_playwright() as p:
     check('Llegaste' in page.inner_text('.nav-top'), 'navegar: aviso de llegada')
     layout_checks(page, 'navegación')
     page.click('.navi-foot button:has-text("Terminar")'); check(page.locator('.nav-top').count() == 0, 'navegar: terminar')
+    # Estadísticas: totales, anillos de prioridad, gráficos y período con calendario propio
+    page.click('.nav button:has-text("Estadísticas")'); page.wait_for_selector('.st-kpis'); page.wait_for_timeout(1300)
+    check(page.url.endswith('/dashboard/estadisticas') and page.title() == 'Acopia · Estadísticas', f'estadísticas: ruta y título ({page.url})')
+    st = page.request.get(URL + '/api.php?action=state').json()['state']['silos']
+    vivos = [x for x in st if not x.get('fin')]
+    k0 = page.locator('.st-kpi b').first.inner_text()
+    check(k0 == str(len(vivos)), f'estadísticas: total de silobolsas en stock ({k0} = {len(vivos)})')
+    check(page.locator('.st-prio .ring').count() == 3 and page.locator('.st-var .donut').count() == 1 and page.locator('.st-mes .col').count() >= 1, 'estadísticas: anillos de prioridad, variedades y gráfico mensual')
+    off = page.evaluate("[...document.querySelectorAll('.st-prio .ring-arc')].map(c => +c.getAttribute('stroke-dashoffset'))")
+    check(any(o > 0 for o in off) and page.locator('.st-prio .ring-in b').first.inner_text().endswith('%'), f'estadísticas: anillos con porcentaje ({off})')
+    page.click('.stats-filters .date-btn'); page.wait_for_selector('.cal-range')
+    check(page.locator('.cal-range .cal-day').count() >= 28 and page.locator('input[type=date]').count() == 0, 'estadísticas: calendario propio (sin control nativo)')
+    page.click('.cal-range .cal-day.is-today'); page.click('.cal-range .cal-day.is-today'); page.wait_for_timeout(500)
+    hoy = time.strftime('%d/%m/%y')
+    check(hoy in page.inner_text('.stats-filters .date-btn') and hoy in page.inner_text('.screen-head'), f"estadísticas: filtra por fecha ({page.inner_text('.stats-filters .date-btn')})")
+    page.click('.stats-filters .date-btn'); page.click('.cal-presets .select-opt:has-text("Todo el período")'); page.wait_for_timeout(300)
+    layout_checks(page, 'estadísticas')
+    # Despacho: inicio de extracción y finalización desde cada línea del listado de silos
+    page.click('.nav button:has-text("Silos")'); page.wait_for_selector('.silo-line')
+    n0 = page.locator('.list-card .silo-line').count()
+    page.locator(f'.silo-line:has-text("{s_["id"]}") .row-act').click(); page.wait_for_selector('.modal:has-text("Despacho de la bolsa")')
+    page.locator('.modal .field:has(.field-label:text-is("Inicio de extracción")) .date-btn').click(); page.click('.cal-pop .cal-link:has-text("Hoy")')
+    page.click('.modal-foot button:has-text("Guardar inicio")'); page.wait_for_selector('.modal', state='detached'); page.wait_for_timeout(300)
+    check('En extracción' in page.inner_text(f'.silo-line:has-text("{s_["id"]}")'), 'despacho: la bolsa queda en extracción')
+    page.locator(f'.silo-line:has-text("{s_["id"]}") .row-act').click(); page.wait_for_selector('.modal:has-text("Despacho de la bolsa")')
+    page.locator('.modal .field:has(.field-label:text-is("Finalización")) .date-btn').click(); page.click('.cal-pop .cal-link:has-text("Hoy")')
+    page.click('.modal-foot button:has-text("Marcar finalizada")'); page.wait_for_selector('.modal', state='detached'); page.wait_for_timeout(400)
+    sf = next(x for x in page.request.get(URL + '/api.php?action=state').json()['state']['silos'] if x['id'] == s_['id'])
+    check(sf.get('inicio') == time.strftime('%Y-%m-%d') and sf.get('fin') == time.strftime('%Y-%m-%d'), f"despacho: fechas de inicio y finalización ({sf.get('inicio')}, {sf.get('fin')})")
+    check(page.locator('.list-card .silo-line').count() == n0 - 1, 'despacho: la finalizada sale de las activas')
+    page.locator('.filters .field:has(.field-label:text-is("Estado")) .select').click(); page.click('.select-opt:has-text("Finalizadas")'); page.wait_for_timeout(200)
+    check(page.locator('.list-card .silo-line').count() == 1 and 'Finalizada' in page.inner_text('.list-card .silo-line'), 'despacho: filtro Estado = Finalizadas')
+    page.locator('.filters .field:has(.field-label:text-is("Estado")) .select').click(); page.click('.select-opt:has-text("Activas")')
+    page.click('.nav button:has-text("Estadísticas")'); page.wait_for_selector('.st-kpis'); page.wait_for_timeout(1200)
+    check(page.locator('.st-kpi b').first.inner_text() == str(len(vivos) - 1) and '1 bolsa finalizada' in page.inner_text('.st-kpis'), f"estadísticas: el despacho se refleja ({page.locator('.st-kpi b').first.inner_text()})")
+    page.click('.nav button:has-text("Silos")'); page.wait_for_selector('.list-card')
+    page.locator('.filters .field:has(.field-label:text-is("Estado")) .select').click(); page.click('.select-opt:has-text("Finalizadas")'); page.wait_for_selector('.silo-line')
+    page.locator('.silo-line .row-act').first.click(); page.click('.modal-foot button:has-text("Reabrir bolsa")'); page.wait_for_selector('.modal', state='detached'); page.wait_for_timeout(300)
+    sf = next(x for x in page.request.get(URL + '/api.php?action=state').json()['state']['silos'] if x['id'] == s_['id'])
+    check(not sf.get('fin') and not sf.get('inicio'), 'despacho: reabrir la bolsa')
+    page.locator('.filters .field:has(.field-label:text-is("Estado")) .select').click(); page.click('.select-opt:has-text("Activas")')
+    page.click('.nav button:has-text("Inicio")'); page.wait_for_selector('.satmap'); page.wait_for_timeout(300)
     # agregar un segundo KML sin perder lo cargado
     KML2 = TMP / 'campo2.kml'
     KML2.write_text(f"""<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document>
@@ -390,7 +440,7 @@ with sync_playwright() as p:
 <Placemark><name>Lote 5</name><Polygon><outerBoundaryIs><LinearRing><coordinates>{rect(-35.97, -60.39)}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
 <Placemark><name>Casco</name><Polygon><outerBoundaryIs><LinearRing><coordinates>{rect(-35.98, -60.40, 0.004)}</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
 </Document></kml>""", encoding='utf-8')
-    page.click('.nav button:has-text("Mapas")'); page.wait_for_selector('.kml-file')
+    mapas(page); page.wait_for_selector('.kml-file')
     check(page.locator('.kml-file').count() == 1 and 'Agregar KML' in page.inner_text('.kml-sec .dropzone'), 'kml: listado con 1 KML y botón Agregar')
     page.set_input_files('.kml-sec input[type=file]', str(KML2)); page.wait_for_selector('.kml-row')
     check(page.locator('.kml-sec .seg button.is-on').inner_text() == 'Agregar', 'kml: por defecto agrega')
@@ -514,7 +564,7 @@ with sync_playwright() as p:
     check(sp.locator('.list-card .silo-row').count() == 2 and sp.locator('.screen-head button:has-text("CSV")').count() == 0, 'supervisor: ve las cargas activas de su estancia')
     sp.locator('.list-card .silo-row:has-text("RB03001")').click(); sp.wait_for_selector('.card-facts')
     facts = sp.inner_text('.modal')
-    check(all(x in facts for x in ['RB03001', 'Rincón de Baguales', 'Lote 3', 'Soja', '200.000 kg', 'Juan Pérez', 'Registrado', 'Lugar']), 'supervisor: tarjeta con id, estancia, lote, grano, kg, lugar, fecha y usuario')
+    check(all(x in facts for x in ['RB03001', 'Rincón de Baguales', 'Lote 3', 'Soja', '200.000 kg', 'Juan Pérez', 'Embolsado', 'Lugar']), 'supervisor: tarjeta con id, estancia, lote, grano, kg, lugar, fecha y usuario')
     layout_checks(sp, 'supervisor ficha')
     # prioridad de salida: el supervisor la marca desde la ficha
     sp.click('.modal .prio-pick .pick.is-alta'); sp.wait_for_timeout(500)
@@ -538,7 +588,7 @@ with sync_playwright() as p:
     check(not sbucket, f'supervisor: sin errores de consola {sbucket[:3]}')
     sctx.close()
     page.request.post(URL + '/api.php?action=deleteSilo', data=json.dumps({'id': 'RB03001'}), headers={'Content-Type': 'application/json'})
-    page.click('.nav button:has-text("Mapas")'); page.wait_for_selector('.kml-file')
+    mapas(page); page.wait_for_selector('.kml-file')
     check(page.locator('.kml-file').count() == 2 and 'campo2.kml' in page.inner_text('.kml-files') and 'Los Gatos' in page.inner_text('.kml-files'), 'kml: listado de 2 estancias con su archivo')
     page.locator('.kml-file').nth(1).locator('button[aria-label^="Renombrar"]').click(); page.locator('.kml-file').nth(1).locator('input').nth(0).fill('Campo norte')
     page.locator('.kml-file').nth(1).locator('button:has-text("Guardar")').click(); page.wait_for_timeout(400)
@@ -547,7 +597,7 @@ with sync_playwright() as p:
     check('Campo norte' in page.inner_text('#sg-estancia >> xpath=../..') and 'LG' in page.inner_text('.set-page'), 'ajustes: estancias con su sigla')
     page.click('.nav button:has-text("Lotes")'); page.wait_for_selector('.lot-card')
     check('Sin silobolsas' in page.locator('.lot-card.is-casco').inner_text(), 'kml: el Casco figura sin silobolsas')
-    page.click('.nav button:has-text("Mapas")'); page.wait_for_selector('.kml-file')
+    mapas(page); page.wait_for_selector('.kml-file')
     page.locator('.kml-file').nth(1).locator('button[aria-label^="Quitar"]').click(); page.locator('.kml-file').nth(1).locator('button:has-text("Quitar")').click(); page.wait_for_timeout(500)
     st = page.request.get(URL + '/api.php?action=state').json()['state']
     check([l['num'] for l in st['lots']] == [1, 2, 3] and page.locator('.kml-file').count() == 1, 'kml: quitar un KML borra solo sus lotes')
@@ -587,7 +637,7 @@ with sync_playwright() as p:
     check(page.locator('path.sat-lot').count() == 3, 'local: lotes del KML persisten tras recargar')
     page.click('.avatar-btn'); page.wait_for_selector('.set-page')
     heads = page.locator('.set-group-head h3').all_inner_texts()
-    check(heads == ['Mis datos', 'Apariencia'] and page.locator('.set-link').count() == 2, f'local: perfil del administrador {heads}')
+    check(heads == ['Mis datos', 'Apariencia'] and page.locator('.set-link').count() == 3, f'local: perfil del administrador {heads}')
     page.click('.set-link:has-text("Ajustes")'); page.wait_for_selector('#sg-empresa')
     heads = page.locator('.set-group-head h3').all_inner_texts()
     check(heads == ['Empresa', 'Secciones', 'Lotes y ubicación', 'Datos'], f'local: ajustes ordenados {heads}')

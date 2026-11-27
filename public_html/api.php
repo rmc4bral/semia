@@ -420,6 +420,27 @@ switch ($action) {
     out(['ok' => true, 'state' => $state]);
   }
 
+  case 'setDespacho': {
+    // extracción de la bolsa: fecha de inicio y de finalización (despacho completo); la bolsa finalizada sale del mapa y del stock
+    $me = requireUser(); $b = body(); $id = (string)($b['id'] ?? '');
+    $day = function ($v, $t) { if ($v === null || $v === '') return null; if (!is_string($v) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) || !checkdate((int)substr($v, 5, 2), (int)substr($v, 8, 2), (int)substr($v, 0, 4))) fail("Fecha de $t inválida"); return $v; };
+    $ini = $day($b['inicio'] ?? null, 'inicio'); $fin = $day($b['fin'] ?? null, 'finalización');
+    if ($fin && !$ini) $ini = $fin;
+    if ($ini && $fin && $fin < $ini) fail('La finalización no puede ser anterior al inicio');
+    $hoy = date('Y-m-d', time() + 86400);
+    if (($ini && $ini > $hoy) || ($fin && $fin > $hoy)) fail('Las fechas no pueden ser futuras');
+    $state = withData(function (&$d) use ($id, $ini, $fin, $me) {
+      foreach ($d['silos'] as &$s) if ($s['id'] === $id) {
+        $emb = substr((string)($s['creadoEn'] ?? ''), 0, 10);
+        if ($ini && $emb && $ini < date('Y-m-d', strtotime("$emb -1 day"))) fail('El inicio no puede ser anterior al embolsado (' . date('d/m/Y', strtotime($emb)) . ')');
+        $s['inicio'] = $ini; $s['fin'] = $fin; $s['despachoPor'] = $me['user']; $s['despachoEn'] = gmdate('c');
+        return publicState($d);
+      }
+      fail('El silo ya no existe', 404);
+    }, true);
+    out(['ok' => true, 'state' => $state]);
+  }
+
   case 'deleteSilo': {
     requireAdmin(); $id = (string)(body()['id'] ?? '');
     $state = withData(function (&$d) use ($id) {

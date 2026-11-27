@@ -459,7 +459,7 @@ with sync_playwright() as p:
     page.click('.cap-foot button:has-text("Solo un punto")')
     page.wait_for_function("() => (document.querySelector('.modal .silo-id-num')?.textContent || '').length > 3", timeout=15000)
     check(page.inner_text('.modal .silo-id-num') == 'LG02001' and 'Los Gatos' in page.inner_text('.modal .silo-id'), f"estancia: ID con la sigla de su estancia ({page.inner_text('.modal .silo-id-num')})")
-    page.click('.modal .pick:has-text("Otro")'); page.fill('.modal .field:has-text("¿Qué grano?") input', 'Colza')
+    page.click('.modal .pick:has-text("Otro")'); page.fill('.modal .field:has-text("¿Qué variedad?") input', 'Colza')
     page.click('.modal-foot .btn-primary'); page.wait_for_selector('.modal', state='detached')
     st = page.request.get(URL + '/api.php?action=state').json()['state']
     lg = next(x for x in st['silos'] if x['id'] == 'LG02001')
@@ -640,7 +640,17 @@ with sync_playwright() as p:
     check(heads == ['Mis datos', 'Apariencia'] and page.locator('.set-link').count() == 3, f'local: perfil del administrador {heads}')
     page.click('.set-link:has-text("Ajustes")'); page.wait_for_selector('#sg-empresa')
     heads = page.locator('.set-group-head h3').all_inner_texts()
-    check(heads == ['Empresa', 'Secciones', 'Lotes y ubicación', 'Datos'], f'local: ajustes ordenados {heads}')
+    check(heads == ['Empresa', 'Variedades', 'Secciones', 'Lotes y ubicación', 'Datos'], f'local: ajustes ordenados {heads}')
+    # variedades propias de la empresa: agregar, renombrar y quitar
+    page.locator('.var-add input').fill('Soja DM 46i20'); page.keyboard.press('Enter'); page.wait_for_selector('.var-row:has-text("Soja DM 46i20")')
+    check(page.locator('.var-row').count() == 7, f"variedades: agregar ({page.locator('.var-row').count()})")
+    page.click('.var-row:has-text("Cebada") button[aria-label="Renombrar Cebada"]'); page.locator('.var-edit input').fill('Cebada cervecera'); page.keyboard.press('Enter')
+    page.wait_for_selector('.var-row:has-text("Cebada cervecera")')
+    page.click('.var-row:has-text("Sorgo") button[aria-label="Quitar Sorgo"]'); page.click('.var-row button:has-text("Quitar")'); page.wait_for_timeout(300)
+    vs = page.locator('.var-name b').all_inner_texts()
+    check('Sorgo' not in vs and 'Cebada cervecera' in vs and vs[-1] == 'Soja DM 46i20', f'variedades: renombrar y quitar {vs}')
+    d_ = page.evaluate("JSON.parse(localStorage.getItem('semia.data.v1') || 'null')") or {}
+    check((d_.get('variedades') or [])[-1:] == ['Soja DM 46i20'], f"variedades: se guardan en el modo local ({(d_.get('variedades') or [])[-2:]})")
     layout_checks(page, 'local ajustes')
     check(not bucket, f'local: sin errores de consola {bucket[:3]}')
     br.close()

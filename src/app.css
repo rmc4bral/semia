@@ -994,3 +994,14 @@ path.glob-foot.is-sel { stroke: #fff; }
 
 @media (min-width: 900px) { .stats-filters.has-est > .field:first-child { grid-column: auto; } }
 @media (max-width: 420px) { .stats-filters { grid-template-columns: minmax(0, 1fr); } }
+
+/* variedades de la empresa */
+.var-list { display: flex; flex-direction: column; }
+.var-row { display: flex; align-items: center; gap: 6px; min-height: 52px; border-bottom: 1px solid var(--line); }
+.var-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.var-name b { font-weight: 600; overflow-wrap: anywhere; }
+.var-edit { flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 0; flex-wrap: wrap; }
+.var-edit .input { flex: 1; min-width: 160px; }
+.var-q { flex: 1; min-width: 180px; font-size: 14px; }
+.var-add { display: flex; align-items: flex-end; gap: 10px; margin-top: 14px; }
+.var-add .field { flex: 1; }

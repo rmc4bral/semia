@@ -167,6 +167,17 @@ export function createStore(mode) {
       }
       return (await api('setDespacho', { id, inicio, fin })).state;
     },
+    async saveVariedades(list, renames = []) {
+      if (local) {
+        const d = localLoad(), seen = new Set();
+        const l = list.map(v => String(v).trim().slice(0, 30)).filter(Boolean);
+        l.forEach(v => { if (seen.has(v.toLowerCase())) throw new Error(`«${v}» está repetida`); seen.add(v.toLowerCase()); });
+        if (!l.length) throw new Error('Dejá al menos una variedad');
+        d.variedades = l; const ren = Object.fromEntries(renames.filter(([a, b]) => a && b && a !== b));
+        d.silos.forEach(s => { if (ren[s.grano]) s.grano = ren[s.grano]; }); localSave(d); return publicState(d);
+      }
+      return (await api('saveVariedades', { list, renames })).state;
+    },
     async setPrio(id, prio, me) {
       if (local) {
         const d = localLoad(); const s = d.silos.find(x => x.id === id); if (!s) throw new Error('El silo ya no existe');

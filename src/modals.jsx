@@ -5,7 +5,12 @@ import { nextSiloId, snapToBorder, areaHa, pointInPoly, isSiloLot, parseLotCode,
 import { resolvePhoto } from './store.js';
 import { fmtFecha, parseFecha } from './maplayers.js';
 
-export const GRANOS = ['Soja', 'Maíz', 'Trigo', 'Girasol', 'Sorgo', 'Cebada', 'Otro'];
+// variedades de cada empresa (Ajustes → Variedades); sin cargar, las de siempre
+export const GRANOS_BASE = ['Soja', 'Maíz', 'Trigo', 'Girasol', 'Sorgo', 'Cebada'];
+export const GRANOS = [...GRANOS_BASE, 'Otro'];
+export const variedadesOf = state => (Array.isArray(state?.variedades) && state.variedades.length ? state.variedades : GRANOS_BASE);
+// para filtros: las de la empresa y las que ya figuran en silobolsas (aunque se hayan quitado de la lista)
+export const variedadesFiltro = state => { const l = [...variedadesOf(state)]; (state?.silos || []).forEach(s => { if (s.grano && !l.some(v => v.toLowerCase() === s.grano.toLowerCase())) l.push(s.grano); }); return l; };
 
 export function compressImage(file, max = 1280, q = 0.72) {
   return new Promise((res, rej) => {
@@ -39,7 +44,7 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
   const isAdmin = me.rol === 'admin';
   const canEdit = isNew || isAdmin || draft.creadoPor === me.user;
   const [f, setF] = useState(() => {
-    const g = draft.grano ?? '', otro = g && !GRANOS.includes(g);
+    const g = draft.grano ?? '', otro = g && !variedadesOf(state).includes(g);
     return { ...draft, lot: draft.lot || siloLot(draft, state.lots)?.id || null, kg: draft.kg == null || draft.kg === '' ? '' : fmtTyped(String(draft.kg).replace('.', ','), 0), obs: draft.obs ?? '', grano: otro ? 'Otro' : g, granoOtro: otro ? g : '', hum: draft.hum == null || draft.hum === '' ? '' : String(draft.hum).replace('.', ','), prio: prioOf(draft.prio) };
   });
   const [busy, setBusy] = useState(false);
@@ -163,15 +168,15 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
             </div>
           )}
         </Field>
-        <Field label="Grano" className="span-2">
-          <div className="chips-pick" role="radiogroup" aria-label="Grano">
-            {GRANOS.map(g => (
+        <Field label="Variedad" className="span-2">
+          <div className="chips-pick" role="radiogroup" aria-label="Variedad">
+            {[...variedadesOf(state), 'Otro'].map(g => (
               <button type="button" key={g} role="radio" aria-checked={f.grano === g} className={`pick ${f.grano === g ? 'is-on' : ''}`} disabled={!canEdit} onClick={() => setF(x => ({ ...x, grano: g }))}>{g}</button>
             ))}
           </div>
         </Field>
         {f.grano === 'Otro' && (
-          <Field label="¿Qué grano?" className="span-2"><TextInput value={f.granoOtro} onChange={v => setF(x => ({ ...x, granoOtro: v.slice(0, 30) }))} placeholder="Ej: Colza, Arveja…" disabled={!canEdit} /></Field>
+          <Field label="¿Qué variedad?" className="span-2" hint="Para usarla siempre, agregala en Ajustes → Variedades"><TextInput value={f.granoOtro} onChange={v => setF(x => ({ ...x, granoOtro: v.slice(0, 30) }))} placeholder="Ej: Colza, Arveja…" disabled={!canEdit} /></Field>
         )}
         <Field label="Kg (opcional)" className="span-2" error={err.kg} hint={!err.kg ? 'Si todavía no se conoce, dejalo vacío' : null}>
           <NumField value={f.kg} onChange={v => setF(x => ({ ...x, kg: v }))} unit="kg" conv={kgToT} label="Kilos" placeholder="Ej: 180.000" disabled={!canEdit} />

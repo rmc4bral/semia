@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Field, TextInput, Select, Segmented, Icon, Modal, useToast, fmtKg, fmtNum, fmtDate } from './ui.jsx';
 import { fmtFecha } from './maplayers.js';
 import { areaHa, lotCorners, migrateGeoref, pointKey, isSiloLot, lotName, siloLot, estanciaNombre } from './geo.js';
-import { PhotoView, GRANOS, userName, PrioTag, PRIOS, prioOf, splitName, fullName, EstadoTag, estadoOf } from './modals.jsx';
+import { PhotoView, variedadesOf, variedadesFiltro, userName, PrioTag, PRIOS, prioOf, splitName, fullName, EstadoTag, estadoOf } from './modals.jsx';
 import { KmlImport } from './kmlImport.jsx';
 import { buildKmlRename } from './kml.js';
 import GlobalMap from './GlobalMap.jsx';
@@ -156,7 +156,7 @@ export function SilosScreen({ state, onOpenSilo, onDespacho, onExportCsv, onExpo
         {estOpts && <Field label="Sección"><Select value={est} options={estOpts} onChange={v => { onEst(v); setLote('all'); }} /></Field>}
         <Field label="Buscar"><div className="input-ic"><Icon name="search" size={16} /><TextInput value={q} onChange={setQ} placeholder="ID u observación" /></div></Field>
         <Field label="Lote"><Select value={lote} options={lotOpts} onChange={setLote} /></Field>
-        <Field label="Grano"><Select value={grano} options={[{ value: 'all', label: 'Todos' }, ...GRANOS.map(g => ({ value: g, label: g }))]} onChange={setGrano} /></Field>
+        <Field label="Variedad"><Select value={grano} options={[{ value: 'all', label: 'Todas' }, ...variedadesFiltro(state).map(g => ({ value: g, label: g }))]} onChange={setGrano} /></Field>
         <Field label="Humedad"><Select value={hum} options={HUM_OPTS} onChange={setHum} /></Field>
         <Field label="Prioridad"><Select value={prio} options={PRIO_OPTS} onChange={setPrio} /></Field>
         <Field label="Estado"><Select value={estado} options={EST_OPTS} onChange={setEstado} /></Field>
@@ -469,6 +469,8 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
           {isAdmin && (est.nombre !== state.estancia.nombre || est.sigla !== state.estancia.sigla) && <div className="row end"><Button variant="primary" icon="check" onClick={() => { if (!est.nombre.trim() || !est.sigla) return toast('Completá nombre y sigla', 'error'); run(() => store.saveEstancia(est, me), 'Guardado'); }}>Guardar</Button></div>}
         </Group>
 
+        <VariedadesGroup state={state} store={store} onState={onState} />
+
         <Group id="estancia" icon="map" title="Secciones" desc="Cada KML es una sección con sus lotes y su sigla: los silos de Los Gatos se numeran LG + lote + bolsa (LG31010).">
           {kmls.length > 0 && (
             <div className="set-list">
@@ -546,6 +548,63 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
         {isAdmin && mode !== 'local' && <ContactsGroup store={store} />}
       </div>
     </div>
+  );
+}
+
+/* ---------- Variedades de la empresa ---------- */
+function VariedadesGroup({ state, store, onState }) {
+  const toast = useToast();
+  const list = variedadesOf(state);
+  const [nueva, setNueva] = useState(''), [edit, setEdit] = useState(null), [del, setDel] = useState(null), [busy, setBusy] = useState(false);
+  const uso = v => state.silos.filter(s => s.grano === v).length;
+  const save = async (l, renames, msg) => {
+    setBusy(true);
+    try { onState(await store.saveVariedades(l, renames)); toast(msg, 'ok'); return true; } catch (e) { toast(e.message, 'error'); return false; } finally { setBusy(false); }
+  };
+  const add = async () => {
+    const v = nueva.trim().slice(0, 30); if (!v) return;
+    if (list.some(x => x.toLowerCase() === v.toLowerCase())) return toast(`«${v}» ya está en la lista`, 'error');
+    if (await save([...list, v], [], `Variedad «${v}» agregada`)) setNueva('');
+  };
+  const rename = async () => {
+    const v = edit.v.trim().slice(0, 30); if (!v || v === edit.old) return setEdit(null);
+    if (list.some(x => x !== edit.old && x.toLowerCase() === v.toLowerCase())) return toast(`«${v}» ya está en la lista`, 'error');
+    if (await save(list.map(x => (x === edit.old ? v : x)), [[edit.old, v]], `Renombrada a «${v}»`)) setEdit(null);
+  };
+  return (
+    <Group id="variedades" icon="silo" title="Variedades" desc="Las variedades de semilla o grano que usa tu empresa. Aparecen al registrar cada silobolsa y en los filtros.">
+      <div className="var-list">
+        {list.map(v => {
+          const n = uso(v);
+          return (
+            <div className="var-row" key={v}>
+              {edit?.old === v ? (
+                <form className="var-edit" onSubmit={e => { e.preventDefault(); rename(); }}>
+                  <TextInput value={edit.v} onChange={x => setEdit(y => ({ ...y, v: x.slice(0, 30) }))} autoFocus aria-label={`Nuevo nombre para ${v}`} />
+                  <Button size="sm" onClick={() => setEdit(null)}>Cancelar</Button><Button size="sm" variant="primary" type="submit" disabled={busy}>Guardar</Button>
+                </form>
+              ) : del === v ? (
+                <div className="var-edit">
+                  <span className="var-q">{n ? `¿Quitar «${v}»? Las ${n} bolsa${n === 1 ? '' : 's'} registrada${n === 1 ? '' : 's'} la conservan.` : `¿Quitar «${v}»?`}</span>
+                  <Button size="sm" onClick={() => setDel(null)}>No</Button>
+                  <Button size="sm" variant="danger" disabled={busy} onClick={async () => { if (await save(list.filter(x => x !== v), [], `«${v}» quitada`)) setDel(null); }}>Quitar</Button>
+                </div>
+              ) : (
+                <>
+                  <span className="var-name"><b>{v}</b><small className="muted">{n ? `${n} bolsa${n === 1 ? '' : 's'}` : 'Sin bolsas'}</small></span>
+                  <Button size="sm" variant="ghost" icon="edit" onClick={() => { setDel(null); setEdit({ old: v, v }); }} aria-label={`Renombrar ${v}`} />
+                  <Button size="sm" variant="ghost" icon="trash" disabled={list.length <= 1} onClick={() => { setEdit(null); setDel(v); }} aria-label={`Quitar ${v}`} />
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <form className="var-add" onSubmit={e => { e.preventDefault(); add(); }}>
+        <Field label="Nueva variedad"><TextInput value={nueva} onChange={v => setNueva(v.slice(0, 30))} placeholder="Ej: Soja DM 46i20, Maíz DK 72-10" /></Field>
+        <Button variant="primary" icon="plus" type="submit" disabled={busy || !nueva.trim()}>Agregar</Button>
+      </form>
+    </Group>
   );
 }
 

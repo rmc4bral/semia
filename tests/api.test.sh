@@ -106,6 +106,12 @@ chk despacho-embolsado "$(curl -s -b $A "${J[@]}" -d '{"id":"RB16001","inicio":"
 chk despacho-fin "$(curl -s -b $A "${J[@]}" -d "{\"id\":\"RB16001\",\"inicio\":\"$HOY\",\"fin\":\"$HOY\"}" $B/api.php?action=setDespacho)" "\"fin\":\"$HOY\",\"despachoPor\":\"rodma\""
 chk despacho-reabrir "$(curl -s -b $A "${J[@]}" -d '{"id":"RB16001","inicio":null,"fin":null}' $B/api.php?action=setDespacho)" '"inicio":null,"fin":null'
 chk despacho-sin-sesion "$(curl -s "${J[@]}" -d '{"id":"RB16001"}' $B/api.php?action=setDespacho)" 'Sesión expirada'
+# variedades de la empresa
+chk variedades "$(curl -s -b $A "${J[@]}" -d '{"list":["Soja","Maíz","Soja DM 46i20"]}' $B/api.php?action=saveVariedades)" '"variedades":\["Soja","Maíz","Soja DM 46i20"\]'
+chk variedades-repetida "$(curl -s -b $A "${J[@]}" -d '{"list":["Soja","soja"]}' $B/api.php?action=saveVariedades)" 'está repetida'
+chk variedades-vacia "$(curl -s -b $A "${J[@]}" -d '{"list":[]}' $B/api.php?action=saveVariedades)" 'al menos una'
+chk variedades-renombrar "$(curl -s -b $A "${J[@]}" -d '{"list":["Soja 1ra","Maíz","Soja DM 46i20"],"renames":[["Soja","Soja 1ra"]]}' $B/api.php?action=saveVariedades)" '"grano":"Soja 1ra"'
+chk variedades-supervisor "$(curl -s -b $O "${J[@]}" -d '{"list":["X"]}' $B/api.php?action=saveVariedades)" 'Solo el administrador'
 # formulario de contacto y demo de 10 días (público)
 chk contacto-faltan "$(curl -s "${J[@]}" -d '{"nombre":"Ana"}' $B/api.php?action=contact)" 'Completá el apellido'
 chk contacto-email "$(curl -s "${J[@]}" -d '{"nombre":"Ana","apellido":"G","email":"x","tel":"2346555000","empresa":"Agro"}' $B/api.php?action=contact)" 'email no es válido'

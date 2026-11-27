@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Field, Select, Icon, DateRange, dayOf, fmtDay, fmtNum } from './ui.jsx';
-import { GRANOS, PRIOS, prioOf, PrioTag } from './modals.jsx';
+import { variedadesFiltro, PRIOS, prioOf, PrioTag } from './modals.jsx';
 import { siloLot, isSiloLot, lotName, estanciaNombre } from './geo.js';
 
 /* ---------- Estadísticas: resumen del acopio con anillos y gráficos propios (sin librerías) ---------- */
@@ -139,7 +139,7 @@ export function StatsScreen({ state, est = 'all', estOpts, onEst, inEst = () => 
       <div className={`filters stats-filters ${estOpts ? 'has-est' : ''}`}>
         {estOpts && <Field label="Sección"><Select value={est} options={estOpts} onChange={onEst} /></Field>}
         <Field label="Período"><DateRange value={rango} onChange={setRango} /></Field>
-        <Field label="Variedad"><Select value={grano} options={[{ value: 'all', label: 'Todas' }, ...GRANOS.map(g => ({ value: g, label: g }))]} onChange={setGrano} /></Field>
+        <Field label="Variedad"><Select value={grano} options={[{ value: 'all', label: 'Todas' }, ...variedadesFiltro(state).map(g => ({ value: g, label: g }))]} onChange={setGrano} /></Field>
       </div>
 
       <div className="st-kpis" key={'k' + k}>

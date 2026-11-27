@@ -1273,6 +1273,24 @@ path.sat-lot.is-dim { stroke-opacity: .55; }
 .card-obs { font-weight: 500; white-space: pre-wrap; line-height: 1.45; }
 .card-photo { display: block; width: 100%; max-height: 280px; object-fit: cover; border-radius: var(--r); margin-top: 14px; }
 
+/* ---------- Casilla propia (sin controles del navegador) ---------- */
+.check { display: inline-flex; align-items: center; gap: 10px; align-self: flex-start; padding: 2px 0; border: 0; background: transparent; color: var(--text); font: 500 14px var(--font); cursor: pointer; }
+.check-box { width: 20px; height: 20px; flex: none; display: grid; place-items: center; border-radius: 6px; border: 1.5px solid var(--line-2); background: transparent; transition: background .15s, border-color .15s; }
+.check.is-on .check-box { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.login-brand { color: inherit; text-decoration: none; }
+
+/* ---------- Perfil y Usuarios ---------- */
+.set-links { display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.set-link { display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 2px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.set-link > span { flex: 1; display: flex; flex-direction: column; }
+.set-link small { font-size: 12px; color: var(--muted); }
+.set-link-go { transform: rotate(-90deg); color: var(--muted); }
+.user-form { display: flex; flex-direction: column; gap: 14px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.user-form h3 { font-size: 15px; }
+.user-row { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--line); }
+.user-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.user-row-main .small { overflow-wrap: anywhere; }
+
 /* ---------- Saludo ---------- */
 .greet { margin: 2px 0 -4px; padding-left: 4px; font-size: 17px; font-weight: 500; letter-spacing: -0.02em; color: var(--muted); flex: none; }
 .greet b { color: var(--text); font-weight: 600; }

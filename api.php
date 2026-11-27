@@ -625,6 +625,22 @@ switch ($action) {
     out(['ok' => true, 'state' => $state]);
   }
 
+  case 'saveVariedades': {
+    // variedades propias de la empresa; renombrar una actualiza las silobolsas que la usan
+    requireAdmin(); $b = body();
+    $list = []; foreach ((array)($b['list'] ?? []) as $v) { $v = str($v, 30); if ($v === '') continue; foreach ($list as $x) if (mb_strtolower($x) === mb_strtolower($v)) fail("«$v» está repetida"); $list[] = $v; }
+    if (!$list) fail('Dejá al menos una variedad');
+    if (count($list) > 60) fail('Hasta 60 variedades');
+    $ren = [];
+    foreach ((array)($b['renames'] ?? []) as $r) { $a = str($r[0] ?? '', 30); $n = str($r[1] ?? '', 30); if ($a !== '' && $n !== '' && $a !== $n) $ren[$a] = $n; }
+    $state = withData(function (&$d) use ($list, $ren) {
+      $d['variedades'] = $list;
+      if ($ren) foreach ($d['silos'] as &$s) if (isset($ren[$s['grano'] ?? ''])) $s['grano'] = $ren[$s['grano']];
+      return publicState($d);
+    }, true);
+    out(['ok' => true, 'state' => $state]);
+  }
+
   case 'saveEstancia': {
     requireAdmin(); $e = body()['estancia'] ?? [];
     $state = withData(function (&$d) use ($e) {

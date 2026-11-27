@@ -1,0 +1,22 @@
+# Capturas reales de la app para la landing: corre en GitHub, donde las imágenes satelitales están disponibles.
+name: Capturas para la landing
+on:
+  workflow_dispatch:
+  push:
+    branches: [capturas]
+jobs:
+  capturas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install playwright pillow && python -m playwright install --with-deps chromium
+      - name: Servidor y capturas
+        run: |
+          mkdir -p /tmp/web && cp -r public_html/. /tmp/web/
+          (cd /tmp/web && ACOPIA_DATA=/tmp/datos php -S 127.0.0.1:8790 "$GITHUB_WORKSPACE/tests/router.php" > /tmp/php.log 2>&1 &)
+          sleep 1
+          python tests/capturas.py http://127.0.0.1:8790 /tmp/datos capturas
+      - uses: actions/upload-artifact@v4
+        with: { name: capturas, path: capturas, retention-days: 3 }

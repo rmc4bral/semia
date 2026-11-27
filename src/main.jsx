@@ -442,9 +442,9 @@ function Shell({ store, me, state, setState, onMe, onLogout, theme, setTheme, gp
   }
   const today = () => new Date().toISOString().slice(0, 10);
   function exportCsv() {
-    const head = ['ID', 'Lote', 'Kg', 'Grano', 'Observacion', 'Latitud', 'Longitud', 'Latitud_fin', 'Longitud_fin', 'Largo_m', 'Precision_m', 'Origen', 'Registrado_por', 'Fecha'];
+    const head = ['ID', 'Lote', 'Kg', 'Humedad_%', 'Prioridad_salida', 'Grano', 'Observacion', 'Latitud', 'Longitud', 'Latitud_fin', 'Longitud_fin', 'Largo_m', 'Precision_m', 'Origen', 'Registrado_por', 'Fecha'];
     const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const rows = state.silos.map(s => [s.id, s.lote, s.kg, s.grano, s.obs, s.latlng?.[0], s.latlng?.[1], s.latlng2?.[0], s.latlng2?.[1], s.largo, s.gps?.acc, s.origen, s.creadoPor, s.creadoEn].map(q).join(';'));
+    const rows = state.silos.map(s => [s.id, s.lote, s.kg, s.hum, s.prio ? 'Sí' : '', s.grano, s.obs, s.latlng?.[0], s.latlng?.[1], s.latlng2?.[0], s.latlng2?.[1], s.largo, s.gps?.acc, s.origen, s.creadoPor, s.creadoEn].map(q).join(';'));
     download('\ufeff' + [head.join(';'), ...rows].join('\n'), `silobolsas-${today()}.csv`, 'text/csv');
   }
   function exportKmlFile() {

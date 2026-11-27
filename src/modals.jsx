@@ -40,7 +40,7 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
   const canEdit = isNew || isAdmin || draft.creadoPor === me.user;
   const [f, setF] = useState(() => {
     const g = draft.grano ?? '', otro = g && !GRANOS.includes(g);
-    return { ...draft, lot: draft.lot || siloLot(draft, state.lots)?.id || null, kg: draft.kg == null || draft.kg === '' ? '' : fmtTyped(String(draft.kg).replace('.', ','), 0), obs: draft.obs ?? '', grano: otro ? 'Otro' : g, granoOtro: otro ? g : '' };
+    return { ...draft, lot: draft.lot || siloLot(draft, state.lots)?.id || null, kg: draft.kg == null || draft.kg === '' ? '' : fmtTyped(String(draft.kg).replace('.', ','), 0), obs: draft.obs ?? '', grano: otro ? 'Otro' : g, granoOtro: otro ? g : '', hum: draft.hum == null || draft.hum === '' ? '' : String(draft.hum).replace('.', ','), prio: !!draft.prio };
   });
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
@@ -73,7 +73,8 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
   };
 
   const kgNum = parseNum(f.kg);
-  const err = { kg: f.kg !== '' && (isNaN(kgNum) || kgNum < 0) ? 'Ingresá un número válido' : null };
+  const humNum = parseNum(f.hum);
+  const err = { kg: f.kg !== '' && (isNaN(kgNum) || kgNum < 0) ? 'Ingresá un número válido' : null, hum: f.hum !== '' && (isNaN(humNum) || humNum < 0 || humNum > 40) ? 'Entre 0 y 40 %' : null };
   const granoFinal = f.grano === 'Otro' ? (f.granoOtro || '').trim() : f.grano;
 
   async function save() {
@@ -81,13 +82,14 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
     if (!f.map) return toast('Falta la ubicación del silo', 'error');
     if (!granoFinal) return toast(f.grano === 'Otro' ? 'Escribí qué grano es' : 'Elegí el grano', 'error');
     if (err.kg) return toast('Los kg tienen que ser un número', 'error');
+    if (err.hum) return toast('La humedad va de 0 a 40 %', 'error');
     setBusy(true);
     try {
       const id = isNew || f.lot !== origLot ? nextSiloId(sigla, lot.num, state.silos, draft.prevId) : draft.prevId;
       let foto = f.fotoData === null ? null : f.foto || null;
       if (f.fotoData) foto = await store.uploadPhoto(id, f.fotoData);
       const silo = {
-        id, lote: lot.num, lot: lot.id, kg: f.kg === '' ? null : kgNum, grano: granoFinal, obs: (f.obs || '').trim(), foto,
+        id, lote: lot.num, lot: lot.id, kg: f.kg === '' ? null : kgNum, hum: f.hum === '' ? null : Math.round(humNum * 10) / 10, prio: !!f.prio, grano: granoFinal, obs: (f.obs || '').trim(), foto,
         map: f.map.map(v => Math.round(v * 100) / 100), t: free ? null : Math.round(f.t * 100) / 100, ang: Number.isFinite(f.ang) ? Math.round(f.ang * 1e4) / 1e4 : 0,
         map2: f.map2 ? f.map2.map(v => Math.round(v * 100) / 100) : null,
         latlng: f.latlng && f.origen === 'gps' ? f.latlng : geo ? geo.toLatLng(f.map).map(v => +v.toFixed(7)) : (draft.latlng || null),
@@ -174,6 +176,14 @@ export function SiloModal({ draft, state, me, geo, store, onClose, onSaved, onRe
         <Field label="Kg (opcional)" className="span-2" error={err.kg} hint={!err.kg ? 'Si todavía no se conoce, dejalo vacío' : null}>
           <NumField value={f.kg} onChange={v => setF(x => ({ ...x, kg: v }))} unit="kg" conv={kgToT} label="Kilos" placeholder="Ej: 180.000" disabled={!canEdit} />
         </Field>
+        <Field label="Humedad (opcional)" error={err.hum}>
+          <NumField value={f.hum} onChange={v => setF(x => ({ ...x, hum: v }))} unit="%" decimals={1} maxDigits={2} label="Humedad" placeholder="Ej: 13,5" disabled={!canEdit} />
+        </Field>
+        <Field label="Salida">
+          <button type="button" role="checkbox" aria-checked={!!f.prio} className={`check check-field ${f.prio ? 'is-on' : ''}`} disabled={!canEdit} onClick={() => setF(x => ({ ...x, prio: !x.prio }))}>
+            <span className="check-box">{f.prio && <Icon name="check" size={14} />}</span>Prioridad de salida
+          </button>
+        </Field>
         <Field label="Foto" className="span-2">
           <div className="photo-box">
             {photoShown ? (
@@ -224,6 +234,8 @@ export function SiloCard({ silo: s, state, me, geo, onClose, onEdit, onMap }) {
         <div><dt>Lote</dt><dd>{lotName(s.lote)}{lot?.ha ? <span className="muted"> · {fmtNum(lot.ha, 0)} ha</span> : null}</dd></div>
         <div><dt>Grano</dt><dd>{s.grano || '—'}</dd></div>
         <div><dt>Kilos</dt><dd>{hasKg ? <>{fmtKg(s.kg)} kg <span className="muted">· {fmtNum(s.kg / 1000, 1)} t</span></> : <span className="muted">Sin cargar</span>}</dd></div>
+        <div><dt>Humedad</dt><dd>{s.hum != null ? `${fmtNum(s.hum, 1)} %` : <span className="muted">Sin medir</span>}</dd></div>
+        <div><dt>Salida</dt><dd>{s.prio ? <span className="prio-tag">Prioritaria</span> : <span className="muted">Normal</span>}</dd></div>
         <div className="span-2"><dt>Lugar</dt><dd>{ll ? <>
           {s.largo ? <span>Bolsa de {fmtNum(s.largo)} m{s.gps ? ` · GPS ±${fmtNum(s.gps.acc)} m` : ''}</span> : <span>{s.origen === 'gps' ? `Punto GPS${s.gps ? ` ±${fmtNum(s.gps.acc)} m` : ''}` : 'Marcado en el mapa'}</span>}
           <span className="mono small muted">{ll2 ? `A ${c(ll)}` : c(ll)}</span>{ll2 && <span className="mono small muted">B {c(ll2)}</span>}

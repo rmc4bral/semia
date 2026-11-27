@@ -300,6 +300,9 @@ switch ($action) {
       // kg opcional (puede no conocerse al registrar la bolsa)
       $rawKg = $s['kg'] ?? null; $kg = ($rawKg === null || $rawKg === '') ? null : num($rawKg);
       if (($rawKg !== null && $rawKg !== '' && $kg === null) || ($kg !== null && $kg < 0)) fail('Kg inválido');
+      $rawHum = $s['hum'] ?? null; $hum = ($rawHum === null || $rawHum === '') ? null : num($rawHum);
+      if (($rawHum !== null && $rawHum !== '' && $hum === null) || ($hum !== null && ($hum < 0 || $hum > 40))) fail('Humedad inválida (0 a 40 %)');
+      if ($hum !== null) $hum = round($hum, 1);
       $map = $s['map'] ?? null;
       if (!is_array($map) || count($map) !== 2 || num($map[0]) === null || num($map[1]) === null) fail('Ubicación inválida');
       $map2 = $s['map2'] ?? null;
@@ -327,7 +330,7 @@ switch ($action) {
       $foto = $s['foto'] ?? null;
       if ($foto !== null && !preg_match('#^uploads/[A-Z0-9]+-[a-f0-9]{8}\.(jpg|png|webp)$#', (string)$foto)) $foto = null;
       $rec = [
-        'id' => $id, 'lote' => $lote, 'lot' => $lotId, 'kg' => $kg, 'grano' => str($s['grano'] ?? '', 30), 'obs' => str($s['obs'] ?? '', 1000), 'foto' => $foto,
+        'id' => $id, 'lote' => $lote, 'lot' => $lotId, 'kg' => $kg, 'hum' => $hum, 'prio' => !empty($s['prio']), 'grano' => str($s['grano'] ?? '', 30), 'obs' => str($s['obs'] ?? '', 1000), 'foto' => $foto,
         'map' => [round((float)$map[0], 2), round((float)$map[1], 2)], 't' => num($s['t'] ?? null), 'ang' => num($s['ang'] ?? null),
         'map2' => $map2,
         'latlng' => is_array($s['latlng'] ?? null) ? array_map('floatval', array_slice($s['latlng'], 0, 2)) : null,

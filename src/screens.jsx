@@ -88,8 +88,8 @@ export function SiloRow({ s, onClick, thumb, state, est }) {
   return (
     <button type="button" className="silo-row" onClick={onClick}>
       <span className="silo-ic"><Icon name="silo" size={18} /></span>
-      <span className="silo-row-main"><b className="mono">{s.id}</b>
-        <span className="muted small">{est && state ? `${estanciaNombre(siloLot(s, state.lots), state) || state.estancia.nombre} · ` : ''}Lote {s.lote}{s.grano ? ` · ${s.grano}` : ''}</span>
+      <span className="silo-row-main"><span className="silo-row-id"><b className="mono">{s.id}</b>{s.prio && <span className="prio-tag" title="Prioridad de salida">Salida</span>}</span>
+        <span className="muted small">{est && state ? `${estanciaNombre(siloLot(s, state.lots), state) || state.estancia.nombre} · ` : ''}Lote {s.lote}{s.grano ? ` · ${s.grano}` : ''}{s.hum != null ? ` · ${fmtNum(s.hum, 1)} % hum.` : ''}</span>
         <span className="muted small">{fmtDate(s.creadoEn)}{state ? ` · ${userName(s.creadoPor, state)}` : ''}</span></span>
       {thumb && s.foto && <PhotoView refPath={s.foto} className="silo-thumb" />}
       <span className="silo-row-kg">{hasKg ? <><b>{fmtNum(s.kg / 1000, 1)}</b><span className="muted small">t</span></> : <span className="muted small">sin kg</span>}</span>
@@ -109,14 +109,26 @@ export function RecentPanel({ state, onSelectSilo }) {
 }
 
 /* ---------- Pantalla Silos ---------- */
+// Humedad del grano: rangos habituales de recibo (seco, a vigilar, húmedo)
+const HUM = { all: () => true, seco: h => h != null && h <= 14, medio: h => h != null && h > 14 && h <= 16, alto: h => h != null && h > 16, sin: h => h == null };
+const HUM_OPTS = [{ value: 'all', label: 'Todas' }, { value: 'seco', label: 'Hasta 14 %' }, { value: 'medio', label: '14 a 16 %' }, { value: 'alto', label: 'Más de 16 %' }, { value: 'sin', label: 'Sin medir' }];
+const byId = (a, b) => a.id.localeCompare(b.id);
+const ORDEN = {
+  prio: (a, b) => (!!b.prio - !!a.prio) || byId(a, b),
+  kg: (a, b) => ((+b.kg || 0) - (+a.kg || 0)) || byId(a, b),
+  fecha: (a, b) => String(b.creadoEn || '').localeCompare(String(a.creadoEn || '')) || byId(a, b),
+  id: byId,
+};
+const ORDEN_OPTS = [{ value: 'prio', label: 'Prioridad', meta: 'De salida primero' }, { value: 'kg', label: 'Mayor kg' }, { value: 'fecha', label: 'Recientes' }, { value: 'id', label: 'Número' }];
+
 export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est = 'all', estOpts, onEst, inEst = () => true }) {
-  const [q, setQ] = useState(''), [lote, setLote] = useState('all'), [grano, setGrano] = useState('all');
+  const [q, setQ] = useState(''), [lote, setLote] = useState('all'), [grano, setGrano] = useState('all'), [hum, setHum] = useState('all'), [orden, setOrden] = useState('prio');
   const list = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return state.silos.filter(s => inEst(siloLot(s, state.lots)) && (lote === 'all' || s.lot === lote) && (grano === 'all' || s.grano === grano)
+    return state.silos.filter(s => inEst(siloLot(s, state.lots)) && (lote === 'all' || s.lot === lote) && (grano === 'all' || s.grano === grano) && HUM[hum](s.hum)
       && (!t || s.id.toLowerCase().includes(t) || (s.obs || '').toLowerCase().includes(t)))
-      .sort((a, b) => a.id.localeCompare(b.id));
-  }, [state.silos, q, lote, grano, inEst]);
+      .sort(ORDEN[orden]);
+  }, [state.silos, q, lote, grano, hum, orden, inEst]);
   const nEst = state.silos.filter(s => inEst(siloLot(s, state.lots))).length;
   const lotOpts = [{ value: 'all', label: 'Todos' }, ...state.lots.filter(l => isSiloLot(l) && inEst(l)).map(l => ({ value: l.id, label: `Lote ${l.num}`, meta: estanciaNombre(l, state) }))];
   return (
@@ -130,6 +142,8 @@ export function SilosScreen({ state, onOpenSilo, onExportCsv, onExportKml, est =
         <Field label="Buscar"><div className="input-ic"><Icon name="search" size={16} /><TextInput value={q} onChange={setQ} placeholder="ID u observación" /></div></Field>
         <Field label="Lote"><Select value={lote} options={lotOpts} onChange={setLote} /></Field>
         <Field label="Grano"><Select value={grano} options={[{ value: 'all', label: 'Todos' }, ...GRANOS.map(g => ({ value: g, label: g }))]} onChange={setGrano} /></Field>
+        <Field label="Humedad"><Select value={hum} options={HUM_OPTS} onChange={setHum} /></Field>
+        <Field label="Ordenar"><Select value={orden} options={ORDEN_OPTS} onChange={setOrden} /></Field>
       </div>
       <div className="card list-card">
         {list.map(s => <SiloRow key={s.id} s={s} state={state} est={est === 'all' && !!estOpts} thumb onClick={() => onOpenSilo(s.id)} />)}

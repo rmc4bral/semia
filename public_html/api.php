@@ -202,6 +202,20 @@ function checkCsrf(): void {
   if ($origin && parse_url($origin, PHP_URL_HOST) !== ($_SERVER['HTTP_HOST'] ? explode(':', $_SERVER['HTTP_HOST'])[0] : '')) fail('Origen no permitido', 403);
 }
 
+
+// Consultas del formulario de contacto de la web: archivo aparte, fuera de la web, con bloqueo propio.
+define('CONTACT_FILE', DATA_DIR . '/contactos.json');
+const FUENTES = ['YouTube', 'Google', 'Instagram', 'Facebook', 'X', 'TikTok', 'LinkedIn', 'Otros'];
+function withContacts(callable $fn) {
+  $fh = fopen(CONTACT_FILE, 'c+'); if (!$fh) fail('No se pudo guardar la consulta', 500);
+  flock($fh, LOCK_EX); $c = json_decode(stream_get_contents($fh) ?: '{}', true); if (!is_array($c)) $c = [];
+  $c += ['items' => [], 'hits' => []];
+  $res = $fn($c);
+  ftruncate($fh, 0); rewind($fh); fwrite($fh, json_encode($c, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT)); fflush($fh);
+  flock($fh, LOCK_UN); fclose($fh); @chmod(CONTACT_FILE, 0640);
+  return $res;
+}
+
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 if ($method === 'POST') checkCsrf();
@@ -209,6 +223,53 @@ if ($method === 'POST') checkCsrf();
 switch ($action) {
   case 'ping':
     out(['ok' => true, 'app' => 'semia', 'version' => 1]);
+
+  case 'contact': {
+    // formulario público de la landing: validado, con trampa para robots y límite por IP
+    $b = body();
+    if (str($b['web'] ?? '', 200) !== '') out(['ok' => true]);
+    $f = ['nombre' => str($b['nombre'] ?? '', 60), 'apellido' => str($b['apellido'] ?? '', 60), 'email' => str($b['email'] ?? '', 120),
+      'tel' => str($b['tel'] ?? '', 30), 'empresa' => str($b['empresa'] ?? '', 100), 'fuente' => str($b['fuente'] ?? '', 20), 'mensaje' => str($b['mensaje'] ?? '', 2000)];
+    foreach (['nombre' => 'el nombre', 'apellido' => 'el apellido', 'email' => 'el email', 'tel' => 'el celular', 'empresa' => 'la empresa'] as $k => $t)
+      if ($f[$k] === '') fail("Completá $t");
+    if (!filter_var($f['email'], FILTER_VALIDATE_EMAIL)) fail('El email no es válido');
+    if (strlen(preg_replace('/\D/', '', $f['tel'])) < 6) fail('El celular no es válido');
+    if ($f['fuente'] !== '' && !in_array($f['fuente'], FUENTES, true)) $f['fuente'] = 'Otros';
+    $ip = hash('sha256', ($_SERVER['REMOTE_ADDR'] ?? '') . '|acopia');
+    withContacts(function (&$c) use ($f, $ip) {
+      $now = time(); $c['hits'] = array_values(array_filter($c['hits'], fn($h) => $h['t'] > $now - 3600));
+      if (count(array_filter($c['hits'], fn($h) => $h['ip'] === $ip)) >= 5) fail('Recibimos varias consultas seguidas. Probá de nuevo en un rato.', 429);
+      $c['hits'][] = ['ip' => $ip, 't' => $now];
+      array_unshift($c['items'], $f + ['id' => bin2hex(random_bytes(6)), 'fecha' => gmdate('c'), 'leida' => false]);
+      $c['items'] = array_slice($c['items'], 0, 500);
+    });
+    // aviso por correo a los administradores que cargaron su email en Perfil
+    $to = []; withData(function (&$d) use (&$to) { foreach ($d['users'] ?? [] as $u) if (($u['rol'] ?? '') === 'admin' && filter_var($u['email'] ?? '', FILTER_VALIDATE_EMAIL)) $to[] = $u['email']; });
+    if ($to && function_exists('mail')) {
+      $host = preg_replace('/[^a-z0-9.\-]/i', '', explode(':', $_SERVER['HTTP_HOST'] ?? 'acopia.app')[0]) ?: 'acopia.app';
+      $txt = "Nueva consulta desde $host\n\nNombre: {$f['nombre']} {$f['apellido']}\nEmpresa: {$f['empresa']}\nEmail: {$f['email']}\nCelular: {$f['tel']}\nNos conoció por: " . ($f['fuente'] ?: '—') . "\n\n{$f['mensaje']}\n";
+      $safe = fn($v) => str_replace(["\r", "\n"], '', $v);
+      @mail(implode(',', $to), '=?UTF-8?B?' . base64_encode('Consulta de ' . $f['nombre'] . ' ' . $f['apellido'] . ' · ' . $f['empresa']) . '?=', $txt,
+        "From: Acopia <no-reply@$host>\r\nReply-To: " . $safe($f['email']) . "\r\nContent-Type: text/plain; charset=UTF-8");
+    }
+    out(['ok' => true]);
+  }
+
+  case 'contacts': {
+    requireAdmin();
+    $items = file_exists(CONTACT_FILE) ? (json_decode(file_get_contents(CONTACT_FILE), true)['items'] ?? []) : [];
+    out(['ok' => true, 'items' => $items]);
+  }
+
+  case 'contactUpdate': {
+    requireAdmin(); $b = body(); $id = (string)($b['id'] ?? '');
+    $items = withContacts(function (&$c) use ($b, $id) {
+      if (!empty($b['borrar'])) $c['items'] = array_values(array_filter($c['items'], fn($x) => $x['id'] !== $id));
+      else foreach ($c['items'] as &$x) if ($x['id'] === $id) $x['leida'] = !empty($b['leida']);
+      return $c['items'];
+    });
+    out(['ok' => true, 'items' => $items]);
+  }
 
   case 'file': {
     // fotos y mapas: viven fuera de la web; se entregan solo con sesión iniciada

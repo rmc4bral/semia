@@ -267,6 +267,8 @@ export function createStore(mode) {
       return (await api('saveUser', { u })).state;
     },
     // perfil propio: devuelve también la sesión actualizada (nombre, email, celular, tema)
+    async contacts() { if (local) return []; return (await api('contacts')).items; },
+    async contactUpdate(id, ch) { return (await api('contactUpdate', { id, ...ch })).items; },
     async saveProfile(u, me) {
       if (local) { const state = await this.saveUser(u, me); const x = state.users.find(y => y.user === me.user); const d = localLoad(); return { state, me: sessUser(d.users.find(y => y.user === me.user) || x) }; }
       const j = await api('saveUser', { u }); return { state: j.state, me: j.me };

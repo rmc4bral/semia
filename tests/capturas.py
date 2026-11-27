@@ -46,7 +46,7 @@ def shot(pg, name, *sels):
     pg.screenshot(path=str(OUT / f'{name}.png'))
     for s in sels:
         bb = pg.locator(s).first.bounding_box()
-        boxes.setdefault(name, []).append({'sel': s, 'x': round((bb['x'] + bb['width'] / 2) / 390 * 100, 2), 'y': round((bb['y'] + bb['height'] / 2) / 844 * 100, 2)})
+        boxes.setdefault(name, []).append({'sel': s, 'x': round((bb['x'] + bb['width'] / 2) / 390 * 100, 2), 'y': round((bb['y'] + bb['height'] / 2) / 797 * 100, 2)})
 
 def kg_keys(pg, field_idx, digits, close=True):
     pg.locator('.modal .num-input').nth(field_idx).click(); pg.wait_for_selector('.kb-num')
@@ -79,7 +79,7 @@ def registrar(pg, ctx, s, frames=False):
 
 with sync_playwright() as p:
     br = p.chromium.launch()
-    ctx = br.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=3, has_touch=True, is_mobile=True,
+    ctx = br.new_context(viewport={'width': 390, 'height': 797}, device_scale_factor=3, has_touch=True, is_mobile=True,
                          permissions=['geolocation'], geolocation={'latitude': -35.9445, 'longitude': -60.3950, 'accuracy': 3},
                          timezone_id='America/Argentina/Buenos_Aires', locale='es-AR')
     pg = ctx.new_page()

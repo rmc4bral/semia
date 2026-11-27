@@ -1525,3 +1525,11 @@ path.glob-foot.is-sel { stroke: #fff; }
   .lot-bar { right: auto; width: 420px; }
 }
 @media (min-width: 1100px) { .maps-layout { grid-template-columns: minmax(0, 1.5fr) minmax(340px, 1fr); } .glob-map { height: 58dvh; } }
+
+/* consultas de la web */
+.contact-row { border-top: 1px solid var(--line); }
+.contact-row:first-child { border-top: 0; }
+.contact-main { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 0; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.contact-row.is-new .contact-main b::after { content: ''; display: inline-block; width: 7px; height: 7px; margin-left: 8px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
+.contact-body { display: flex; flex-direction: column; gap: 12px; padding-bottom: 14px; }
+.contact-body a { color: inherit; }

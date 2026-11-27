@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Field, TextInput, Select, Segmented, Icon, Modal, useToast, fmtKg, fmtNum, fmtDate } from './ui.jsx';
 import { fmtFecha } from './maplayers.js';
 import { areaHa, lotCorners, migrateGeoref, pointKey, isSiloLot, lotName, siloLot, estanciaNombre } from './geo.js';
@@ -521,8 +521,40 @@ export function SettingsScreen({ state, me, store, geo, gps, captureFix, theme, 
             </div>
           )}
         </Group>
+        {isAdmin && mode !== 'local' && <ContactsGroup store={store} />}
       </div>
     </div>
+  );
+}
+
+/* ---------- Consultas recibidas desde el formulario de la web ---------- */
+function ContactsGroup({ store }) {
+  const toast = useToast();
+  const [items, setItems] = useState(null), [open, setOpen] = useState(null);
+  useEffect(() => { store.contacts().then(setItems).catch(() => setItems([])); }, [store]);
+  const upd = async (id, ch) => { try { setItems(await store.contactUpdate(id, ch)); if (ch.borrar) toast('Consulta eliminada'); } catch (e) { toast(e.message, 'error'); } };
+  const nuevas = (items || []).filter(c => !c.leida).length;
+  return (
+    <Group id="consultas" icon="users" title="Consultas de la web" desc={items == null ? 'Cargando…' : items.length ? `${items.length} recibida${items.length === 1 ? '' : 's'}${nuevas ? ` · ${nuevas} sin leer` : ''}. Si cargás tu email en Perfil, también te llegan por correo.` : 'Todavía no hay consultas desde el formulario de contacto.'}>
+      {(items || []).map(c => (
+        <div className={`contact-row ${c.leida ? '' : 'is-new'}`} key={c.id}>
+          <button type="button" className="contact-main" aria-expanded={open === c.id} onClick={() => { setOpen(open === c.id ? null : c.id); if (!c.leida) upd(c.id, { leida: true }); }}>
+            <b>{c.nombre} {c.apellido}</b><span className="muted small">{c.empresa} · {fmtDate(c.fecha)}</span>
+          </button>
+          {open === c.id && (
+            <div className="contact-body">
+              <dl className="card-facts">
+                <div><dt>Email</dt><dd><a href={`mailto:${c.email}`}>{c.email}</a></dd></div>
+                <div><dt>Celular</dt><dd><a href={`tel:${c.tel.replace(/[^\d+]/g, '')}`}>{c.tel}</a></dd></div>
+                <div><dt>Nos conoció por</dt><dd>{c.fuente || '—'}</dd></div>
+                {c.mensaje && <div className="span-2"><dt>Mensaje</dt><dd className="card-obs">{c.mensaje}</dd></div>}
+              </dl>
+              <div className="row gap-s"><Button size="sm" variant="ghost" onClick={() => upd(c.id, { leida: false })}>Marcar sin leer</Button><Button size="sm" variant="ghost" icon="trash" onClick={() => upd(c.id, { borrar: true })}>Eliminar</Button></div>
+            </div>
+          )}
+        </div>
+      ))}
+    </Group>
   );
 }
 
